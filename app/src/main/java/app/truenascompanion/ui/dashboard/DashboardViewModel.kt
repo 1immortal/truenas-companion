@@ -70,6 +70,8 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
 
     val server = repo.activeServer
     val connection: StateFlow<ConnectionState> = repo.state
+    /** Local / remote address in use (null when the server has no local address). */
+    val route = repo.route
 
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()

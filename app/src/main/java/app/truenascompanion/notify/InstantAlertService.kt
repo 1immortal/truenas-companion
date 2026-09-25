@@ -127,32 +127,50 @@ class InstantAlertService : Service() {
         var attempt = 0
         while (currentCoroutineContext().isActive) {
             var api: TrueNasApi? = null
+            var target = server
             try {
                 setStatus(server, "connecting…")
+                target = container.routes.resolve(server)
                 // 45 s keepalive (instead of the app's 30 s): the fewest radio wake-ups that still stay under the 60 s
                 // idle timeout of a default nginx / Nginx Proxy Manager setup.
-                api = container.backgroundConnector.connect(server, Keepalive.LONG_LIVED)
+                api = container.backgroundConnector.connect(target, Keepalive.LONG_LIVED)
                 // Let the app UI and the periodic check reuse this socket instead of opening their own.
-                container.sharedConnections.publish(server, api, SharedConnections.OWNER_SERVICE)
+                container.sharedConnections.publish(target, api, SharedConnections.OWNER_SERVICE)
                 checker.onConnected(server)
                 attempt = 0
                 setStatus(server, "connected")
                 checker.check(server, api)
-                try {
-                    // Bursts of events (e.g. several alerts at once) collapse into one check.
-                    api.alertEvents().conflate().collect {
-                        delay(1_500)
-                        checker.check(server, api)
+                val live = api
+                kotlinx.coroutines.coroutineScope {
+                    // Switch cleanly between the local and remote address when the network changes (event-driven).
+                    val routeWatch = launch {
+                        container.routes.networkChanges.collect {
+                            if (server.hasLocal && container.routes.resolve(server) != target) throw RouteChanged()
+                        }
                     }
-                } catch (e: TrueNasException.Unsupported) {
-                    // Legacy REST API: no events, poll instead.
-                    while (currentCoroutineContext().isActive) {
-                        delay(REST_POLL_MS)
-                        if (checker.check(server, api) == CheckOutcome.NETWORK_ERROR) throw TrueNasException.NotConnected()
+                    try {
+                        // Bursts of events (e.g. several alerts at once) collapse into one check.
+                        live.alertEvents().conflate().collect {
+                            delay(1_500)
+                            checker.check(server, live)
+                        }
+                    } catch (e: TrueNasException.Unsupported) {
+                        // Legacy REST API: no events, poll instead.
+                        while (currentCoroutineContext().isActive) {
+                            delay(REST_POLL_MS)
+                            if (checker.check(server, live) == CheckOutcome.NETWORK_ERROR) throw TrueNasException.NotConnected()
+                        }
                     }
+                    routeWatch.cancel()
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RouteChanged) {
+                Log.d(TAG, "${server.name}: network changed, switching address")
+                api?.let { container.sharedConnections.withdraw(server.id, it); it.close() }
+                api = null
+                attempt = 0
+                continue
             } catch (e: TrueNasException.LoginRequired) {
                 checker.onSignInNeeded(server)
                 setStatus(server, "paused, sign in needed")
@@ -201,3 +219,6 @@ class InstantAlertService : Service() {
         NotificationManagerCompat.from(this).notify(AlertNotifier.ID_SERVICE, container.notifier.buildService(statusText(), stopIntent()))
     }
 }
+
+/** The right address (local/remote) changed with the network: reconnect right away, without backoff. */
+private class RouteChanged : Exception()

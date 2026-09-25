@@ -41,6 +41,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Error
@@ -382,9 +384,13 @@ fun ConfirmDialog(
     confirmLabel: String,
     destructive: Boolean = false,
     icon: ImageVector? = null,
+    /** Ask for fingerprint / face again first when "Confirm dangerous actions" is on (default: destructive actions). */
+    requireAuth: Boolean = destructive,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val guard = app.truenascompanion.ui.lock.LocalDangerGuard.current
+    val confirm: () -> Unit = if (requireAuth) ({ guard.guard(title, onConfirm) }) else onConfirm
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = icon?.let { { Icon(it, null) } },
@@ -393,11 +399,11 @@ fun ConfirmDialog(
         confirmButton = {
             if (destructive) {
                 Button(
-                    onClick = onConfirm,
+                    onClick = confirm,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
                 ) { Text(confirmLabel, maxLines = 1) }
             } else {
-                GlowButton(onClick = onConfirm) { Text(confirmLabel, maxLines = 1) }
+                GlowButton(onClick = confirm) { Text(confirmLabel, maxLines = 1) }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -435,6 +441,27 @@ fun InfoBanner(text: String, modifier: Modifier = Modifier, health: Health = Hea
             Icon(if (health == Health.CRITICAL) Icons.Rounded.Error else Icons.Rounded.Warning, null, tint = c.of(health))
             Spacer(Modifier.width(12.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/** Small "Local" / "Remote" chip showing which address the app is using. */
+@Composable
+fun RouteChip(route: app.truenascompanion.data.model.Route, modifier: Modifier = Modifier) {
+    val brand = app.truenascompanion.ui.theme.LocalBrandColors.current
+    val tint = if (route == app.truenascompanion.data.model.Route.LOCAL) (if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary)
+        else MaterialTheme.colorScheme.onSurfaceVariant
+    androidx.compose.material3.Surface(
+        color = tint.copy(alpha = 0.14f), shape = RoundedCornerShape(50), modifier = modifier,
+    ) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (route == app.truenascompanion.data.model.Route.LOCAL) Icons.Rounded.Home
+                else Icons.Rounded.Public,
+                null, tint = tint, modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(route.label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
         }
     }
 }

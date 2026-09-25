@@ -68,6 +68,7 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun token(id: String) = stringPreferencesKey("session_token_$id")
         fun tokenExpiry(id: String) = longPreferencesKey("session_token_expiry_$id")
         val NOTIFICATIONS = stringPreferencesKey("notification_prefs")
+        val LOCK = stringPreferencesKey("lock_settings")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
         fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
     }
@@ -84,6 +85,19 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             dynamicColor = prefs[Keys.DYNAMIC] ?: false,
         )
     }.distinctUntilChanged()
+
+    val lockSettings: Flow<app.truenascompanion.data.security.LockSettings> = store.data.map { prefs ->
+        prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
+            ?: app.truenascompanion.data.security.LockSettings()
+    }.distinctUntilChanged()
+
+    suspend fun updateLockSettings(f: (app.truenascompanion.data.security.LockSettings) -> app.truenascompanion.data.security.LockSettings) {
+        store.edit { prefs ->
+            val cur = prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
+                ?: app.truenascompanion.data.security.LockSettings()
+            prefs[Keys.LOCK] = json.encodeToString(f(cur))
+        }
+    }
 
     suspend fun saveServer(server: ServerConfig, apiKey: String?) {
         val encrypted = apiKey?.let { cipher.encrypt(it) }

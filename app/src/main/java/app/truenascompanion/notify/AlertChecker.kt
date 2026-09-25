@@ -101,6 +101,7 @@ class AlertChecker(
     private val connector: BackgroundConnector,
     private val notifier: AlertNotifier,
     private val shared: SharedConnections = SharedConnections(),
+    private val resolver: app.truenascompanion.data.net.RouteResolver = app.truenascompanion.data.net.RouteResolver(null),
 ) {
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val classTitles = ConcurrentHashMap<String, Map<String, String>>()
@@ -116,9 +117,11 @@ class AlertChecker(
     suspend fun check(server: ServerConfig, api: TrueNasApi? = null): CheckOutcome = withContext(Dispatchers.IO) {
         locks.getOrPut(server.id) { Mutex() }.withLock {
             // Reuse an open socket (instant alerts or the app on screen) before signing in on a new one.
-            val borrowed = api ?: shared.borrow(server)
+            // Local or remote address, whichever is right on the current network (cached per network).
+            val target = if (api != null) server else resolver.resolve(server)
+            val borrowed = api ?: shared.borrow(target)
             val conn = try {
-                borrowed ?: connector.connect(server)
+                borrowed ?: connector.connect(target)
             } catch (e: TrueNasException.LoginRequired) {
                 onSignInNeeded(server)
                 return@withLock CheckOutcome.SIGN_IN_NEEDED
@@ -186,9 +189,10 @@ class AlertChecker(
     /** Notification action: dismiss on the NAS without opening the app. */
     suspend fun dismiss(serverId: String, uuid: String): CheckOutcome = withContext(Dispatchers.IO) {
         val server = settings.servers.first().firstOrNull { it.id == serverId } ?: return@withContext CheckOutcome.FAILED
-        val borrowed = shared.borrow(server)
+        val target = resolver.resolve(server)
+        val borrowed = shared.borrow(target)
         val api = try {
-            borrowed ?: connector.connect(server)
+            borrowed ?: connector.connect(target)
         } catch (e: TrueNasException.LoginRequired) {
             onSignInNeeded(server)
             return@withContext CheckOutcome.SIGN_IN_NEEDED

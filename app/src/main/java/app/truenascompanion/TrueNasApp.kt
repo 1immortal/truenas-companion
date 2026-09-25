@@ -1,5 +1,7 @@
 package app.truenascompanion
 
+import app.truenascompanion.data.net.RouteResolver
+import app.truenascompanion.data.security.AppLock
 import android.app.Application
 import app.truenascompanion.data.api.SharedConnections
 import app.truenascompanion.data.repository.TrueNasRepository
@@ -28,9 +30,12 @@ class AppContainer(app: Application) {
     /** One signed-in socket per server, shared by the UI, the periodic check and instant alerts where possible. */
     val sharedConnections = SharedConnections()
     val backgroundConnector = BackgroundConnector(settings)
-    val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections)
-    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections)
+    /** Local vs remote address per network, shared by the UI, periodic checks and instant alerts. */
+    val routes = RouteResolver(app)
+    val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections, routes)
+    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
+    val appLock = AppLock()
 }
 
 class TrueNasApp : Application() {
@@ -41,6 +46,7 @@ class TrueNasApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.notifier.createChannels()
+        container.appScope.launch { container.settings.lockSettings.collect { container.appLock.onSettingsLoaded(it) } }
         // Keep WorkManager / the instant-alerts service in sync with the settings for the life of the process.
         container.appScope.launch {
             combine(container.settings.notificationPrefs, container.settings.servers) { p, s -> p to s }

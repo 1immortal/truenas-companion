@@ -87,6 +87,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
     val vm = appViewModel { DashboardViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
+    val route by vm.route.collectAsStateWithLifecycle()
     val data by vm.data.collectAsStateWithLifecycle()
     val live by vm.live.collectAsStateWithLifecycle()
     val layout by vm.layout.collectAsStateWithLifecycle()
@@ -111,7 +112,8 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
                     if (editing) Text("Edit dashboard", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     else {
                         val (label, health) = connectionLabel(connection, live.latest != null)
-                        DashboardTitle(data.system?.hostname ?: server?.name ?: "Dashboard", label, health, live.latest != null)
+                        DashboardTitle(data.system?.hostname ?: server?.name ?: "Dashboard", label, health, live.latest != null,
+                            route.takeIf { connection is ConnectionState.Connected })
                     }
                 },
                 actions = {
@@ -178,7 +180,7 @@ fun Modifier.dashboardHeaderGlow(): Modifier {
 }
 
 @Composable
-fun DashboardTitle(title: String, label: String, health: Health, live: Boolean) {
+fun DashboardTitle(title: String, label: String, health: Health, live: Boolean, route: app.truenascompanion.data.model.Route? = null) {
     Column {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -188,6 +190,7 @@ fun DashboardTitle(title: String, label: String, health: Health, live: Boolean) 
                 Spacer(Modifier.width(6.dp))
             }
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            route?.let { Spacer(Modifier.width(8.dp)); app.truenascompanion.ui.components.RouteChip(it) }
         }
     }
 }

@@ -85,6 +85,8 @@ class TrueNasRepository(
     /** Called after every successful interactive sign-in (clears the "sign in to keep receiving alerts" reminder). */
     private val onSignedIn: suspend (serverId: String) -> Unit = {},
     private val shared: SharedConnections = SharedConnections(),
+    /** Local vs remote address per network (see [RouteResolver]). */
+    private val resolver: app.truenascompanion.data.net.RouteResolver = app.truenascompanion.data.net.RouteResolver(null),
 ) {
 
     val activeServer: StateFlow<ServerConfig?> = combine(settings.servers, settings.activeServerId) { servers, id ->
@@ -107,7 +109,14 @@ class TrueNasRepository(
 
     private val mutex = Mutex()
     private var api: TrueNasApi? = null
+    /** The resolved configuration (local or remote address) the connection was opened with. */
     private var apiFor: ServerConfig? = null
+    /** The stored configuration behind [apiFor], to notice when the user edits the server. */
+    private var apiSource: ServerConfig? = null
+
+    private val _route = MutableStateFlow<app.truenascompanion.data.model.Route?>(null)
+    /** Address in use for the active server; null when it has no local address configured. */
+    val route: StateFlow<app.truenascompanion.data.model.Route?> = _route.asStateFlow()
     /** True when [api] belongs to someone else (the instant-alerts service): never close it, just drop it. */
     private var borrowed = false
 
@@ -125,6 +134,7 @@ class TrueNasRepository(
         }
         api = null
         apiFor = null
+        apiSource = null
         borrowed = false
     }
 
@@ -135,16 +145,26 @@ class TrueNasRepository(
     init {
         activeServer.onEach { server ->
             mutex.withLock {
-                if (server != apiFor) releaseApi()
+                if (server != apiSource) releaseApi()
             }
+            _route.value = null
             if (_prompt.value != null && _prompt.value?.server?.id != server?.id) cancelPrompt()
             _state.value = if (server == null) ConnectionState.NoServer else ConnectionState.Idle
+        }.launchIn(scope)
+        // Network changed (e.g. left home Wi-Fi): if the right address is now a different one, drop the socket.
+        // Open screens reconnect through the new address via their reconnect loops; nothing polls.
+        resolver.networkChanges.onEach {
+            val raw = activeServer.value ?: return@onEach
+            if (!raw.hasLocal || apiFor == null) return@onEach
+            val target = resolver.resolve(raw)
+            mutex.withLock { if (apiFor != null && apiSource == raw && apiFor != target) releaseApi() }
         }.launchIn(scope)
     }
 
     suspend fun api(): TrueNasApi = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val server = activeServer.value ?: throw TrueNasException.NoServer()
+            val raw = activeServer.value ?: throw TrueNasException.NoServer()
+            val server = resolver.resolve(raw)
             api?.takeIf { it.isAlive && apiFor == server }?.let { return@withLock it }
             releaseApi()
             // Instant alerts already hold a signed-in socket to this server: reuse it instead of opening a second one.
@@ -154,16 +174,29 @@ class TrueNasRepository(
                 return@withLock live
             }
             _state.value = ConnectionState.Connecting
-            try {
-                val newApi = when (server.authMethod) {
-                    AuthMethod.API_KEY -> {
-                        val key = settings.apiKey(server.id) ?: throw TrueNasException.AuthFailed("No API key saved for this server.")
-                        TrueNasConnector.connect(server, key)
-                    }
-                    AuthMethod.PASSWORD -> connectWithSession(server)
+            suspend fun open(target: ServerConfig): TrueNasApi = when (target.authMethod) {
+                AuthMethod.API_KEY -> {
+                    val key = settings.apiKey(target.id) ?: throw TrueNasException.AuthFailed("No API key saved for this server.")
+                    TrueNasConnector.connect(target, key)
                 }
-                install(server, newApi)
-                shared.publish(server, newApi, SharedConnections.OWNER_APP)
+                AuthMethod.PASSWORD -> connectWithSession(target)
+            }
+            try {
+                var target = server
+                val newApi = try {
+                    open(target)
+                } catch (e: TrueNasException) {
+                    // The local address answered the probe but not the connection (e.g. just left Wi-Fi): in Auto mode
+                    // fall back to the remote address right away instead of failing.
+                    val unreachable = e is TrueNasException.Unreachable || e is TrueNasException.Timeout
+                    if (!unreachable || target.activeRoute != app.truenascompanion.data.model.Route.LOCAL ||
+                        raw.routeMode != app.truenascompanion.data.model.RouteMode.AUTO) throw e
+                    resolver.invalidate(raw.id)
+                    target = raw.forRoute(app.truenascompanion.data.model.Route.REMOTE)
+                    open(target)
+                }
+                install(target, newApi)
+                shared.publish(target, newApi, SharedConnections.OWNER_APP)
                 newApi
             } catch (e: Throwable) {
                 _state.value = ConnectionState.Failed(e.userMessage(), e)
@@ -176,6 +209,8 @@ class TrueNasRepository(
         val info = runCatching { newApi.systemInfo() }.getOrNull()
         api = newApi
         apiFor = server
+        apiSource = activeServer.value?.takeIf { it.id == server.id }
+        _route.value = server.activeRoute.takeIf { apiSource?.hasLocal == true }
         borrowed = false
         _state.value = ConnectionState.Connected(newApi.flavor, info)
     }

@@ -66,6 +66,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.reorderable)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

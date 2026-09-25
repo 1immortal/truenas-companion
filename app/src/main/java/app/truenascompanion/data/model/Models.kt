@@ -21,9 +21,38 @@ data class ServerConfig(
     val authMethod: AuthMethod = AuthMethod.API_KEY,
     /** Lifetime of the reusable session token requested after a password (+2FA) sign-in. */
     val sessionDays: Int = 7,
+    /** Optional address on the home network (e.g. `https://192.168.1.10`); [url] is then the remote address. */
+    val localUrl: String? = null,
+    /** Pinned self-signed certificate for [localUrl] (the LAN IP usually has a different certificate). */
+    val localPinnedCertSha256: String? = null,
+    val routeMode: RouteMode = RouteMode.AUTO,
+    /** Which address this (resolved) copy connects to. Never stored: see [forRoute]. */
+    @kotlinx.serialization.Transient val activeRoute: Route = Route.REMOTE,
 ) {
     val isHttps: Boolean get() = url.startsWith("https://", ignoreCase = true)
     val displayHost: String get() = url.substringAfter("://")
+
+    val hasLocal: Boolean get() = !localUrl.isNullOrBlank()
+    val isLocalHttps: Boolean get() = localUrl?.startsWith("https://", ignoreCase = true) == true
+
+    /**
+     * The local address may be used. TrueNAS revokes an API key that arrives over plain http, so an http local
+     * address is only ever used with password sign-in.
+     */
+    val localUsable: Boolean get() = hasLocal && (isLocalHttps || authMethod == AuthMethod.PASSWORD)
+
+    /** A copy that connects to the given address (same NAS, same credentials and session token). */
+    fun forRoute(route: Route): ServerConfig =
+        if (route == Route.LOCAL && localUsable) copy(url = localUrl!!, pinnedCertSha256 = localPinnedCertSha256, activeRoute = Route.LOCAL)
+        else copy(activeRoute = Route.REMOTE)
+}
+
+enum class Route(val label: String) { LOCAL("Local"), REMOTE("Remote") }
+
+enum class RouteMode(val label: String) {
+    AUTO("Auto"),
+    LOCAL("Always local"),
+    REMOTE("Always remote"),
 }
 
 enum class AuthMethod(val label: String) {

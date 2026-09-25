@@ -169,6 +169,9 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
     val s by vm.state.collectAsStateWithLifecycle()
     var showKey by rememberSaveable { mutableStateOf(false) }
     var advanced by rememberSaveable { mutableStateOf(false) }
+    val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext as app.truenascompanion.TrueNasApp).container
+    val routes by container.routes.lastRoute.collectAsStateWithLifecycle()
+    val currentRoute = serverId?.let { routes[it] }
 
     LaunchedEffect(s.saved) { if (s.saved) onDone() }
 
@@ -300,6 +303,16 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            LocalAddressSection(
+                s = s,
+                currentRoute = currentRoute,
+                onLocalUrl = { v -> vm.updateLocal { it.copy(localUrl = v) } },
+                onDetect = vm::detectLocal,
+                onCheck = vm::checkLocal,
+                onMode = { m -> vm.updateLocal { it.copy(routeMode = m) } },
+                onForgetCert = vm::forgetLocalCertificate,
+            )
+
             TextButton(onClick = { advanced = !advanced }) {
                 Text("Advanced options")
                 Icon(if (advanced) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
@@ -365,29 +378,13 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
     }
 
     s.pendingCertificate?.let { cert ->
-        AlertDialog(
-            onDismissRequest = vm::dismissCertificate,
-            icon = { Icon(Icons.Rounded.Shield, null) },
-            title = { Text("Trust this server?") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        if (cert.selfSigned) "This server uses a self-signed certificate (normal for a home NAS). Only trust it if you are sure this is your server."
-                        else "This certificate is not trusted by your phone or doesn't match the address. Only trust it if you are sure this is your server."
-                    )
-                    Text("Subject", style = MaterialTheme.typography.labelMedium)
-                    Text(cert.subject, style = MaterialTheme.typography.bodySmall)
-                    Text("Valid", style = MaterialTheme.typography.labelMedium)
-                    Text("${cert.validFrom} – ${cert.validUntil}", style = MaterialTheme.typography.bodySmall)
-                    Text("SHA-256 fingerprint", style = MaterialTheme.typography.labelMedium)
-                    Text(cert.sha256, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                    Text("The app will trust exactly this certificate for this server and warn if it ever changes.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            confirmButton = { GlowButton(onClick = vm::trustPendingCertificate) { Text("Trust") } },
-            dismissButton = { TextButton(onClick = vm::dismissCertificate) { Text("Cancel") } },
-        )
+        CertificateTrustDialog(cert, local = false, onTrust = vm::trustPendingCertificate, onDismiss = vm::dismissCertificate)
+    }
+    s.pendingLocalCertificate?.let { cert ->
+        CertificateTrustDialog(cert, local = true, onTrust = vm::trustLocalCertificate, onDismiss = vm::dismissLocalCertificate)
+    }
+    s.detected?.let { found ->
+        DetectedAddressDialog(found, s.authMethod, onUse = vm::confirmDetected, onDismiss = vm::dismissDetected)
     }
 }
 

@@ -79,11 +79,21 @@ fun AppRoot() {
     val container = (LocalContext.current.applicationContext as TrueNasApp).container
     val servers by container.settings.servers.collectAsStateWithLifecycle(initialValue = null)
     val list = servers
-    if (list == null) {
+    val lockSettings by container.appLock.settings.collectAsStateWithLifecycle()
+    if (list == null || lockSettings == null) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {}
         return
     }
+    // Hoisted above the lock gate so the current screen (and its ViewModels) survive locking.
     val nav = rememberNavController()
+    val guard = app.truenascompanion.ui.lock.rememberDangerGuard()
+    androidx.compose.runtime.CompositionLocalProvider(app.truenascompanion.ui.lock.LocalDangerGuard provides guard) {
+        app.truenascompanion.ui.lock.LockGate { AppContent(container, list, nav) }
+    }
+}
+
+@Composable
+private fun AppContent(container: app.truenascompanion.AppContainer, list: List<app.truenascompanion.data.model.ServerConfig>, nav: NavHostController) {
     // First run: open the connection setup on top of the (empty) dashboard.
     LaunchedEffect(Unit) { if (list.isEmpty()) nav.navigate(Routes.edit()) }
     // Notification taps: switch to the right server, then open Alerts (and the sign-in dialog if asked).

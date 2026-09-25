@@ -237,6 +237,10 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                     }
                 }
 
+                item { SectionTitle("Security") }
+                item {
+                    app.truenascompanion.ui.lock.SecuritySettings { msg -> uiScope.launch { snackbar.showSnackbar(msg) } }
+                }
                 item { SectionTitle("Phone alerts") }
                 item {
                     app.truenascompanion.ui.notifications.PhoneAlertsSettings(server) { msg -> uiScope.launch { snackbar.showSnackbar(msg) } }
