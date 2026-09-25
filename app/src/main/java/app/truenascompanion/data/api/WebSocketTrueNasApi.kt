@@ -192,6 +192,29 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
         call("alert.dismiss", p(uuid))
     }
 
+    override suspend fun alertClassTitles(): Map<String, String> = runCatching {
+        call("alert.list_categories").arr().orEmpty().flatMap { cat ->
+            cat.obj()?.get("classes").arr().orEmpty().mapNotNull { c ->
+                val o = c.obj() ?: return@mapNotNull null
+                val id = o.str("id") ?: return@mapNotNull null
+                val title = o.str("title") ?: return@mapNotNull null
+                id to title
+            }
+        }.toMap()
+    }.getOrDefault(emptyMap())
+
+    override fun alertEvents(): Flow<Unit> = channelFlow {
+        launch(start = CoroutineStart.UNDISPATCHED) {
+            rpc.events.collect { ev -> if (ev.str("collection") == "alert.list") send(Unit) }
+        }
+        val subId = call("core.subscribe", p("alert.list"))
+        launch {
+            rpc.closed.await()
+            close(TrueNasException.NotConnected())
+        }
+        awaitClose { runCatching { rpc.notify("core.unsubscribe", params(subId)) } }
+    }
+
     override suspend fun services(): List<ServiceInfo> =
         call("service.query").arr()?.mapNotNull { it.obj()?.let(Parsers::service) }?.sortedBy { it.displayName } ?: emptyList()
 

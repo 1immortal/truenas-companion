@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: the launcher's monochrome server glyph, cropped to its bounds (x 34-74, y 31-81). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="54" android:viewportHeight="54">
+    <group android:translateX="-27" android:translateY="-29">
+        <path android:pathData="M37,31 h34 a3,3 0 0 1 3,3 v5 a3,3 0 0 1 -3,3 h-34 a3,3 0 0 1 -3,-3 v-5 a3,3 0 0 1 3,-3 z M39.75,35.25 h14.5 a1.25,1.25 0 0 1 1.25,1.25 v0.0 a1.25,1.25 0 0 1 -1.25,1.25 h-14.5 a1.25,1.25 0 0 1 -1.25,-1.25 v-0.0 a1.25,1.25 0 0 1 1.25,-1.25 z" android:fillColor="#FFFFFFFF" android:fillType="evenOdd" />
+        <path android:pathData="M37,44 h34 a3,3 0 0 1 3,3 v5 a3,3 0 0 1 -3,3 h-34 a3,3 0 0 1 -3,-3 v-5 a3,3 0 0 1 3,-3 z M39.75,48.25 h14.5 a1.25,1.25 0 0 1 1.25,1.25 v0.0 a1.25,1.25 0 0 1 -1.25,1.25 h-14.5 a1.25,1.25 0 0 1 -1.25,-1.25 v-0.0 a1.25,1.25 0 0 1 1.25,-1.25 z" android:fillColor="#FFFFFFFF" android:fillType="evenOdd" />
+        <path android:pathData="M37,57 h34 a3,3 0 0 1 3,3 v5 a3,3 0 0 1 -3,3 h-34 a3,3 0 0 1 -3,-3 v-5 a3,3 0 0 1 3,-3 z M39.75,61.25 h14.5 a1.25,1.25 0 0 1 1.25,1.25 v0.0 a1.25,1.25 0 0 1 -1.25,1.25 h-14.5 a1.25,1.25 0 0 1 -1.25,-1.25 v-0.0 a1.25,1.25 0 0 1 1.25,-1.25 z" android:fillColor="#FFFFFFFF" android:fillType="evenOdd" />
+        <path android:pathData="M54,68 V76 M54,72 H45 V76 M54,72 H63 V76" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M42.6,78 a2.4,2.4 0 1 0 4.8,0 a2.4,2.4 0 1 0 -4.8,0 z" android:fillColor="#FFFFFFFF" />
+        <path android:pathData="M51.6,78 a2.4,2.4 0 1 0 4.8,0 a2.4,2.4 0 1 0 -4.8,0 z" android:fillColor="#FFFFFFFF" />
+        <path android:pathData="M60.6,78 a2.4,2.4 0 1 0 4.8,0 a2.4,2.4 0 1 0 -4.8,0 z" android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>

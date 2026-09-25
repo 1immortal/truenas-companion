@@ -4,15 +4,30 @@ import android.app.Application
 import app.truenascompanion.data.repository.TrueNasRepository
 import app.truenascompanion.data.security.SecretCipher
 import app.truenascompanion.data.store.SettingsStore
+import app.truenascompanion.notify.AlertChecker
+import app.truenascompanion.notify.AlertNotifier
+import app.truenascompanion.notify.AlertScheduler
+import app.truenascompanion.notify.BackgroundConnector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+
+/** A notification tap asking the UI to show [destination] for [serverId]. */
+data class PendingDeepLink(val serverId: String?, val destination: String, val nonce: Long = System.nanoTime())
 
 /** Tiny manual DI container — no DI framework needed for an app this size. */
 class AppContainer(app: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settings = SettingsStore(app, SecretCipher())
-    val repository = TrueNasRepository(settings, appScope)
+    val notifier = AlertNotifier(app)
+    val backgroundConnector = BackgroundConnector(settings)
+    val alertChecker = AlertChecker(settings, backgroundConnector, notifier)
+    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) })
+    val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
 }
 
 class TrueNasApp : Application() {
@@ -22,5 +37,12 @@ class TrueNasApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.notifier.createChannels()
+        // Keep WorkManager / the instant-alerts service in sync with the settings for the life of the process.
+        container.appScope.launch {
+            combine(container.settings.notificationPrefs, container.settings.servers) { p, s -> p to s }
+                .distinctUntilChanged()
+                .collect { (prefs, servers) -> AlertScheduler.sync(this@TrueNasApp, prefs, servers) }
+        }
     }
 }

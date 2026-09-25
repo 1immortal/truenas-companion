@@ -78,7 +78,12 @@ fun ServerConfig.sessionTtlSeconds(): Long = sessionDays.coerceIn(1, 90) * 24L *
  * reconnects. When it is missing/expired, the saved password (if the user opted in) is tried; otherwise, or when a 2FA
  * code is needed, an [AuthPrompt] is published and calls fail with [TrueNasException.LoginRequired] until the user signs in.
  */
-class TrueNasRepository(private val settings: SettingsStore, private val scope: CoroutineScope) {
+class TrueNasRepository(
+    private val settings: SettingsStore,
+    private val scope: CoroutineScope,
+    /** Called after every successful interactive sign-in (clears the "sign in to keep receiving alerts" reminder). */
+    private val onSignedIn: suspend (serverId: String) -> Unit = {},
+) {
 
     val activeServer: StateFlow<ServerConfig?> = combine(settings.servers, settings.activeServerId) { servers, id ->
         servers.firstOrNull { it.id == id } ?: servers.firstOrNull()
@@ -281,6 +286,7 @@ class TrueNasRepository(private val settings: SettingsStore, private val scope: 
         pendingRemember = null
         _prompt.value = null
         sessionEpoch.value++
+        runCatching { onSignedIn(server.id) }
     }
 
     /** Runs [block] against the API, retrying once with a fresh connection if the socket had dropped. */

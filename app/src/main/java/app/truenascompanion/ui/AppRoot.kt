@@ -56,6 +56,8 @@ import app.truenascompanion.ui.servers.ServerListScreen
 import app.truenascompanion.ui.storage.StorageScreen
 import app.truenascompanion.ui.system.SystemScreen
 import androidx.compose.ui.platform.LocalContext
+import app.truenascompanion.notify.DeepLink
+import kotlinx.coroutines.flow.first
 
 private enum class Tab(val route: String, val label: String, val selected: ImageVector, val unselected: ImageVector) {
     DASHBOARD("dashboard", "Home", Icons.Rounded.Dashboard, Icons.Outlined.Dashboard),
@@ -84,6 +86,24 @@ fun AppRoot() {
     val nav = rememberNavController()
     // First run: open the connection setup on top of the (empty) dashboard.
     LaunchedEffect(Unit) { if (list.isEmpty()) nav.navigate(Routes.edit()) }
+    // Notification taps: switch to the right server, then open Alerts (and the sign-in dialog if asked).
+    val deepLink by container.deepLinks.collectAsStateWithLifecycle()
+    LaunchedEffect(deepLink) {
+        val link = deepLink ?: return@LaunchedEffect
+        container.deepLinks.value = null
+        link.serverId?.takeIf { id -> list.any { it.id == id } }?.let { id ->
+            container.settings.setActiveServer(id)
+            kotlinx.coroutines.withTimeoutOrNull(3_000) { container.repository.activeServer.first { it?.id == id } }
+        }
+        when (link.destination) {
+            DeepLink.DEST_SETTINGS -> nav.switchTab(Tab.SYSTEM.route)
+            DeepLink.DEST_SIGN_IN -> {
+                nav.switchTab(Tab.ALERTS.route)
+                container.repository.requestSignIn()
+            }
+            else -> nav.switchTab(Tab.ALERTS.route)
+        }
+    }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val showBar = Tab.entries.any { it.route == route }

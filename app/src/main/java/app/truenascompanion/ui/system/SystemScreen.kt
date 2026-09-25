@@ -167,6 +167,7 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
     var confirm by remember { mutableStateOf<String?>(null) }
     var confirmStop by remember { mutableStateOf<ServiceInfo?>(null) }
     val context = LocalContext.current
+    val uiScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
 
     Scaffold(topBar = { TopAppBar(title = { Text("System") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
@@ -234,6 +235,11 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                             onReboot = { confirm = "reboot" }, onShutdown = { confirm = "shutdown" },
                         )
                     }
+                }
+
+                item { SectionTitle("Phone alerts") }
+                item {
+                    app.truenascompanion.ui.notifications.PhoneAlertsSettings(server) { msg -> uiScope.launch { snackbar.showSnackbar(msg) } }
                 }
 
                 item { SectionTitle("Appearance") }

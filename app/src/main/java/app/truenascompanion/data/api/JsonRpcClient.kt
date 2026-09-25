@@ -49,6 +49,9 @@ class JsonRpcClient(
     var isOpen: Boolean = false
         private set
 
+    /** Completes when the socket is closed or fails (lets long-lived subscribers notice a dead connection). */
+    val closed = CompletableDeferred<Unit>()
+
     suspend fun open() = suspendCancellableCoroutine { cont ->
         val request = Request.Builder().url(url).build()
         val ws = client.newWebSocket(request, object : WebSocketListener() {
@@ -65,11 +68,13 @@ class JsonRpcClient(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 isOpen = false
+                closed.complete(Unit)
                 failAll(TrueNasException.NotConnected())
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 isOpen = false
+                closed.complete(Unit)
                 val error = when {
                     response != null && (response.code == 401 || response.code == 403) -> TrueNasException.AuthFailed()
                     response != null && response.code in 400..599 ->
@@ -119,6 +124,7 @@ class JsonRpcClient(
 
     fun close() {
         isOpen = false
+        closed.complete(Unit)
         socket?.close(1000, "bye")
         socket = null
         failAll(TrueNasException.NotConnected())

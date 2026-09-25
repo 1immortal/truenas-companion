@@ -3,8 +3,9 @@
 A free, open-source, native Android app for keeping an eye on — and managing — your **TrueNAS SCALE** server from your phone.
 No ads, no analytics, no tracking, no paid features. The app talks only to the servers you add.
 
-> **Status:** v0.2.1, early release. Unit-tested against sample API payloads (including the TrueNAS 25.10 `reporting.realtime`
-> format) and a fake JSON-RPC server. Confirmed working on a real TrueNAS SCALE 25.10.3 server with password + 2FA sign-in.
+> **Status:** v0.3.0, early release. Unit-tested against sample API payloads (including the TrueNAS 25.10 `reporting.realtime`
+> and `alert.list` formats) and a fake JSON-RPC server. The dashboard and password + 2FA sign-in are confirmed working on a real
+> TrueNAS SCALE 25.10.3 server. Phone alerts (new in 0.3) have not been verified on a real device yet.
 > See [Known limitations](#known-limitations).
 
 ## Features
@@ -35,6 +36,15 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 **Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from the System tab. Jobs started in the web UI show up too.
 
 **Alerts:** severity-colored list, relative time, **dismiss**, and an option to show dismissed alerts.
+
+**Phone alerts (new in 0.3):** notifications for new TrueNAS alerts, with **no push service, no Firebase and no server of ours**. The phone checks your NAS directly.
+- **How it works:** a WorkManager job runs every **15, 30 or 60 minutes** (your choice) while the phone has a network connection. It signs in with the saved session token (or API key), reads `alert.list`, and compares it with the alert IDs it saw last time. You are notified only about **new, non-dismissed** alerts at or above your **minimum severity** (default *Warning*; the levels are Info, Notice, Warning, Error, Critical, Alert, Emergency). The first check after you turn alerts on only records what is already there, so you don't get a burst of old alerts.
+- Each check signs in with the session token and requests a fresh one, so **background checks also keep your session alive**. If the session does expire (or a 2FA code is needed), you get a single *Sign in to keep receiving alerts* notification that opens the sign-in dialog.
+- **Instant alerts** (optional, off by default): a foreground service keeps a WebSocket open and subscribes to the `alert.list` event (`core.subscribe`), so alerts arrive within seconds. It reconnects with backoff (5 s up to 5 min, and sooner when the network comes back) and shows a silent ongoing notification with a *Turn off* button. It uses more battery than periodic checks.
+- **Notifications:** separate channels for *Critical & errors*, *Warnings*, *Info & notices* and *Cleared alerts*, so you can tune sound and vibration in Android settings. The title is the alert type, the text is the TrueNAS message, and the server name is shown as subtext. Several alerts are grouped together. Tapping one opens the Alerts tab for that server. **Dismiss** dismisses the alert on the NAS in the background, and **Open** opens the app.
+- Optional: *Notify when an alert clears*, and *Quiet hours* (only Critical and more severe alerts come through), plus a *Send test notification* button.
+- Turn it on in **System › Phone alerts**, or from the card on the Alerts tab. On Android 13+ the app explains why before asking for the notification permission. A hint links to Android's *allow background activity* setting if battery optimization is on; this is optional and never forced.
+- **Battery:** periodic checks are cheap. There is one short connection per interval, and Android batches them with other apps' work, so a 15-minute check may run a few minutes late, especially in Doze. Instant mode keeps a TLS WebSocket open with a 20 s ping, which costs noticeably more battery on mobile data. Use it if you need alerts within seconds.
 
 **System:** services list with start/stop switches (stopping asks you to confirm), **reboot / shutdown** with confirmation dialogs, appearance settings, and a server switcher.
 
@@ -153,7 +163,7 @@ DataStore, [Reorderable](https://github.com/Calvin-LL/Reorderable) for drag-and-
 - Self-signed certificates are accepted only if their SHA-256 fingerprint matches one you pinned for that server. Everything else goes through normal system CA validation. If the server's certificate changes (for example after it is regenerated), the connection fails until you trust the new one.
 - Cleartext HTTP is allowed because many home NAS boxes are reached that way on the LAN. Remember that TrueNAS revokes API keys sent over HTTP, and that password sign-in over HTTP sends your password unencrypted. The app warns you in both cases.
 - Session tokens are created with `match_origin=false` so that they keep working when your phone's IP changes (Wi-Fi ↔ mobile data). Anyone who pulls the token out of the encrypted store could use it until it expires. Pick a shorter *Stay signed in* period if that worries you.
-- No analytics, crash reporting, ads or third-party network calls.
+- No analytics, crash reporting, ads or third-party network calls. Phone alerts are fetched directly from your NAS; nothing goes through a push service.
 
 ## Known limitations
 - **Not yet verified against a live TrueNAS server.** Payload formats were taken from the official API docs (v25.04–v27). The parsers are deliberately tolerant, but some fields may differ in practice, especially `reporting.realtime` on older releases, `disk.temperatures` output, and REST-mode actions.
@@ -162,7 +172,8 @@ DataStore, [Reorderable](https://github.com/Calvin-LL/Reorderable) for drag-and-
 - Password sign-in, app upgrades and the task list need the WebSocket API (25.04+). They are not available in legacy REST mode.
 - VM management, snapshots, shares, and replication/cloud-sync/S.M.A.R.T. tasks are not in v0.2 yet.
 - The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used. REST is used instead.
-- No home-screen widgets or push notifications yet.
+- No home-screen widgets yet.
+- Phone alerts depend on Android letting the app run in the background. Aggressive OEM battery savers (some Xiaomi, Huawei and Samsung settings) can delay or stop checks unless the app is allowed to run in the background. Instant mode only reconnects after a reboot if Android lets it start a foreground service at boot.
 
 ## App icon
 The adaptive launcher icon (foreground, background and monochrome layers for themed icons) is generated from `tools/icon/gen.py`.

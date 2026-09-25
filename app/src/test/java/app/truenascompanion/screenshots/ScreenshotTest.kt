@@ -1,5 +1,6 @@
 package app.truenascompanion.screenshots
 
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,7 +68,7 @@ import kotlin.math.sin
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [35], qualifiers = "w360dp-h1700dp-xxhdpi")
+@Config(sdk = [35], qualifiers = "w360dp-h1700dp-xxhdpi", application = android.app.Application::class)
 class ScreenshotTest {
     @get:Rule val rule = createComposeRule()
 
@@ -154,12 +155,18 @@ class ScreenshotTest {
             SectionTitle("Appearance")
             ElevatedSection {
                 SettingRow(Icons.Rounded.DarkMode, "Theme")
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("System", "Light", "Dark").forEachIndexed { i, m ->
+                        SegmentedButton(selected = i == 0, onClick = {}, shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 3), icon = {}) { Text(m, maxLines = 1) }
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the TrueNAS Companion theme (Android 12+)") { Switch(false, {}) }
             }
             Spacer(Modifier.height(12.dp))
             SectionTitle("About")
-            ElevatedSection { SettingRow(Icons.Rounded.Info, "TrueNAS Companion 0.2.1", "Free & open source. No ads, no analytics, no tracking.") }
+            ElevatedSection { SettingRow(Icons.Rounded.Info, "TrueNAS Companion 0.3.0", "Free & open source. No ads, no analytics, no tracking.") }
         }
     }
 
@@ -183,4 +190,54 @@ class ScreenshotTest {
         ConfirmDialog("Shut down homenas?", "The NAS will power off. You will need physical access (or IPMI / Wake-on-LAN) to turn it back on.",
             "Shut down", destructive = true, icon = Icons.Rounded.RestartAlt, onConfirm = {}, onDismiss = {})
     }
+
+    // --- v0.3 phone alerts ---
+
+    private val server = app.truenascompanion.data.model.ServerConfig("s1", "homenas", "https://nas.example.com", authMethod = app.truenascompanion.data.model.AuthMethod.PASSWORD)
+    private val prefsOn = app.truenascompanion.data.store.NotificationPrefs(
+        enabledServers = setOf("s1"), instant = true, quietEnabled = true,
+    )
+
+    @Composable
+    private fun NotifSettings(prefs: app.truenascompanion.data.store.NotificationPrefs, canNotify: Boolean = true, batteryOk: Boolean = false) {
+        Column(Modifier.padding(16.dp)) {
+            SectionTitle("Phone alerts")
+            app.truenascompanion.ui.notifications.PhoneAlertsSection(
+                server = server, prefs = prefs, canNotify = canNotify, batteryOk = batteryOk,
+                onToggle = {}, onUpdate = {}, onAllowNotifications = {}, onBattery = {}, onChannels = {}, onTest = {},
+            )
+        }
+    }
+
+    @Test fun notifSettingsLight() = shot("preview-notif-settings-light") { Frame(false) { NotifSettings(prefsOn) } }
+    @Test fun notifSettingsDark() = shot("preview-notif-settings-dark") { Frame(true) { NotifSettings(prefsOn) } }
+    @Test fun notifSettingsLargeFont() = shot("audit-notif-settings-font130") { Frame(true, 1.3f) { NotifSettings(prefsOn.copy(instant = false), canNotify = false) } }
+    @Test fun notifSettingsOff() = shot("audit-notif-settings-off-font130") { Frame(false, 1.3f) { NotifSettings(app.truenascompanion.data.store.NotificationPrefs()) } }
+
+    @Test fun notifPromptCard() = shot("preview-notif-prompt-card") {
+        Frame(true) {
+            Column(Modifier.padding(16.dp)) {
+                app.truenascompanion.ui.notifications.PhoneAlertsPromptCard("homenas", onEnable = {}, onDismiss = {})
+            }
+        }
+    }
+    @Test fun notifPromptCardLargeFont() = shot("audit-notif-prompt-card-font130") {
+        Frame(false, 1.3f) {
+            Column(Modifier.padding(16.dp)) {
+                app.truenascompanion.ui.notifications.PhoneAlertsPromptCard("homenas", onEnable = {}, onDismiss = {})
+            }
+        }
+    }
+
+    @Test fun notifPermissionDialog() = dialogShot("preview-notif-permission-dialog", false, 1.3f) {
+        ConfirmDialog(
+            title = "Get alerts on your phone",
+            text = "TrueNAS Companion checks your NAS in the background and notifies you when a new alert appears.\n\n" +
+                "Your phone talks directly to your server: no cloud service, no ads, no tracking. Android will ask you to allow notifications next.",
+            confirmLabel = "Continue", icon = Icons.Rounded.Info, onConfirm = {}, onDismiss = {},
+        )
+    }
+
+    @Test fun notifMockDark() = shot("preview-notif-mock-dark") { Frame(true) { NotificationShadeMock(dark = true) } }
+    @Test fun notifMockLight() = shot("preview-notif-mock-light") { Frame(false) { NotificationShadeMock(dark = false) } }
 }

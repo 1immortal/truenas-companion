@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import app.truenascompanion.notify.AlertFilter
+import app.truenascompanion.notify.AlertLevel
+import app.truenascompanion.notify.QuietHours
+import app.truenascompanion.notify.SeenAlert
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -23,6 +28,28 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 data class AppearanceSettings(val themeMode: ThemeMode = ThemeMode.SYSTEM, val dynamicColor: Boolean = false)
+
+/** Phone notifications for TrueNAS alerts. Global options; [enabledServers] turns them on per server. */
+@Serializable
+data class NotificationPrefs(
+    val enabledServers: Set<String> = emptySet(),
+    val minLevel: AlertLevel = AlertLevel.WARNING,
+    val intervalMinutes: Int = 15,
+    val instant: Boolean = false,
+    val notifyOnClear: Boolean = false,
+    val quietEnabled: Boolean = false,
+    val quietStart: Int = 22 * 60,
+    val quietEnd: Int = 7 * 60,
+    /** The "get alerts on your phone" card on the Alerts screen was answered. */
+    val promptDismissed: Boolean = false,
+) {
+    val filter: AlertFilter get() = AlertFilter(minLevel, notifyOnClear, QuietHours(quietEnabled, quietStart, quietEnd))
+    fun isEnabled(serverId: String?) = serverId != null && serverId in enabledServers
+
+    companion object {
+        val INTERVALS = listOf(15, 30, 60)
+    }
+}
 
 /** All persisted app state: servers, encrypted API keys, per-server dashboard layouts, appearance. */
 class SettingsStore(context: Context, private val cipher: SecretCipher) {
@@ -40,6 +67,9 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun password(id: String) = stringPreferencesKey("password_$id")
         fun token(id: String) = stringPreferencesKey("session_token_$id")
         fun tokenExpiry(id: String) = longPreferencesKey("session_token_expiry_$id")
+        val NOTIFICATIONS = stringPreferencesKey("notification_prefs")
+        fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
+        fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
     }
 
     val servers: Flow<List<ServerConfig>> = store.data.map { prefs ->
@@ -76,6 +106,10 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             prefs.remove(Keys.password(id))
             prefs.remove(Keys.token(id))
             prefs.remove(Keys.tokenExpiry(id))
+            prefs.remove(Keys.seenAlerts(id))
+            prefs.remove(Keys.signInNotified(id))
+            val np = decodeNotifications(prefs)
+            if (id in np.enabledServers) prefs[Keys.NOTIFICATIONS] = json.encodeToString(np.copy(enabledServers = np.enabledServers - id))
             if (prefs[Keys.ACTIVE] == id) {
                 val next = list.firstOrNull()?.id
                 if (next != null) prefs[Keys.ACTIVE] = next else prefs.remove(Keys.ACTIVE)
@@ -147,6 +181,46 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
     suspend fun setDynamicColor(enabled: Boolean) {
         store.edit { it[Keys.DYNAMIC] = enabled }
     }
+
+    // --- phone notifications ---
+
+    val notificationPrefs: Flow<NotificationPrefs> = store.data.map { decodeNotifications(it) }.distinctUntilChanged()
+
+    suspend fun updateNotificationPrefs(transform: (NotificationPrefs) -> NotificationPrefs) {
+        store.edit { prefs ->
+            val current = decodeNotifications(prefs)
+            val next = transform(current)
+            if (next != current) prefs[Keys.NOTIFICATIONS] = json.encodeToString(next)
+        }
+    }
+
+    /** null = never checked (the next check sets a silent baseline). */
+    suspend fun seenAlerts(serverId: String): List<SeenAlert>? =
+        store.data.first()[Keys.seenAlerts(serverId)]?.let { runCatching { json.decodeFromString<List<SeenAlert>>(it) }.getOrNull() }
+
+    suspend fun saveSeenAlerts(serverId: String, seen: List<SeenAlert>) {
+        store.edit { it[Keys.seenAlerts(serverId)] = json.encodeToString(seen) }
+    }
+
+    suspend fun clearSeenAlerts(serverId: String) {
+        store.edit { it.remove(Keys.seenAlerts(serverId)) }
+    }
+
+    /** Returns true if the flag changed (used so "sign in to keep receiving alerts" is posted only once). */
+    suspend fun setSignInNotified(serverId: String, notified: Boolean): Boolean {
+        var changed = false
+        store.edit {
+            val old = it[Keys.signInNotified(serverId)] ?: false
+            if (old != notified) {
+                changed = true
+                if (notified) it[Keys.signInNotified(serverId)] = true else it.remove(Keys.signInNotified(serverId))
+            }
+        }
+        return changed
+    }
+
+    private fun decodeNotifications(prefs: Preferences): NotificationPrefs =
+        prefs[Keys.NOTIFICATIONS]?.let { runCatching { json.decodeFromString<NotificationPrefs>(it) }.getOrNull() } ?: NotificationPrefs()
 
     private fun decodeServers(prefs: Preferences): List<ServerConfig> =
         prefs[Keys.SERVERS]?.let { runCatching { json.decodeFromString<List<ServerConfig>>(it) }.getOrNull() } ?: emptyList()

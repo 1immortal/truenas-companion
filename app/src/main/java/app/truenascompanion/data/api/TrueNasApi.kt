@@ -38,6 +38,13 @@ interface TrueNasApi : AutoCloseable {
     suspend fun appAction(app: AppInfo, action: AppAction)
     suspend fun alerts(): List<AlertItem>
     suspend fun dismissAlert(uuid: String)
+    /** Alert class id -> human title (`alert.list_categories`); empty if unavailable. */
+    suspend fun alertClassTitles(): Map<String, String> = emptyMap()
+    /**
+     * Emits whenever the alert list changes (`core.subscribe("alert.list")`: ADDED / CHANGED / REMOVED events),
+     * and fails with [TrueNasException.NotConnected] when the connection drops. WebSocket API only.
+     */
+    fun alertEvents(): Flow<Unit> = kotlinx.coroutines.flow.flow { throw unsupported() }
     suspend fun services(): List<ServiceInfo>
     suspend fun serviceAction(service: String, start: Boolean)
     suspend fun reboot()

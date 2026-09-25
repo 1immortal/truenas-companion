@@ -67,6 +67,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.stateIn
+import app.truenascompanion.ui.notifications.PhoneAlerts
+import app.truenascompanion.ui.notifications.PhoneAlertsPromptCard
+import app.truenascompanion.ui.notifications.rememberNotificationAccess
+import androidx.compose.ui.platform.LocalContext
 
 class AlertsViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<AlertItem>>>(UiState.Loading)
@@ -83,6 +88,18 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun refresh() = viewModelScope.launch { _refreshing.value = true; load(); _refreshing.value = false }
+
+    val server = c.repository.activeServer
+    val notificationPrefs = c.settings.notificationPrefs
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), null)
+
+    fun enablePhoneAlerts(context: android.content.Context) = viewModelScope.launch {
+        val id = server.value?.id ?: return@launch
+        PhoneAlerts.enable(c, context, id)
+        _messages.trySend("Phone alerts are on. Fine-tune them in System › Phone alerts.")
+    }
+
+    fun dismissPrompt() = viewModelScope.launch { c.settings.updateNotificationPrefs { it.copy(promptDismissed = true) } }
 
     private suspend fun load() {
         try {
@@ -113,6 +130,11 @@ fun AlertsScreen() {
     var showDismissed by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    val server by vm.server.collectAsStateWithLifecycle()
+    val prefs by vm.notificationPrefs.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val enableAlerts = rememberNotificationAccess { vm.enablePhoneAlerts(context) }
+    val showPrompt = server != null && prefs?.let { !it.promptDismissed && !it.isEnabled(server?.id) } == true
 
     Scaffold(topBar = { TopAppBar(title = { Text("Alerts") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -123,6 +145,9 @@ fun AlertsScreen() {
                     val active = s.data.filter { !it.dismissed }
                     val list = if (showDismissed) s.data else active
                     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+                        if (showPrompt) item(key = "phone-alerts-prompt") {
+                            PhoneAlertsPromptCard(server?.name ?: "your NAS", onEnable = enableAlerts, onDismiss = { vm.dismissPrompt() }, modifier = Modifier.animateItem())
+                        }
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("${active.size} active", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f).padding(start = 4.dp))
