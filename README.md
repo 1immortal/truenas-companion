@@ -3,13 +3,15 @@
 A free, open-source, native Android app for keeping an eye on — and managing — your **TrueNAS SCALE** server from your phone.
 No ads, no analytics, no tracking, no paid features. The app talks only to the servers you add.
 
-> **Status:** v0.2.0, early release. It builds, and it is unit-tested against sample API payloads and a fake JSON-RPC server
-> that follows the official API docs. **It has not been tested against a live TrueNAS server yet.** See [Known limitations](#known-limitations).
+> **Status:** v0.2.1, early release. Unit-tested against sample API payloads (including the TrueNAS 25.10 `reporting.realtime`
+> format) and a fake JSON-RPC server. Confirmed working on a real TrueNAS SCALE 25.10.3 server with password + 2FA sign-in.
+> See [Known limitations](#known-limitations).
 
 ## Features
 
 **Design**
-- Material 3 with dynamic color (Android 12+), light/dark/system theme, and a TrueNAS-blue fallback palette
+- Material 3 with a royal-blue / cyan brand theme: soft blue-tinted light mode and a deep-navy dark mode, gradient gauges and subtle glows
+- Light/dark/system theme. Wallpaper-based dynamic color (Android 12+) is optional and **off by default** (0.2.1 switches it off once for existing installs)
 - Card layout with plenty of spacing and rounded corners. It shows the essentials first, and you tap to expand for details
 - Color-coded status chips (healthy / warning / critical), animated capacity bars and gauges, live sparklines
 - Shimmer skeletons while loading, friendly empty and error states, pull-to-refresh everywhere
@@ -18,7 +20,9 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 - Built from blocks: *System, CPU, Memory, Temperature, Network, Storage pools, Apps, Alerts*
 - **Edit dashboard** mode (tune icon): long-press and drag to **reorder**, tap the eye to **show/hide** a block, and use the arrows to make it **half or full width** in a 2-column grid
 - The layout is saved **per server** (DataStore). **Reset to default layout** is in edit mode
-- Live CPU %, CPU temperature, memory used/total (plus ZFS ARC), and network throughput over the WebSocket API (`reporting.realtime`)
+- Live CPU % (with per-thread bars in the full-width card), CPU temperature, and network throughput (auto units, e.g. `7.2 KB/s`) over the WebSocket API (`reporting.realtime`)
+- Memory is split like the TrueNAS web UI: **Services / ZFS cache (ARC) / Free**. ARC is not counted as "used", because ZFS gives it back when services need RAM
+- CPU note: TrueNAS reports the aggregate CPU usage as a whole percent, so a nearly idle machine reads 0. The app then shows the per-thread average instead, and `<1%` when it is below 1
 - Tap the Pools, Apps, Alerts or Temperature blocks to open the matching tab
 
 **Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage and encryption/lock state, and system datasets are hidden by default.
@@ -120,6 +124,7 @@ git clone https://github.com/<you>/truenas-companion.git
 cd truenas-companion
 ./gradlew assembleDebug          # APK -> app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # unit tests
+./gradlew testDebugUnitTest -Pscreenshots --tests '*ScreenshotTest*'   # render UI previews (Robolectric + Roborazzi) to ./screenshots
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 Or open the folder in **Android Studio** and press *Run*.

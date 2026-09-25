@@ -1,5 +1,13 @@
 package app.truenascompanion.ui.dashboard
 
+import app.truenascompanion.ui.theme.LocalStatusColors
+import app.truenascompanion.ui.theme.LocalBrandColors
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.background
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
@@ -88,18 +96,22 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
     val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     val flavor = (connection as? ConnectionState.Connected)?.flavor
 
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).dashboardHeaderGlow()) {
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 scrollBehavior = scroll,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                ),
                 title = {
-                    Column {
-                        Text(if (editing) "Edit dashboard" else (data.system?.hostname ?: server?.name ?: "Dashboard"), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (!editing) {
-                            val (label, _) = connectionLabel(connection, live.latest != null)
-                            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    if (editing) Text("Edit dashboard", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    else {
+                        val (label, health) = connectionLabel(connection, live.latest != null)
+                        DashboardTitle(data.system?.hostname ?: server?.name ?: "Dashboard", label, health, live.latest != null)
                     }
                 },
                 actions = {
@@ -142,12 +154,41 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
         }
     }
 
+    }
+
     if (confirmReset) {
         ConfirmDialog(
             title = "Reset dashboard?", text = "All blocks will be shown again in the default order and size.",
             confirmLabel = "Reset", icon = Icons.Rounded.RestartAlt,
             onConfirm = { vm.resetLayout(); confirmReset = false }, onDismiss = { confirmReset = false },
         )
+    }
+}
+
+/** Soft royal-blue glow behind the top of the dashboard. */
+@Composable
+fun Modifier.dashboardHeaderGlow(): Modifier {
+    val brand = LocalBrandColors.current
+    val c = brand.headerGlow.copy(alpha = if (brand.dark) 0.30f else 0.14f)
+    val c2 = brand.accent.copy(alpha = if (brand.dark) 0.10f else 0.06f)
+    return this.drawBehind {
+        val h = 280.dp.toPx().coerceAtMost(size.height)
+        drawRect(Brush.verticalGradient(listOf(c, c2, Color.Transparent), endY = h), size = androidx.compose.ui.geometry.Size(size.width, h))
+    }
+}
+
+@Composable
+fun DashboardTitle(title: String, label: String, health: Health, live: Boolean) {
+    Column {
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (live) { LiveDot(); Spacer(Modifier.width(4.dp)) }
+            else {
+                Box(Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape).background(LocalStatusColors.current.of(health)))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
     }
 }
 
@@ -175,7 +216,7 @@ private fun SkeletonGrid() {
 }
 
 @Composable
-private fun WidgetGrid(
+internal fun WidgetGrid(
     widgets: List<WidgetConfig>,
     data: DashboardData,
     live: LiveStats,
@@ -253,6 +294,7 @@ private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
                     colors = CardDefaults.cardColors(
                         containerColor = if (dragging) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
                     ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, LocalBrandColors.current.cardBorder.copy(alpha = 0.7f)),
                 ) {
                     Column(Modifier.padding(12.dp).alpha(alpha)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -260,7 +302,7 @@ private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
                             Spacer(Modifier.width(6.dp))
                             IconBadge(w.type.icon(), size = 30.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text(w.type.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(if (w.size == WidgetSize.FULL) w.type.title else w.type.shortTitle, style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AnimatedVisibility(!w.visible) { StatusChip(Health.UNKNOWN, "Hidden", showIcon = false) }

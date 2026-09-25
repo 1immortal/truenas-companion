@@ -5,6 +5,9 @@ plugins {
 }
 
 android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     namespace = "app.truenascompanion"
     compileSdk = 37
 
@@ -12,8 +15,8 @@ android {
         applicationId = "app.truenascompanion"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
     }
 
     buildTypes {
@@ -66,4 +69,22 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    // Screenshot tests (Robolectric + Roborazzi); run with ./gradlew testDebugUnitTest -Pscreenshots
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+}
+
+// Screenshot tests need Robolectric's android-all jars (large download), so they only run on request.
+tasks.withType<Test>().configureEach {
+    if (!project.hasProperty("screenshots")) {
+        exclude("**/screenshots/**")
+    } else {
+        systemProperty("roborazzi.test.record", "true")
+        systemProperty("screenshot.dir", rootProject.layout.projectDirectory.dir("screenshots").asFile.absolutePath)
+        maxHeapSize = "2g"
+    }
 }

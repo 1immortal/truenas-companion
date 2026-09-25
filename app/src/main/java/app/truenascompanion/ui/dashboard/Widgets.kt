@@ -33,7 +33,24 @@ import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
+import app.truenascompanion.data.model.MemoryBreakdown
+import app.truenascompanion.ui.components.BarSegment
+import app.truenascompanion.ui.components.StackedBar
+import app.truenascompanion.ui.components.glow
+import app.truenascompanion.ui.theme.LocalBrandColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -83,34 +100,56 @@ fun diskTempHealth(c: Double?): Health = when {
 }
 
 @Composable
-private fun WidgetHeader(type: WidgetType, trailing: @Composable () -> Unit = {}) {
+private fun WidgetHeader(type: WidgetType, full: Boolean, trailing: @Composable () -> Unit = {}) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconBadge(type.icon(), size = 32.dp)
-        Spacer(Modifier.width(10.dp))
-        Text(type.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        IconBadge(type.icon(), size = 30.dp)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            if (full) type.title else type.shortTitle,
+            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+        )
         trailing()
     }
 }
 
+/** Single-line text that shrinks (down to [min]) instead of wrapping or clipping. */
 @Composable
-private fun BigValue(text: String, modifier: Modifier = Modifier) {
+fun FitText(text: String, style: TextStyle, modifier: Modifier = Modifier, color: Color = Color.Unspecified, min: TextUnit = 11.sp) {
+    val fallback = LocalContentColor.current
+    val c = if (color != Color.Unspecified) color else style.color.takeOrElse { fallback }
+    BasicText(
+        text, modifier = modifier, style = style.copy(color = c), maxLines = 1, softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = min, maxFontSize = style.fontSize, stepSize = 0.5.sp),
+    )
+}
+
+private fun Color.takeOrElse(block: () -> Color) = if (this != Color.Unspecified) this else block()
+
+@Composable
+private fun BigValue(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
     AnimatedContent(text, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) }, label = "value", modifier = modifier) {
-        Text(it, style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+        FitText(it, MaterialTheme.typography.headlineMedium, color = color, min = 16.sp)
     }
 }
 
 @Composable
-private fun Muted(text: String, modifier: Modifier = Modifier) =
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier, maxLines = 2, overflow = TextOverflow.Ellipsis)
+private fun Muted(text: String, modifier: Modifier = Modifier, maxLines: Int = 2) =
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
 
+/** Pulsing "live" indicator with a soft halo. */
 @Composable
-private fun LiveDot() {
+fun LiveDot() {
     val t = rememberInfiniteTransition(label = "live")
-    val a by t.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "liveA")
-    Box(Modifier.size(8.dp).alpha(a).clip(CircleShape).background(LocalStatusColors.current.healthy))
+    val p by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Restart), label = "livePulse")
+    val color = LocalStatusColors.current.healthy
+    Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(14.dp).scale(0.5f + p * 0.7f).alpha((1f - p) * 0.55f).clip(CircleShape).background(color))
+        Box(Modifier.size(7.dp).glow(color, 6.dp).clip(CircleShape).background(color))
+    }
 }
 
-private val WidgetMinHeight = 132.dp
+private val WidgetMinHeight = 136.dp
 
 @Composable
 fun DashboardWidget(
@@ -122,15 +161,15 @@ fun DashboardWidget(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedSection(modifier = modifier.heightIn(min = WidgetMinHeight), onClick = onClick, contentPadding = 16.dp) {
+    ElevatedSection(modifier = modifier.heightIn(min = WidgetMinHeight), onClick = onClick, contentPadding = 14.dp) {
         when (type) {
             WidgetType.SYSTEM -> SystemWidget(data, flavor, live)
             WidgetType.CPU -> CpuWidget(full, live, data, flavor)
             WidgetType.MEMORY -> MemoryWidget(full, live, data, flavor)
-            WidgetType.TEMPERATURE -> TemperatureWidget(live, data, flavor)
+            WidgetType.TEMPERATURE -> TemperatureWidget(full, live, data, flavor)
             WidgetType.NETWORK -> NetworkWidget(full, live, flavor)
             WidgetType.POOLS -> PoolsWidget(full, data)
-            WidgetType.APPS -> AppsWidget(data)
+            WidgetType.APPS -> AppsWidget(full, data)
             WidgetType.ALERTS -> AlertsWidget(full, data)
         }
     }
@@ -138,99 +177,166 @@ fun DashboardWidget(
 
 @Composable
 private fun NoLive(flavor: ApiFlavor?) {
-    Muted(if (flavor == ApiFlavor.REST) "Live stats need TrueNAS 25.04+ (WebSocket API)" else "Waiting for live data…")
+    Muted(if (flavor == ApiFlavor.REST) "Live stats need TrueNAS 25.04+ (WebSocket API)" else "Waiting for live data…", maxLines = 3)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SystemWidget(d: DashboardData, flavor: ApiFlavor?, live: LiveStats) {
-    WidgetHeader(WidgetType.SYSTEM) { if (live.latest != null) LiveDot() }
+    WidgetHeader(WidgetType.SYSTEM, true) { if (live.latest != null) LiveDot() }
     Spacer(Modifier.height(12.dp))
     val s = d.system
     if (s == null) {
         SkeletonBlock(height = 28.dp, widthFraction = 0.6f); Spacer(Modifier.height(8.dp)); SkeletonBlock(widthFraction = 0.8f)
         return
     }
-    Text(s.hostname, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    Muted(s.version)
+    FitText(s.hostname, MaterialTheme.typography.headlineSmall, min = 16.sp)
+    Muted(s.version, maxLines = 1)
     Spacer(Modifier.height(10.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         StatusChip(Health.HEALTHY, "Up ${Format.uptime(s.uptimeSeconds)}")
-        s.cores?.let { StatusChip(Health.UNKNOWN, "$it cores", showIcon = false) }
+        s.cores?.let { StatusChip(Health.UNKNOWN, "$it threads", showIcon = false) }
+        s.physicalMemory?.let { StatusChip(Health.UNKNOWN, Format.bytes(it) + " RAM", showIcon = false) }
         if (flavor == ApiFlavor.REST) StatusChip(Health.WARNING, "Legacy API", showIcon = false)
     }
-    s.cpuModel?.let { Spacer(Modifier.height(8.dp)); Muted(it) }
+    s.cpuModel?.let { Spacer(Modifier.height(8.dp)); Muted(it, maxLines = 1) }
 }
 
 @Composable
-private fun CpuWidget(full: Boolean, live: LiveStats, d: DashboardData, flavor: ApiFlavor?) {
-    WidgetHeader(WidgetType.CPU)
-    Spacer(Modifier.height(10.dp))
-    val cpu = live.latest?.cpuPercent
-    if (cpu == null) { NoLive(flavor); return }
+private fun gaugeOverride(p: Double): Color? {
     val status = LocalStatusColors.current
-    val color = when { cpu >= 90 -> status.critical; cpu >= 70 -> status.warning; else -> MaterialTheme.colorScheme.primary }
+    return when { p >= 90 -> status.critical; p >= 75 -> status.warning; else -> null }
+}
+
+/** Sparkline scale: at least 0–20% so an idle CPU doesn't look like a flat line glued to the bottom or a wild spike. */
+private fun cpuScale(values: List<Float>) = ((values.maxOrNull() ?: 0f) * 1.25f).coerceIn(20f, 100f)
+
+@Composable
+private fun CpuWidget(full: Boolean, live: LiveStats, d: DashboardData, flavor: ApiFlavor?) {
+    WidgetHeader(WidgetType.CPU, full)
+    Spacer(Modifier.height(10.dp))
+    val s = live.latest
+    val cpu = s?.cpuPercent
+    if (cpu == null) { NoLive(flavor); return }
+    val override = gaugeOverride(cpu)
+    val lineColor = override ?: LocalBrandColors.current.accent
+    val load = d.system?.loadAverage?.firstOrNull()
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(if (full) 84.dp else 64.dp), contentAlignment = Alignment.Center) {
-            RingGauge((cpu / 100).toFloat(), Modifier.size(if (full) 84.dp else 64.dp), color = color)
-            Text(Format.percent(cpu), style = if (full) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium)
+        val ring = if (full) 88.dp else 68.dp
+        Box(Modifier.size(ring), contentAlignment = Alignment.Center) {
+            RingGauge((cpu / 100).toFloat(), Modifier.size(ring), color = override)
+            FitText(Format.cpuPercent(cpu), if (full) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 14.dp), min = 10.sp)
         }
-        if (full) {
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Sparkline(live.cpu, Modifier.fillMaxWidth().height(56.dp), color = color, maxValue = 100f)
-                d.system?.loadAverage?.takeIf { it.isNotEmpty() }?.let {
-                    Spacer(Modifier.height(6.dp)); Muted("Load " + it.joinToString(" · ") { v -> "%.2f".format(v) })
-                }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            if (full) {
+                Sparkline(live.cpu, Modifier.fillMaxWidth().height(52.dp), color = lineColor, maxValue = cpuScale(live.cpu))
+                Spacer(Modifier.height(6.dp))
+                Muted(listOfNotNull(
+                    d.system?.loadAverage?.takeIf { it.isNotEmpty() }?.let { "Load " + it.joinToString(" · ") { v -> "%.2f".format(v) } },
+                    s.cpuCores.takeIf { it.isNotEmpty() }?.let { "busiest thread ${Format.cpuPercent(it.max())}" },
+                ).joinToString("  ·  "), maxLines = 2)
+            } else {
+                Muted("Load", maxLines = 1)
+                FitText(load?.let { "%.2f".format(it) } ?: "—", MaterialTheme.typography.titleMedium)
             }
         }
     }
-    if (!full) {
-        Spacer(Modifier.height(8.dp))
-        Sparkline(live.cpu, Modifier.fillMaxWidth().height(28.dp), color = color, maxValue = 100f)
+    Spacer(Modifier.height(8.dp))
+    if (full && s.cpuCores.size > 1) {
+        CoreBars(s.cpuCores, Modifier.fillMaxWidth().height(22.dp))
+    } else if (!full) {
+        Sparkline(live.cpu, Modifier.fillMaxWidth().height(28.dp), color = lineColor, maxValue = cpuScale(live.cpu))
+    }
+}
+
+/** One thin bar per CPU thread. */
+@Composable
+private fun CoreBars(cores: List<Double>, modifier: Modifier) {
+    val brand = LocalBrandColors.current
+    val track = MaterialTheme.colorScheme.surfaceContainerHighest
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        cores.forEach { c ->
+            Box(Modifier.weight(1f).fillMaxHeight().clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)).background(track), contentAlignment = Alignment.BottomCenter) {
+                val f = (c / 100.0).toFloat().coerceIn(0.06f, 1f)
+                Box(Modifier.fillMaxWidth().fillMaxHeight(f).background(Brush.verticalGradient(listOf(brand.gaugeEnd, brand.gaugeStart))))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String, value: String, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+        Spacer(Modifier.width(6.dp))
+        // The value shrinks to fit rather than truncating the label.
+        FitText(value, MaterialTheme.typography.labelMedium.copy(textAlign = androidx.compose.ui.text.style.TextAlign.End), Modifier.weight(1f), min = 9.sp)
     }
 }
 
 @Composable
 private fun MemoryWidget(full: Boolean, live: LiveStats, d: DashboardData, flavor: ApiFlavor?) {
-    WidgetHeader(WidgetType.MEMORY)
+    WidgetHeader(WidgetType.MEMORY, full)
     Spacer(Modifier.height(10.dp))
     val s = live.latest
-    val total = s?.memoryTotal ?: d.system?.physicalMemory
-    val used = s?.memoryUsed
-    if (used == null || total == null || total == 0L) {
+    val b: MemoryBreakdown? = s?.memoryBreakdown
+    if (b == null) {
+        val total = d.system?.physicalMemory
         if (total != null) { BigValue(Format.bytes(total)); Muted("installed") } else NoLive(flavor)
         return
     }
-    val frac = used.toFloat() / total
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(if (full) 84.dp else 64.dp), contentAlignment = Alignment.Center) {
-            RingGauge(frac, Modifier.size(if (full) 84.dp else 64.dp), color = MaterialTheme.colorScheme.tertiary)
-            Text(Format.percent(frac * 100.0), style = MaterialTheme.typography.titleMedium)
+    val brand = LocalBrandColors.current
+    val servicesColor = gaugeOverride(b.servicesFraction * 100.0) ?: MaterialTheme.colorScheme.primary
+    val arcColor = brand.chartArc
+    val freeColor = MaterialTheme.colorScheme.outlineVariant
+    BigValue(Format.bytes(b.services))
+    Muted("used by services · ${Format.bytes(b.total)} total", maxLines = if (full) 1 else 2)
+    Spacer(Modifier.height(10.dp))
+    StackedBar(listOf(BarSegment(b.servicesFraction, servicesColor), BarSegment(b.arcFraction, arcColor)), height = 10.dp)
+    Spacer(Modifier.height(8.dp))
+    if (full) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LegendItem(servicesColor, "Services", Format.bytes(b.services), Modifier.weight(1f))
+            LegendItem(arcColor, "ZFS cache", Format.bytes(b.arc), Modifier.weight(1f))
+            LegendItem(freeColor, "Free", Format.bytes(b.free), Modifier.weight(1f))
         }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(Format.bytes(used), style = MaterialTheme.typography.titleMedium)
-            Muted("of ${Format.bytes(total)}")
-            if (full) s.arcSize?.let { Spacer(Modifier.height(4.dp)); Muted("ZFS cache (ARC) ${Format.bytes(it)}") }
-        }
+    } else {
+        LegendItem(arcColor, "Cache", Format.bytes(b.arc))
+        LegendItem(freeColor, "Free", Format.bytes(b.free))
     }
 }
 
 @Composable
-private fun TemperatureWidget(live: LiveStats, d: DashboardData, flavor: ApiFlavor?) {
-    WidgetHeader(WidgetType.TEMPERATURE)
+private fun TemperatureWidget(full: Boolean, live: LiveStats, d: DashboardData, flavor: ApiFlavor?) {
+    WidgetHeader(WidgetType.TEMPERATURE, full)
     Spacer(Modifier.height(10.dp))
     val status = LocalStatusColors.current
     val cpuT = live.latest?.cpuTempC
-    Row(verticalAlignment = Alignment.Bottom) {
-        Column(Modifier.weight(1f)) {
-            Text(Format.temp(cpuT), style = MaterialTheme.typography.headlineMedium, color = if (cpuT != null) status.of(tempHealth(cpuT)) else MaterialTheme.colorScheme.onSurface)
-            Muted(if (cpuT == null && live.latest == null && flavor == ApiFlavor.REST) "CPU (needs live API)" else "CPU")
+    val cpuLabel = if (cpuT == null && live.latest == null && flavor == ApiFlavor.REST) "CPU (needs live API)" else "CPU"
+    val cpuColor = if (cpuT != null) status.of(tempHealth(cpuT)) else MaterialTheme.colorScheme.onSurface
+    if (full) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) { BigValue(Format.temp(cpuT), color = cpuColor); Muted(cpuLabel, maxLines = 1) }
+            d.hottestDisk?.let { (name, t) ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    FitText(Format.temp(t), MaterialTheme.typography.titleLarge, color = status.of(diskTempHealth(t)))
+                    Muted("hottest disk · $name", maxLines = 1)
+                }
+            }
         }
+    } else {
+        BigValue(Format.temp(cpuT), color = cpuColor)
+        Muted(cpuLabel, maxLines = 1)
         d.hottestDisk?.let { (name, t) ->
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                Text(Format.temp(t), style = MaterialTheme.typography.titleLarge, color = status.of(diskTempHealth(t)))
-                Muted("hottest disk · $name")
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(Format.temp(t), style = MaterialTheme.typography.titleSmall, color = status.of(diskTempHealth(t)), maxLines = 1, softWrap = false)
+                Spacer(Modifier.width(6.dp))
+                Muted("disk $name", maxLines = 1)
             }
         }
     }
@@ -238,36 +344,43 @@ private fun TemperatureWidget(live: LiveStats, d: DashboardData, flavor: ApiFlav
 
 @Composable
 private fun NetworkWidget(full: Boolean, live: LiveStats, flavor: ApiFlavor?) {
-    WidgetHeader(WidgetType.NETWORK)
+    WidgetHeader(WidgetType.NETWORK, full)
     Spacer(Modifier.height(10.dp))
     val s = live.latest
     if (s?.netRxBytesPerSec == null) { NoLive(flavor); return }
-    val rxColor = MaterialTheme.colorScheme.primary
-    val txColor = MaterialTheme.colorScheme.tertiary
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        RateLabel(Icons.Rounded.ArrowDownward, Format.rate(s.netRxBytesPerSec), rxColor, Modifier.weight(1f))
-        RateLabel(Icons.Rounded.ArrowUpward, Format.rate(s.netTxBytesPerSec), txColor, Modifier.weight(1f))
+    val brand = LocalBrandColors.current
+    val rxColor = brand.chartRx
+    val txColor = brand.chartTx
+    if (full) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RateLabel(Icons.Rounded.ArrowDownward, Format.rate(s.netRxBytesPerSec), rxColor, Modifier.weight(1f))
+            RateLabel(Icons.Rounded.ArrowUpward, Format.rate(s.netTxBytesPerSec), txColor, Modifier.weight(1f))
+        }
+    } else {
+        RateLabel(Icons.Rounded.ArrowDownward, Format.rate(s.netRxBytesPerSec), rxColor, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(2.dp))
+        RateLabel(Icons.Rounded.ArrowUpward, Format.rate(s.netTxBytesPerSec), txColor, Modifier.fillMaxWidth())
     }
     Spacer(Modifier.height(8.dp))
-    val max = ((live.rx + live.tx).maxOrNull() ?: 1f).coerceAtLeast(1f)
-    Box(Modifier.fillMaxWidth().height(if (full) 56.dp else 32.dp)) {
+    val max = ((live.rx + live.tx).maxOrNull() ?: 1f).coerceAtLeast(1f) * 1.15f
+    Box(Modifier.fillMaxWidth().height(if (full) 52.dp else 28.dp)) {
         Sparkline(live.rx, Modifier.matchParentSize(), color = rxColor, maxValue = max)
         Sparkline(live.tx, Modifier.matchParentSize(), color = txColor, maxValue = max)
     }
 }
 
 @Composable
-private fun RateLabel(icon: ImageVector, text: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+private fun RateLabel(icon: ImageVector, text: String, color: Color, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         androidx.compose.material3.Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(4.dp))
-        Text(text, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+        FitText(text, MaterialTheme.typography.titleMedium, min = 10.sp)
     }
 }
 
 @Composable
 private fun PoolsWidget(full: Boolean, d: DashboardData) {
-    WidgetHeader(WidgetType.POOLS)
+    WidgetHeader(WidgetType.POOLS, full)
     Spacer(Modifier.height(12.dp))
     val pools = d.pools
     when {
@@ -277,18 +390,22 @@ private fun PoolsWidget(full: Boolean, d: DashboardData) {
         !full -> {
             val worst = pools.maxOf { it.health.ordinal }.let { Health.entries[it] }
             BigValue("${pools.size}")
-            StatusChip(worst, if (worst == Health.HEALTHY) "All healthy" else "Needs attention")
+            StatusChip(worst, if (worst == Health.HEALTHY) "Healthy" else "Attention")
         }
         else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             pools.take(4).forEach { p ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(p.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(p.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(8.dp))
                     StatusChip(p.health, p.status.lowercase().replaceFirstChar { it.uppercase() })
                 }
                 Spacer(Modifier.height(6.dp))
                 CapacityBar(p.usedFraction)
                 Spacer(Modifier.height(4.dp))
-                Muted("${Format.bytes(p.allocated)} used of ${Format.bytes(p.size)}")
+                Row {
+                    Muted("${Format.bytes(p.allocated)} of ${Format.bytes(p.size)}", Modifier.weight(1f), maxLines = 1)
+                    Text(Format.percent(p.usedFraction * 100.0), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
             }
             if (pools.size > 4) Muted("+${pools.size - 4} more")
         }
@@ -296,15 +413,16 @@ private fun PoolsWidget(full: Boolean, d: DashboardData) {
 }
 
 @Composable
-private fun AppsWidget(d: DashboardData) {
-    WidgetHeader(WidgetType.APPS)
+private fun AppsWidget(full: Boolean, d: DashboardData) {
+    WidgetHeader(WidgetType.APPS, full)
     Spacer(Modifier.height(10.dp))
     val a = d.apps
     if (a == null) { if (d.loading) SkeletonBlock(height = 28.dp, widthFraction = 0.5f) else Muted("Unavailable"); return }
     Row(verticalAlignment = Alignment.Bottom) {
         BigValue("${a.running}")
-        Text(" / ${a.total} running", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+        Text(" / ${a.total}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp), maxLines = 1)
     }
+    Muted("running", maxLines = 1)
     Spacer(Modifier.height(6.dp))
     when {
         a.problems > 0 -> StatusChip(Health.CRITICAL, "${a.problems} crashed")
@@ -315,13 +433,13 @@ private fun AppsWidget(d: DashboardData) {
 
 @Composable
 private fun AlertsWidget(full: Boolean, d: DashboardData) {
-    WidgetHeader(WidgetType.ALERTS)
+    WidgetHeader(WidgetType.ALERTS, full)
     Spacer(Modifier.height(10.dp))
     val a = d.alerts
     if (a == null) { if (d.loading) SkeletonBlock(height = 28.dp, widthFraction = 0.5f) else Muted("Unavailable"); return }
     if (a.active == 0) {
         BigValue("All clear")
-        StatusChip(Health.HEALTHY, "No active alerts")
+        StatusChip(Health.HEALTHY, "No alerts")
         return
     }
     BigValue("${a.active}")

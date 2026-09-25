@@ -1,5 +1,8 @@
 package app.truenascompanion.ui.servers
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -132,8 +135,8 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
                             IconBadge(Icons.Rounded.Dns)
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(server.name, style = MaterialTheme.typography.titleMedium)
-                                Text(server.displayHost, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(server.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(server.displayHost, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Spacer(Modifier.height(6.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     if (active) StatusChip(Health.HEALTHY, "Active")
@@ -190,7 +193,7 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                         onClick = { vm.update { it.copy(authMethod = m) } },
                         shape = SegmentedButtonDefaults.itemShape(i, AuthMethod.entries.size),
                         icon = { SegmentedButtonDefaults.Icon(s.authMethod == m) { Icon(if (m == AuthMethod.API_KEY) Icons.Rounded.Key else Icons.Rounded.Person, null, Modifier.size(18.dp)) } },
-                    ) { Text(if (m == AuthMethod.API_KEY) "API key" else "Username & password") }
+                    ) { Text(if (m == AuthMethod.API_KEY) "API key" else "Password", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
                 }
             }
             Text(
@@ -280,7 +283,8 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                             SegmentedButton(
                                 selected = s.sessionDays == days, onClick = { vm.update { it.copy(sessionDays = days) } },
                                 shape = SegmentedButtonDefaults.itemShape(i, options.size),
-                            ) { Text(label) }
+                                icon = {},
+                            ) { Text(label, maxLines = 1, softWrap = false) }
                         }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -336,14 +340,15 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
 
             TestOutcomeCard(s)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(onClick = vm::test, enabled = s.canTest && !s.testing, modifier = Modifier.weight(1f)) {
+            // Stacked full-width buttons: labels never wrap, even at 360dp with large fonts.
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                FilledTonalButton(onClick = vm::test, enabled = s.canTest && !s.testing, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     if (s.testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Rounded.NetworkCheck, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (s.authMethod == AuthMethod.PASSWORD) "Test sign-in" else "Test")
+                    Text(if (s.authMethod == AuthMethod.PASSWORD) "Test sign-in" else "Test connection", maxLines = 1)
                 }
-                Button(onClick = vm::save, enabled = s.canSave && !s.testing, modifier = Modifier.weight(1f)) { Text("Save") }
+                GlowButton(onClick = vm::save, enabled = s.canSave && !s.testing, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Save", maxLines = 1) }
             }
             if (s.authMethod == AuthMethod.PASSWORD) {
                 Text(
@@ -365,7 +370,7 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
             icon = { Icon(Icons.Rounded.Shield, null) },
             title = { Text("Trust this server?") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         if (cert.selfSigned) "This server uses a self-signed certificate (normal for a home NAS). Only trust it if you are sure this is your server."
                         else "This certificate is not trusted by your phone or doesn't match the address. Only trust it if you are sure this is your server."
@@ -380,7 +385,7 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            confirmButton = { Button(onClick = vm::trustPendingCertificate) { Text("Trust") } },
+            confirmButton = { GlowButton(onClick = vm::trustPendingCertificate) { Text("Trust") } },
             dismissButton = { TextButton(onClick = vm::dismissCertificate) { Text("Cancel") } },
         )
     }

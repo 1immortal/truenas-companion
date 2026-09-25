@@ -1,5 +1,11 @@
 package app.truenascompanion.ui.auth
 
+import androidx.compose.ui.text.style.TextOverflow
+import app.truenascompanion.ui.components.GlowButton
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -108,9 +114,9 @@ fun PasswordDialog(
         onDismissRequest = { if (!busy) onCancel() },
         properties = DialogProperties(dismissOnClickOutside = false),
         icon = { Icon(Icons.Rounded.Lock, null) },
-        title = { Text("Sign in to $serverName") },
+        title = { Text("Sign in to $serverName", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     if (username.isNotBlank()) "Signing in as $username" else "Set a username for this server in its settings first.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -136,13 +142,14 @@ fun PasswordDialog(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(checked = remember, onCheckedChange = { remember = it }, enabled = !busy)
                 }
                 AnimatedVisibility(error != null) { InfoBanner(error ?: "", health = Health.CRITICAL) }
             }
         },
         confirmButton = {
-            Button(onClick = submit, enabled = password.isNotEmpty() && username.isNotBlank() && !busy) {
+            GlowButton(onClick = submit, enabled = password.isNotEmpty() && username.isNotBlank() && !busy) {
                 if (busy) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
                 Text("Sign in")
             }
@@ -172,7 +179,7 @@ fun OtpDialog(
         icon = { Icon(Icons.Rounded.Password, null) },
         title = { Text("Two-factor code") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     "Enter the 6-digit code from your authenticator app for $username.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -189,14 +196,15 @@ fun OtpDialog(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (code.length == 6 && !busy) onSubmit(code) }),
-                    modifier = Modifier.focusRequester(focus),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
                     decorationBox = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Boxes share the available width so the row never overflows narrow dialogs (360dp, large fonts).
+                        Row(Modifier.fillMaxWidth().widthIn(max = 320.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             repeat(6) { i ->
                                 val ch = code.getOrNull(i)?.toString() ?: ""
                                 val active = i == code.length && !busy
                                 Box(
-                                    Modifier.size(width = 40.dp, height = 52.dp)
+                                    Modifier.weight(1f).aspectRatio(0.78f)
                                         .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp))
                                         .border(
                                             width = if (active) 2.dp else 0.dp,
@@ -205,7 +213,7 @@ fun OtpDialog(
                                         ),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Text(ch, fontSize = 24.sp, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.headlineSmall)
+                                    Text(ch, fontSize = 22.sp, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.headlineSmall, maxLines = 1, softWrap = false)
                                 }
                             }
                         }
@@ -223,7 +231,7 @@ fun OtpDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onSubmit(code) }, enabled = code.length == 6 && !busy) { Text("Verify") }
+            GlowButton(onClick = { onSubmit(code) }, enabled = code.length == 6 && !busy) { Text("Verify") }
         },
         dismissButton = { TextButton(onClick = onCancel, enabled = !busy) { Text("Cancel") } },
     )

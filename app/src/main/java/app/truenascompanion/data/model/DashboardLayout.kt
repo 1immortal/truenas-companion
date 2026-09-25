@@ -4,13 +4,13 @@ import kotlinx.serialization.Serializable
 
 enum class WidgetSize { HALF, FULL }
 
-enum class WidgetType(val title: String, val defaultSize: WidgetSize) {
+enum class WidgetType(val title: String, val defaultSize: WidgetSize, val shortTitle: String = title) {
     SYSTEM("System", WidgetSize.FULL),
     CPU("CPU", WidgetSize.HALF),
     MEMORY("Memory", WidgetSize.HALF),
-    TEMPERATURE("Temperature", WidgetSize.HALF),
+    TEMPERATURE("Temperature", WidgetSize.HALF, "Temps"),
     NETWORK("Network", WidgetSize.HALF),
-    POOLS("Storage pools", WidgetSize.FULL),
+    POOLS("Storage pools", WidgetSize.FULL, "Pools"),
     APPS("Apps", WidgetSize.HALF),
     ALERTS("Alerts", WidgetSize.HALF),
 }

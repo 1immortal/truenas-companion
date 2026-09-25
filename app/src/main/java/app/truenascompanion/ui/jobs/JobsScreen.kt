@@ -170,8 +170,8 @@ fun JobsScreen(onBack: () -> Unit) {
                     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
                         item {
                             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                                SegmentedButton(selected = !activeOnly, onClick = { activeOnly = false }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("Recent") }
-                                SegmentedButton(selected = activeOnly, onClick = { activeOnly = true }, shape = SegmentedButtonDefaults.itemShape(1, 2)) {
+                                SegmentedButton(selected = !activeOnly, onClick = { activeOnly = false }, shape = SegmentedButtonDefaults.itemShape(0, 2), icon = {}) { Text("Recent", maxLines = 1) }
+                                SegmentedButton(selected = activeOnly, onClick = { activeOnly = true }, shape = SegmentedButtonDefaults.itemShape(1, 2), icon = {}) {
                                     Text(if (active > 0) "Running ($active)" else "Running")
                                 }
                             }

@@ -22,7 +22,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-data class AppearanceSettings(val themeMode: ThemeMode = ThemeMode.SYSTEM, val dynamicColor: Boolean = true)
+data class AppearanceSettings(val themeMode: ThemeMode = ThemeMode.SYSTEM, val dynamicColor: Boolean = false)
 
 /** All persisted app state: servers, encrypted API keys, per-server dashboard layouts, appearance. */
 class SettingsStore(context: Context, private val cipher: SecretCipher) {
@@ -33,7 +33,8 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         val SERVERS = stringPreferencesKey("servers")
         val ACTIVE = stringPreferencesKey("active_server")
         val THEME = stringPreferencesKey("theme_mode")
-        val DYNAMIC = booleanPreferencesKey("dynamic_color")
+        // v0.2.1: new key so every existing install is migrated to the brand theme (dynamic color off) once.
+        val DYNAMIC = booleanPreferencesKey("dynamic_color_v2")
         fun apiKey(id: String) = stringPreferencesKey("api_key_$id")
         fun layout(id: String) = stringPreferencesKey("dashboard_layout_$id")
         fun password(id: String) = stringPreferencesKey("password_$id")
@@ -50,7 +51,7 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
     val appearance: Flow<AppearanceSettings> = store.data.map { prefs ->
         AppearanceSettings(
             themeMode = prefs[Keys.THEME]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-            dynamicColor = prefs[Keys.DYNAMIC] ?: true,
+            dynamicColor = prefs[Keys.DYNAMIC] ?: false,
         )
     }.distinctUntilChanged()
 

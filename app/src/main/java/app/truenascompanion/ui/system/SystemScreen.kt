@@ -1,5 +1,12 @@
 package app.truenascompanion.ui.system
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Info
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -222,24 +229,17 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                         Text("Restart or turn off the NAS. Apps, shares and VMs will be unavailable meanwhile.",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            FilledTonalButton(onClick = { confirm = "reboot" }, modifier = Modifier.weight(1f), enabled = connection is ConnectionState.Connected) {
-                                Icon(Icons.Rounded.RestartAlt, null); Spacer(Modifier.width(6.dp)); Text("Reboot")
-                            }
-                            OutlinedButton(onClick = { confirm = "shutdown" }, modifier = Modifier.weight(1f), enabled = connection is ConnectionState.Connected) {
-                                Icon(Icons.Rounded.PowerSettingsNew, null); Spacer(Modifier.width(6.dp)); Text("Shut down")
-                            }
-                        }
+                        PowerButtons(
+                            enabled = connection is ConnectionState.Connected,
+                            onReboot = { confirm = "reboot" }, onShutdown = { confirm = "shutdown" },
+                        )
                     }
                 }
 
                 item { SectionTitle("Appearance") }
                 item {
                     ElevatedSection {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.DarkMode, null); Spacer(Modifier.width(12.dp))
-                            Text("Theme", style = MaterialTheme.typography.bodyLarge)
-                        }
+                        SettingRow(Icons.Rounded.DarkMode, "Theme")
                         Spacer(Modifier.height(10.dp))
                         val modes = ThemeMode.entries
                         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -247,16 +247,12 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                                 SegmentedButton(
                                     selected = appearance.themeMode == m, onClick = { vm.setTheme(m) },
                                     shape = SegmentedButtonDefaults.itemShape(i, modes.size),
-                                ) { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                                    icon = {},
+                                ) { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }, maxLines = 1, softWrap = false) }
                             }
                         }
                         Spacer(Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Palette, null); Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Dynamic color", style = MaterialTheme.typography.bodyLarge)
-                                Text("Match your wallpaper (Android 12+)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the TrueNAS Companion theme (Android 12+)") {
                             Switch(checked = appearance.dynamicColor, onCheckedChange = vm::setDynamic)
                         }
                     }
@@ -265,17 +261,14 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                 item { SectionTitle("About") }
                 item {
                     ElevatedSection {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Tune, null); Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("TrueNAS Companion ${BuildConfigInfo.versionName(context)}", style = MaterialTheme.typography.bodyLarge)
-                                Text("Free & open source. No ads, no analytics, no tracking.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                        SettingRow(Icons.Rounded.Info, "TrueNAS Companion ${BuildConfigInfo.versionName(context)}", "Free & open source. No ads, no analytics, no tracking.")
                         server?.let { s ->
                             Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, s.url.toUri())) } }) {
-                                Icon(Icons.Rounded.Code, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Open TrueNAS web UI")
+                            OutlinedButton(
+                                onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, s.url.toUri())) } },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Open TrueNAS web UI", maxLines = 1)
                             }
                         }
                     }
@@ -322,5 +315,40 @@ private fun ServiceRow(s: ServiceInfo, busy: Boolean, onToggle: () -> Unit) {
         }
         if (busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
         else Switch(checked = s.running, onCheckedChange = { onToggle() })
+    }
+}
+
+/** Icon + title (+ subtitle) row with the icon centered on the first line of text, optional trailing control. */
+@Composable
+fun SettingRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
+    // Multi-line rows align the icon with the title line instead of floating in the middle of the text block.
+    Row(verticalAlignment = if (subtitle == null) Alignment.CenterVertically else Alignment.Top) {
+        IconBadge(icon, size = 36.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f).padding(top = if (subtitle == null) 0.dp else 6.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        trailing?.let { Spacer(Modifier.width(12.dp)); Box(Modifier.align(Alignment.CenterVertically)) { it() } }
+    }
+}
+
+/** Two equal-size, single-line power buttons. */
+@Composable
+fun PowerButtons(enabled: Boolean, onReboot: () -> Unit, onShutdown: () -> Unit) {
+    val danger = MaterialTheme.colorScheme.error
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+        OutlinedButton(onClick = onReboot, enabled = enabled, modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp)) {
+            Icon(Icons.Rounded.RestartAlt, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+            Text("Reboot", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        }
+        OutlinedButton(onClick = onShutdown, enabled = enabled, modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = danger),
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (enabled) danger.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant)) {
+            Icon(Icons.Rounded.PowerSettingsNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+            Text("Shut down", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        }
     }
 }

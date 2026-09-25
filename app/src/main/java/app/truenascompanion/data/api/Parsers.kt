@@ -58,6 +58,7 @@ internal fun parseDate(e: JsonElement?): Long? {
 }
 
 object Parsers {
+    private val CORE_KEY = Regex("cpu(\\d+)")
 
     fun systemInfo(o: JsonObject) = SystemInfo(
         hostname = o.str("hostname") ?: "TrueNAS",
@@ -78,12 +79,19 @@ object Parsers {
      * and falls back to older layouts where possible.
      */
     fun realtime(fields: JsonObject, fallbackTotalMemory: Long? = null): RealtimeStats {
+        // 25.10 (plugins/reporting/realtime_reporting/cpu.py): cpu = {"cpu": {usage, temp}, "cpu0": {usage, temp}, ...}.
+        // Values come from netdata's python.d collector, which stores integers, so usage is a whole percent.
         val cpu = fields["cpu"].obj()
-        val cpuPercent = cpu?.let { c ->
-            c["cpu"].obj()?.double("usage")
-                ?: c["average"].obj()?.double("usage")
-                ?: c.entries.filter { it.key.startsWith("cpu") }.mapNotNull { it.value.obj()?.double("usage") }
-                    .takeIf { it.isNotEmpty() }?.average()
+        val cores = cpu?.entries
+            ?.mapNotNull { (k, v) -> CORE_KEY.matchEntire(k)?.let { m -> m.groupValues[1].toInt() to v.obj()?.double("usage") } }
+            ?.filter { it.second != null }?.sortedBy { it.first }?.map { it.second!! } ?: emptyList()
+        val aggregate = cpu?.let { c -> c["cpu"].obj()?.double("usage") ?: c["average"].obj()?.double("usage") }
+        val coreAvg = cores.takeIf { it.isNotEmpty() }?.average()
+        // The integer aggregate reads 0 on a mostly idle many-core box; the per-thread average keeps a little resolution.
+        val cpuPercent = when {
+            aggregate == null -> coreAvg
+            aggregate == 0.0 && coreAvg != null -> coreAvg
+            else -> aggregate
         }
         val coreTemps = cpu?.entries?.filter { it.key.startsWith("cpu") && it.key != "cpu" }
             ?.mapNotNull { it.value.obj()?.double("temp") } ?: emptyList()
@@ -118,6 +126,7 @@ object Parsers {
             arcSize = mem?.long("arc_size"),
             netRxBytesPerSec = if (anyIface) rx else null,
             netTxBytesPerSec = if (anyIface) tx else null,
+            cpuCores = cores,
         )
     }
 

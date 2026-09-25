@@ -15,15 +15,22 @@ object Format {
         return String.format(Locale.US, "%.1f %s", value / 1024.0.pow(exp), units[exp])
     }
 
+    /** Compact transfer rate in bytes per second with auto units, e.g. "850 B/s", "7.2 KB/s", "118 MB/s". */
     fun rate(bytesPerSec: Double?): String {
         if (bytesPerSec == null) return "—"
-        val bits = bytesPerSec * 8
-        return when {
-            bits >= 1e9 -> String.format(Locale.US, "%.1f Gb/s", bits / 1e9)
-            bits >= 1e6 -> String.format(Locale.US, "%.1f Mb/s", bits / 1e6)
-            bits >= 1e3 -> String.format(Locale.US, "%.0f kb/s", bits / 1e3)
-            else -> String.format(Locale.US, "%.0f b/s", bits)
-        }
+        val u = arrayOf("B/s", "KB/s", "MB/s", "GB/s")
+        var v = bytesPerSec.coerceAtLeast(0.0)
+        var i = 0
+        while (v >= 999.5 && i < u.size - 1) { v /= 1000; i++ }
+        return if (i == 0 || v >= 9.95) String.format(Locale.US, "%.0f %s", v, u[i]) else String.format(Locale.US, "%.1f %s", v, u[i])
+    }
+
+    /** CPU percent: "<1%" near idle, one decimal below 10%. */
+    fun cpuPercent(p: Double?): String = when {
+        p == null -> "—"
+        p < 1 -> "<1%"
+        p < 9.95 && String.format(Locale.US, "%.1f", p).let { !it.endsWith(".0") } -> String.format(Locale.US, "%.1f%%", p)
+        else -> String.format(Locale.US, "%.0f%%", p)
     }
 
     fun percent(p: Double?): String = if (p == null) "—" else String.format(Locale.US, "%.0f%%", p)

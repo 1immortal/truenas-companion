@@ -1,5 +1,9 @@
 package app.truenascompanion.ui
 
+import app.truenascompanion.ui.components.glow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -54,7 +58,7 @@ import app.truenascompanion.ui.system.SystemScreen
 import androidx.compose.ui.platform.LocalContext
 
 private enum class Tab(val route: String, val label: String, val selected: ImageVector, val unselected: ImageVector) {
-    DASHBOARD("dashboard", "Dashboard", Icons.Rounded.Dashboard, Icons.Outlined.Dashboard),
+    DASHBOARD("dashboard", "Home", Icons.Rounded.Dashboard, Icons.Outlined.Dashboard),
     STORAGE("storage", "Storage", Icons.Rounded.Storage, Icons.Outlined.Storage),
     APPS("apps", "Apps", Icons.Rounded.Apps, Icons.Outlined.Apps),
     ALERTS("alerts", "Alerts", Icons.Rounded.Notifications, Icons.Outlined.Notifications),
@@ -88,17 +92,7 @@ fun AppRoot() {
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (showBar) {
-                NavigationBar {
-                    Tab.entries.forEach { tab ->
-                        val selected = route == tab.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { nav.switchTab(tab.route) },
-                            icon = { Icon(if (selected) tab.selected else tab.unselected, null) },
-                            label = { Text(tab.label) },
-                        )
-                    }
-                }
+                AppNavBar(route) { nav.switchTab(it) }
             }
         },
     ) { padding ->
@@ -172,4 +166,31 @@ private fun NavHostController.switchTab(route: String) {
 
 private fun NavHostController.backToDashboard() {
     if (!popBackStack(Tab.DASHBOARD.route, inclusive = false)) switchTab(Tab.DASHBOARD.route)
+}
+
+/** Bottom navigation with single-line labels and a glowing selected icon. */
+@Composable
+internal fun AppNavBar(route: String?, onTab: (String) -> Unit) {
+    val brand = app.truenascompanion.ui.theme.LocalBrandColors.current
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        Tab.entries.forEach { tab ->
+            val selected = route == tab.route
+            NavigationBarItem(
+                selected = selected,
+                onClick = { onTab(tab.route) },
+                icon = {
+                    Icon(
+                        if (selected) tab.selected else tab.unselected, null,
+                        modifier = if (selected) Modifier.glow(brand.glow, 8.dp, androidx.compose.foundation.shape.CircleShape, alpha = if (brand.dark) 0.7f else 0.35f) else Modifier,
+                    )
+                },
+                label = { Text(tab.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, style = MaterialTheme.typography.labelMedium) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary,
+                    selectedTextColor = if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary,
+                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = if (brand.dark) 0.22f else 0.12f),
+                ),
+            )
+        }
+    }
 }

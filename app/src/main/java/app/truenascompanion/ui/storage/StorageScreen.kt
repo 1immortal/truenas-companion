@@ -160,9 +160,10 @@ private fun PoolCard(p: Pool) {
             IconBadge(Icons.Rounded.Storage, tint = LocalStatusColors.current.of(p.health))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(p.name, style = MaterialTheme.typography.titleMedium)
+                Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${p.diskNames.size} disks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Spacer(Modifier.width(8.dp))
             StatusChip(p.health, p.status.lowercase().replaceFirstChar { it.uppercase() })
             Icon(Icons.Rounded.ExpandMore, null, Modifier.rotate(rotation))
         }
@@ -170,15 +171,16 @@ private fun PoolCard(p: Pool) {
         CapacityBar(p.usedFraction, height = 12.dp)
         Spacer(Modifier.height(6.dp))
         Row {
-            Text("${Format.bytes(p.allocated)} used", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text("${Format.bytes(p.free)} free", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${Format.bytes(p.allocated)} used", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1)
+            Spacer(Modifier.width(8.dp))
+            Text("${Format.bytes(p.free)} free", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
         Expandable(expanded) {
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth()) {
                 LabeledValue("Total", Format.bytes(p.size), Modifier.weight(1f))
                 LabeledValue("Used", "%.0f%%".format(p.usedFraction * 100), Modifier.weight(1f))
-                LabeledValue("Fragmentation", p.fragmentation?.let { "$it%" } ?: "—", Modifier.weight(1f))
+                LabeledValue("Fragmented", p.fragmentation?.let { "$it%" } ?: "—", Modifier.weight(1f))
             }
             p.statusDetail?.let { Spacer(Modifier.height(10.dp)); Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (p.scanFunction != null) {

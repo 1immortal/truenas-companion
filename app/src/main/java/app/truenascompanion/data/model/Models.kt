@@ -57,10 +57,33 @@ data class RealtimeStats(
     val arcSize: Long?,
     val netRxBytesPerSec: Double?,
     val netTxBytesPerSec: Double?,
+    /** Per-thread usage (`cpu0`, `cpu1`, …) in percent. */
+    val cpuCores: List<Double> = emptyList(),
     val timestamp: Long = System.currentTimeMillis(),
 ) {
     val memoryUsed: Long?
         get() = if (memoryTotal != null && memoryAvailable != null) (memoryTotal - memoryAvailable).coerceAtLeast(0) else null
+
+    /**
+     * Memory split like the TrueNAS web UI: services (processes, apps, VMs) / ZFS cache (ARC) / free.
+     * `physical_memory_available` is Linux MemAvailable, which does not count the ARC as available, so
+     * services = total - available - arc. If a kernel ever reports ARC as available we subtract it from free instead.
+     */
+    val memoryBreakdown: MemoryBreakdown?
+        get() {
+            val total = memoryTotal ?: return null
+            val avail = memoryAvailable ?: return null
+            if (total <= 0) return null
+            val used = (total - avail).coerceIn(0, total)
+            val arc = (arcSize ?: 0L).coerceIn(0, total)
+            return if (arc <= used) MemoryBreakdown(total, services = used - arc, arc = arc, free = avail.coerceAtLeast(0))
+            else MemoryBreakdown(total, services = used, arc = arc, free = (avail - arc).coerceAtLeast(0))
+        }
+}
+
+data class MemoryBreakdown(val total: Long, val services: Long, val arc: Long, val free: Long) {
+    val servicesFraction get() = services.toFloat() / total
+    val arcFraction get() = arc.toFloat() / total
 }
 
 enum class Health { HEALTHY, WARNING, CRITICAL, UNKNOWN }

@@ -87,6 +87,7 @@ import app.truenascompanion.data.model.JobState
 import app.truenascompanion.data.model.Health
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.ConfirmDialog
+import app.truenascompanion.ui.components.GlowButton
 import app.truenascompanion.ui.components.ElevatedSection
 import app.truenascompanion.ui.components.EmptyState
 import app.truenascompanion.ui.components.LetterAvatar
@@ -405,7 +406,11 @@ private fun UpdatesBanner(count: Int, allBusy: Boolean, onUpgradeAll: () -> Unit
                 )
                 Text("New versions from the TrueNAS catalog", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
             }
-            if (count > 1) Button(onClick = onUpgradeAll, enabled = !allBusy) { Text("Upgrade all") }
+        }
+        if (count > 1) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.End) {
+                GlowButton(onClick = onUpgradeAll, enabled = !allBusy) { Text("Upgrade all", maxLines = 1) }
+            }
         }
     }
 }
@@ -457,7 +462,7 @@ private fun UpgradeConfirmDialog(d: UpgradeDialog, onConfirm: (Boolean) -> Unit,
                 SnapshotOption(snapshot) { snapshot = it }
             }
         },
-        confirmButton = { Button(onClick = { onConfirm(snapshot) }) { Text("Upgrade") } },
+        confirmButton = { GlowButton(onClick = { onConfirm(snapshot) }) { Text("Upgrade") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -474,9 +479,11 @@ private fun UpgradeAllDialog(apps: List<AppInfo>, onConfirm: (Boolean) -> Unit, 
                 apps.forEach { app ->
                     Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(app.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             listOfNotNull(app.version, app.latestVersion).joinToString(" → "),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
                         )
                     }
                 }
@@ -486,14 +493,15 @@ private fun UpgradeAllDialog(apps: List<AppInfo>, onConfirm: (Boolean) -> Unit, 
                 SnapshotOption(snapshot) { snapshot = it }
             }
         },
-        confirmButton = { Button(onClick = { onConfirm(snapshot) }) { Text("Upgrade all") } },
+        confirmButton = { GlowButton(onClick = { onConfirm(snapshot) }) { Text("Upgrade all", maxLines = 1) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun VersionLine(current: String?, target: String?) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    androidx.compose.foundation.layout.FlowRow(itemVerticalAlignment = Alignment.CenterVertically, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.small) {
             Text(current ?: "current", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
         }
@@ -504,6 +512,7 @@ private fun VersionLine(current: String?, target: String?) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AppCard(
     app: AppInfo,
@@ -564,7 +573,11 @@ private fun AppCard(
             return@ElevatedSection
         }
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        // FlowRow: buttons wrap to a second line on narrow screens / large fonts instead of overflowing.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
             if (busyAction != null) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 Text("${busyAction.label}ing…".replace("Stoping", "Stopping"), style = MaterialTheme.typography.bodyMedium)
@@ -577,8 +590,7 @@ private fun AppCard(
                 FilledTonalButton(onClick = { onAction(AppAction.START) }) { Icon(Icons.Rounded.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Start") }
             }
             if (busyAction == null && app.upgradeAvailable && !app.legacyChart) {
-                Spacer(Modifier.weight(1f))
-                Button(onClick = onUpgrade, contentPadding = PaddingValues(horizontal = 14.dp)) {
+                GlowButton(onClick = onUpgrade, contentPadding = PaddingValues(horizontal = 14.dp)) {
                     Icon(Icons.Rounded.SystemUpdate, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Upgrade")
                 }
             }

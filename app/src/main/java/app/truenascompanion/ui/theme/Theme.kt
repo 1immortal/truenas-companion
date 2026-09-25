@@ -21,28 +21,73 @@ import androidx.compose.ui.unit.sp
 import app.truenascompanion.data.model.Health
 import app.truenascompanion.data.store.ThemeMode
 
-private val Brand = Color(0xFF0095D5)
-private val Navy = Color(0xFF0B3D62)
+// Brand: royal blue primary, glowing cyan accent, violet/teal companions for charts.
+private val Royal = Color(0xFF2F5BEA)
+private val RoyalLight = Color(0xFF4169E1)
+private val Cyan = Color(0xFF22D3EE)
+private val CyanBright = Color(0xFF00E5FF)
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF006590), onPrimary = Color.White,
-    primaryContainer = Color(0xFFC8E6FF), onPrimaryContainer = Color(0xFF001E2F),
-    secondary = Color(0xFF4F616E), secondaryContainer = Color(0xFFD2E5F5), onSecondaryContainer = Color(0xFF0B1D29),
-    tertiary = Color(0xFF63597C), tertiaryContainer = Color(0xFFE9DDFF),
-    background = Color(0xFFF7F9FC), surface = Color(0xFFF7F9FC),
-    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF1F4F8),
-    surfaceContainer = Color(0xFFEBEEF3), surfaceContainerHigh = Color(0xFFE5E8ED), surfaceContainerHighest = Color(0xFFDFE3E8),
+    primary = Royal, onPrimary = Color.White,
+    primaryContainer = Color(0xFFDCE4FF), onPrimaryContainer = Color(0xFF0A1F66),
+    secondary = Color(0xFF0E7490), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFCFF7FE), onSecondaryContainer = Color(0xFF083344),
+    tertiary = Color(0xFF6D4AE6), onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFEBE3FF), onTertiaryContainer = Color(0xFF22005D),
+    background = Color(0xFFF3F6FF), onBackground = Color(0xFF0E1A3A),
+    surface = Color(0xFFF3F6FF), onSurface = Color(0xFF0E1A3A),
+    surfaceVariant = Color(0xFFE3E9FA), onSurfaceVariant = Color(0xFF4A5680),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFFDFDFF),
+    surfaceContainer = Color(0xFFEDF2FF), surfaceContainerHigh = Color(0xFFE6ECFF), surfaceContainerHighest = Color(0xFFDDE5FB),
+    outline = Color(0xFF7A86AD), outlineVariant = Color(0xFFD3DBF2),
+    inverseSurface = Color(0xFF16244F), inverseOnSurface = Color(0xFFE6ECFF), inversePrimary = Color(0xFFA9BCFF),
+    surfaceTint = Royal,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF89CEFF), onPrimary = Color(0xFF00344D),
-    primaryContainer = Color(0xFF004C6E), onPrimaryContainer = Color(0xFFC8E6FF),
-    secondary = Color(0xFFB6C9D8), secondaryContainer = Color(0xFF374955), onSecondaryContainer = Color(0xFFD2E5F5),
-    tertiary = Color(0xFFCDC0E9), tertiaryContainer = Color(0xFF4B4263),
-    background = Color(0xFF0F1417), surface = Color(0xFF0F1417),
-    surfaceContainerLowest = Color(0xFF0A0F12), surfaceContainerLow = Color(0xFF171C20),
-    surfaceContainer = Color(0xFF1B2024), surfaceContainerHigh = Color(0xFF252B2E), surfaceContainerHighest = Color(0xFF303539),
+    primary = Color(0xFF6F8CFF), onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E3A8A), onPrimaryContainer = Color(0xFFDCE4FF),
+    secondary = Cyan, onSecondary = Color(0xFF002A33),
+    secondaryContainer = Color(0xFF0B4A5E), onSecondaryContainer = Color(0xFFCFF7FE),
+    tertiary = Color(0xFFA78BFA), onTertiary = Color(0xFF22005D),
+    tertiaryContainer = Color(0xFF3B2A7A), onTertiaryContainer = Color(0xFFEBE3FF),
+    background = Color(0xFF0B1430), onBackground = Color(0xFFE6ECFF),
+    surface = Color(0xFF0B1430), onSurface = Color(0xFFE6ECFF),
+    surfaceVariant = Color(0xFF1B2B5C), onSurfaceVariant = Color(0xFFA9B6DA),
+    surfaceContainerLowest = Color(0xFF081026), surfaceContainerLow = Color(0xFF121E44),
+    surfaceContainer = Color(0xFF16244F), surfaceContainerHigh = Color(0xFF1B2B5C), surfaceContainerHighest = Color(0xFF243669),
+    outline = Color(0xFF5A6A9A), outlineVariant = Color(0xFF2A3A6E),
+    inverseSurface = Color(0xFFE6ECFF), inverseOnSurface = Color(0xFF16244F), inversePrimary = Royal,
+    surfaceTint = Color(0xFF6F8CFF),
 )
+
+/** Extra brand colors (accent glow, gradients, chart palette, card border) that Material's scheme has no slot for. */
+@Immutable
+data class BrandColors(
+    val accent: Color,
+    val gaugeStart: Color,
+    val gaugeEnd: Color,
+    val glow: Color,
+    val cardBorder: Color,
+    val headerGlow: Color,
+    val chartRx: Color,
+    val chartTx: Color,
+    val chartArc: Color,
+    val dark: Boolean,
+)
+
+private val LightBrand = BrandColors(
+    accent = Color(0xFF0891B2), gaugeStart = Royal, gaugeEnd = Color(0xFF06B6D4), glow = Color(0xFF3B82F6),
+    cardBorder = Color(0xFFDCE3F7), headerGlow = Color(0xFF4169E1),
+    chartRx = Color(0xFF0891B2), chartTx = Color(0xFF7C3AED), chartArc = Color(0xFF14B8A6), dark = false,
+)
+private val DarkBrand = BrandColors(
+    accent = Cyan, gaugeStart = RoyalLight, gaugeEnd = CyanBright, glow = Cyan,
+    cardBorder = Color(0xFF2B3F80), headerGlow = RoyalLight,
+    chartRx = Cyan, chartTx = Color(0xFFA78BFA), chartArc = Color(0xFF2DD4BF), dark = true,
+)
+
+val LocalBrandColors = staticCompositionLocalOf { LightBrand }
 
 /** Semantic status colors that read well in both light and dark themes. */
 @Immutable
@@ -71,13 +116,13 @@ private val LightStatus = StatusColors(
     healthy = Color(0xFF1B7F4B), healthyContainer = Color(0xFFD3F5E0),
     warning = Color(0xFF8A5A00), warningContainer = Color(0xFFFFE8BF),
     critical = Color(0xFFB3261E), criticalContainer = Color(0xFFFFDAD6),
-    neutral = Color(0xFF5C6670), neutralContainer = Color(0xFFE3E8EE),
+    neutral = Color(0xFF55618A), neutralContainer = Color(0xFFE3E9FA),
 )
 private val DarkStatus = StatusColors(
-    healthy = Color(0xFF7EDBA3), healthyContainer = Color(0xFF12402A),
-    warning = Color(0xFFFFC86B), warningContainer = Color(0xFF4A3300),
-    critical = Color(0xFFFFB4AB), criticalContainer = Color(0xFF5C1512),
-    neutral = Color(0xFFB5C0CA), neutralContainer = Color(0xFF2A3238),
+    healthy = Color(0xFF6EE7A8), healthyContainer = Color(0xFF0F3B33),
+    warning = Color(0xFFFFCC66), warningContainer = Color(0xFF3F3113),
+    critical = Color(0xFFFF9A91), criticalContainer = Color(0xFF4A1A2A),
+    neutral = Color(0xFFB4C0E4), neutralContainer = Color(0xFF22305C),
 )
 
 val LocalStatusColors = staticCompositionLocalOf { LightStatus }
@@ -102,7 +147,7 @@ private val AppTypography = base.copy(
 )
 
 @Composable
-fun TrueNasTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, dynamicColor: Boolean = true, content: @Composable () -> Unit) {
+fun TrueNasTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, dynamicColor: Boolean = false, content: @Composable () -> Unit) {
     val dark = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -115,12 +160,11 @@ fun TrueNasTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, dynamicColor: Boolean 
         dark -> DarkColors
         else -> LightColors
     }
-    androidx.compose.runtime.CompositionLocalProvider(LocalStatusColors provides if (dark) DarkStatus else LightStatus) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalStatusColors provides if (dark) DarkStatus else LightStatus,
+        LocalBrandColors provides if (dark) DarkBrand else LightBrand,
+    ) {
         MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes, content = content)
     }
 }
 
-@Suppress("unused")
-val BrandBlue = Brand
-@Suppress("unused")
-val BrandNavy = Navy

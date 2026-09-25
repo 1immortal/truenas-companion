@@ -1,5 +1,13 @@
 package app.truenascompanion.ui.components
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import app.truenascompanion.ui.theme.LocalBrandColors
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -136,16 +144,44 @@ fun ElevatedSection(
     contentPadding: Dp = 18.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val brand = LocalBrandColors.current
     val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    val border = BorderStroke(1.dp, if (brand.dark) brand.cardBorder.copy(alpha = 0.55f) else brand.cardBorder)
+    // Light mode: a soft blue-tinted shadow lifts the white cards off the tinted background.
+    val shadowMod = if (brand.dark) Modifier else Modifier.shadow(
+        6.dp, MaterialTheme.shapes.large, clip = false,
+        ambientColor = brand.glow.copy(alpha = 0.10f), spotColor = brand.glow.copy(alpha = 0.14f),
+    )
     if (onClick != null) {
-        Card(onClick = onClick, modifier = modifier, shape = MaterialTheme.shapes.large, colors = colors) {
+        Card(onClick = onClick, modifier = modifier.then(shadowMod), shape = MaterialTheme.shapes.large, colors = colors, border = border) {
             Column(Modifier.padding(contentPadding), content = content)
         }
     } else {
-        Card(modifier = modifier, shape = MaterialTheme.shapes.large, colors = colors) {
+        Card(modifier = modifier.then(shadowMod), shape = MaterialTheme.shapes.large, colors = colors, border = border) {
             Column(Modifier.padding(contentPadding), content = content)
         }
     }
+}
+
+/** Soft colored halo behind an element (colored shadows render on Android 9+; older versions show a plain shadow). */
+fun Modifier.glow(color: Color, radius: Dp = 12.dp, shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(50), alpha: Float = 0.55f): Modifier =
+    this.shadow(radius, shape, clip = false, ambientColor = color.copy(alpha = alpha), spotColor = color.copy(alpha = alpha))
+
+/** Primary action button with the brand gradient glow. */
+@Composable
+fun GlowButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val brand = LocalBrandColors.current
+    Button(
+        onClick = onClick, enabled = enabled, contentPadding = contentPadding,
+        modifier = if (enabled) modifier.glow(brand.glow, 10.dp, alpha = if (brand.dark) 0.6f else 0.35f) else modifier,
+        content = content,
+    )
 }
 
 /** Animated usage bar; turns amber above 80% and red above 90% unless a color is given. */
@@ -153,41 +189,90 @@ fun ElevatedSection(
 fun CapacityBar(fraction: Float, modifier: Modifier = Modifier, color: Color? = null, height: Dp = 10.dp) {
     val animated by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(700, easing = FastOutSlowInEasing), label = "bar")
     val status = LocalStatusColors.current
-    val barColor = color ?: when {
-        fraction >= 0.9f -> status.critical
-        fraction >= 0.8f -> status.warning
-        else -> MaterialTheme.colorScheme.primary
+    val brand = LocalBrandColors.current
+    val brush = when {
+        color != null -> SolidColor(color)
+        fraction >= 0.9f -> SolidColor(status.critical)
+        fraction >= 0.8f -> SolidColor(status.warning)
+        else -> Brush.horizontalGradient(listOf(brand.gaugeStart, brand.gaugeEnd))
     }
     Box(
         modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
     ) {
-        Box(Modifier.fillMaxWidth(animated).height(height).clip(RoundedCornerShape(50)).background(barColor))
+        Box(Modifier.fillMaxWidth(animated).height(height).clip(RoundedCornerShape(50)).background(brush))
     }
 }
 
-/** Circular gauge used by the CPU / memory widgets. */
+/** A segment of a [StackedBar]. */
+data class BarSegment(val fraction: Float, val color: Color)
+
+/** Horizontal stacked bar (e.g. memory: services / ZFS cache / free). */
 @Composable
-fun RingGauge(fraction: Float, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary, stroke: Dp = 8.dp) {
+fun StackedBar(segments: List<BarSegment>, modifier: Modifier = Modifier, height: Dp = 10.dp) {
+    val track = MaterialTheme.colorScheme.surfaceContainerHighest
+    val animated = segments.map { seg ->
+        animateFloatAsState(seg.fraction.coerceIn(0f, 1f), tween(700, easing = FastOutSlowInEasing), label = "seg").value
+    }
+    Canvas(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(50))) {
+        drawRect(track)
+        var x = 0f
+        val gap = 2.dp.toPx()
+        segments.forEachIndexed { i, seg ->
+            val w = animated[i] * size.width
+            if (w > 0.5f) {
+                drawRect(seg.color, topLeft = Offset(x, 0f), size = androidx.compose.ui.geometry.Size((w - if (i < segments.lastIndex) gap else 0f).coerceAtLeast(1f), size.height))
+            }
+            x += w
+        }
+    }
+}
+
+/** Circular gauge (270° arc) with a royal-blue → cyan gradient and a soft glow. A solid [color] overrides the gradient (warning/critical). */
+@Composable
+fun RingGauge(fraction: Float, modifier: Modifier = Modifier, color: Color? = null, stroke: Dp = 8.dp) {
     val animated by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(600, easing = FastOutSlowInEasing), label = "ring")
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
+    val brand = LocalBrandColors.current
     Canvas(modifier) {
         val s = stroke.toPx()
-        drawArc(track, 135f, 270f, false, style = Stroke(s, cap = StrokeCap.Round),
-            topLeft = Offset(s / 2, s / 2), size = androidx.compose.ui.geometry.Size(size.width - s, size.height - s))
-        drawArc(color, 135f, 270f * animated, false, style = Stroke(s, cap = StrokeCap.Round),
-            topLeft = Offset(s / 2, s / 2), size = androidx.compose.ui.geometry.Size(size.width - s, size.height - s))
+        val inset = s / 2 + 3.dp.toPx() // room for the glow
+        val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+        val tl = Offset(inset, inset)
+        drawArc(track, 135f, 270f, false, style = Stroke(s, cap = StrokeCap.Round), topLeft = tl, size = arcSize)
+        if (animated <= 0.001f) return@Canvas
+        val brush: Brush = if (color != null) SolidColor(color) else {
+            // Sweep gradient mapped onto the arc (starts at 135°, spans 270°).
+            val mid = androidx.compose.ui.graphics.lerp(brand.gaugeStart, brand.gaugeEnd, 225f / 270f)
+            Brush.sweepGradient(
+                0f to mid, 0.125f to brand.gaugeEnd, 0.375f to brand.gaugeStart, 1f to mid,
+                center = center,
+            )
+        }
+        val glowColor = color ?: brand.glow
+        val sweep = 270f * animated
+        // Glow: wider, translucent passes under the arc.
+        // Glow strength ramps in with the sweep so tiny values don't turn into a blob at the arc start.
+        val glowScale = (sweep / 40f).coerceIn(0f, 1f)
+        if (glowScale > 0f) for ((w, a) in listOf(2.4f to 0.07f, 1.7f to 0.10f)) {
+            drawArc(glowColor.copy(alpha = (if (brand.dark) a * 1.4f else a) * glowScale), 135f, sweep, false,
+                style = Stroke(s * w, cap = StrokeCap.Round), topLeft = tl, size = arcSize)
+        }
+        drawArc(brush, 135f, sweep, false, style = Stroke(s, cap = StrokeCap.Round), topLeft = tl, size = arcSize)
     }
 }
 
-/** Tiny line chart with a soft gradient fill. */
+/** Tiny line chart with a soft gradient fill and glow. */
 @Composable
 fun Sparkline(values: List<Float>, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary, maxValue: Float? = null) {
+    val dark = LocalBrandColors.current.dark
     Canvas(modifier) {
         if (values.size < 2) return@Canvas
         val max = (maxValue ?: values.max()).coerceAtLeast(0.0001f)
+        val pad = 3.dp.toPx()
+        val h = size.height - pad
         val stepX = size.width / (values.size - 1)
-        val points = values.mapIndexed { i, v -> Offset(i * stepX, size.height - (v / max).coerceIn(0f, 1f) * size.height) }
+        val points = values.mapIndexed { i, v -> Offset(i * stepX, pad + h - (v / max).coerceIn(0f, 1f) * h) }
         val line = Path().apply {
             moveTo(points.first().x, points.first().y)
             for (i in 1 until points.size) {
@@ -202,8 +287,11 @@ fun Sparkline(values: List<Float>, modifier: Modifier = Modifier, color: Color =
             lineTo(0f, size.height)
             close()
         }
-        drawPath(fill, Brush.verticalGradient(listOf(color.copy(alpha = 0.28f), Color.Transparent)))
+        drawPath(fill, Brush.verticalGradient(listOf(color.copy(alpha = if (dark) 0.34f else 0.24f), Color.Transparent)))
+        drawPath(line, color.copy(alpha = if (dark) 0.22f else 0.14f), style = Stroke(6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
         drawPath(line, color, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawCircle(color.copy(alpha = 0.25f), 5.dp.toPx(), points.last())
+        drawCircle(color, 2.5.dp.toPx(), points.last())
     }
 }
 
@@ -301,14 +389,16 @@ fun ConfirmDialog(
         onDismissRequest = onDismiss,
         icon = icon?.let { { Icon(it, null) } },
         title = { Text(title) },
-        text = { Text(text) },
+        text = { Text(text, modifier = Modifier.verticalScroll(rememberScrollState())) },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = if (destructive) ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError,
-                ) else ButtonDefaults.buttonColors(),
-            ) { Text(confirmLabel) }
+            if (destructive) {
+                Button(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+                ) { Text(confirmLabel, maxLines = 1) }
+            } else {
+                GlowButton(onClick = onConfirm) { Text(confirmLabel, maxLines = 1) }
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -325,8 +415,8 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: (@Compos
 @Composable
 fun LabeledValue(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        Text(value, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
