@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.automirrored.rounded.Help
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
@@ -258,21 +259,33 @@ fun EmptyState(icon: ImageVector, title: String, message: String, modifier: Modi
 }
 
 @Composable
-fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-    EmptyState(
-        icon = Icons.Rounded.CloudOff,
-        title = "Can't reach your NAS",
-        message = message,
-        modifier = modifier,
-        action = { FilledTonalButton(onClick = onRetry) { Text("Try again") } },
-    )
+fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier, loginRequired: Boolean = false) {
+    if (loginRequired) {
+        EmptyState(
+            icon = Icons.Rounded.Lock,
+            title = "Sign in required",
+            message = "Sign in with your TrueNAS account to see this server.",
+            modifier = modifier,
+            action = { Button(onClick = onRetry) { Text("Sign in") } },
+        )
+    } else {
+        EmptyState(
+            icon = Icons.Rounded.CloudOff,
+            title = "Can't reach your NAS",
+            message = message,
+            modifier = modifier,
+            action = { FilledTonalButton(onClick = onRetry) { Text("Try again") } },
+        )
+    }
 }
 
 /** Scrollable error state (so pull-to-refresh still works). */
 @Composable
-fun ScrollableErrorState(message: String, onRetry: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize()) { item { Spacer(Modifier.height(48.dp)); ErrorState(message, onRetry) } }
+fun ScrollableErrorState(message: String, loginRequired: Boolean = false, onRetry: () -> Unit) {
+    LazyColumn(Modifier.fillMaxSize()) { item { Spacer(Modifier.height(48.dp)); ErrorState(message, onRetry, loginRequired = loginRequired) } }
 }
+
+val UiState.Error.isLoginRequired: Boolean get() = cause is app.truenascompanion.data.api.TrueNasException.LoginRequired
 
 @Composable
 fun ConfirmDialog(
@@ -325,7 +338,7 @@ fun Expandable(visible: Boolean, content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-fun InfoBanner(text: String, health: Health = Health.WARNING, modifier: Modifier = Modifier) {
+fun InfoBanner(text: String, modifier: Modifier = Modifier, health: Health = Health.WARNING) {
     val c = LocalStatusColors.current
     Surface(color = c.containerOf(health), shape = MaterialTheme.shapes.medium, modifier = modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

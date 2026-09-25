@@ -59,6 +59,7 @@ import app.truenascompanion.ui.components.Expandable
 import app.truenascompanion.ui.components.IconBadge
 import app.truenascompanion.ui.components.LabeledValue
 import app.truenascompanion.ui.components.ScrollableErrorState
+import app.truenascompanion.ui.components.isLoginRequired
 import app.truenascompanion.ui.components.SkeletonList
 import app.truenascompanion.ui.components.StatusChip
 import app.truenascompanion.ui.components.UiState
@@ -84,7 +85,7 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            c.repository.activeServer.map { it?.id }.distinctUntilChanged().collect { if (it != null) { _state.value = UiState.Loading; load() } }
+            c.repository.reloadKey.collect { if (it != null) { _state.value = UiState.Loading; load() } }
         }
     }
 
@@ -125,7 +126,7 @@ fun StorageScreen() {
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
                 when (val s = state) {
                     UiState.Loading -> SkeletonList(4, 110.dp)
-                    is UiState.Error -> ScrollableErrorState(s.message) { vm.refresh() }
+                    is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
                     is UiState.Success -> when (tab) {
                         0 -> PoolsList(s.data.pools)
                         1 -> DisksList(s.data.disks)

@@ -25,8 +25,14 @@ sealed class TrueNasException(message: String, cause: Throwable? = null) : Excep
     class Rpc(val code: Int, val errname: String?, message: String) : TrueNasException(message)
     class Http(val code: Int, message: String) : TrueNasException(message)
     class JobFailed(message: String) : TrueNasException(message)
+    class Unsupported(message: String) : TrueNasException(message)
     class NotConnected : TrueNasException("Not connected to the server.")
     class NoServer : TrueNasException("No server configured.")
+    /** Password sign-in needs user interaction (password and/or 2FA code). */
+    class LoginRequired : TrueNasException("Sign in to continue.")
+    class PasswordRejected(message: String = "Wrong username or password.") : TrueNasException(message)
+    class OtpLockout : TrueNasException("Too many wrong two-factor codes. Please sign in again.")
+    class TokenRejected : TrueNasException("The saved session has expired.")
 }
 
 /** True if the error means "this API method doesn't exist on this server" — used to try an older/newer method. */
@@ -65,3 +71,10 @@ fun Throwable.userMessage(): String = when (this) {
     is TrueNasException -> message ?: "Unknown error"
     else -> message ?: javaClass.simpleName
 }
+
+/** Shown when TrueNAS answers `false` / 401 to an API key. */
+const val API_KEY_REJECTED_MESSAGE =
+    "API key rejected. TrueNAS revokes API keys that reach it over an insecure connection. This also happens " +
+        "when you use https:// but a reverse proxy (for example Nginx Proxy Manager) forwards to TrueNAS over plain " +
+        "http. Fix: set the proxy's upstream to https://<truenas>:443, then reset the key in TrueNAS " +
+        "(My API Keys › Edit › Reset). Or switch this server to \"Password\" sign-in."

@@ -69,7 +69,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.truenascompanion.data.model.AuthMethod
 import app.truenascompanion.data.model.Health
+import app.truenascompanion.ui.auth.OtpDialog
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material.icons.rounded.Password
+import androidx.compose.material.icons.rounded.Person
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.ConfirmDialog
@@ -174,8 +181,23 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
             Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // --- how to sign in ---
+            Text("Sign in with", style = MaterialTheme.typography.titleSmall)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                AuthMethod.entries.forEachIndexed { i, m ->
+                    SegmentedButton(
+                        selected = s.authMethod == m,
+                        onClick = { vm.update { it.copy(authMethod = m) } },
+                        shape = SegmentedButtonDefaults.itemShape(i, AuthMethod.entries.size),
+                        icon = { SegmentedButtonDefaults.Icon(s.authMethod == m) { Icon(if (m == AuthMethod.API_KEY) Icons.Rounded.Key else Icons.Rounded.Person, null, Modifier.size(18.dp)) } },
+                    ) { Text(if (m == AuthMethod.API_KEY) "API key" else "Username & password") }
+                }
+            }
             Text(
-                "In the TrueNAS web UI open the account menu (top right) › My API Keys › Add, or Credentials › Users › View API Keys. Copy the key (it is shown only once) and paste it below.",
+                if (s.authMethod == AuthMethod.API_KEY)
+                    "In the TrueNAS web UI open the account menu (top right) › My API Keys › Add, or Credentials › Users › View API Keys. Copy the key (it is shown only once) and paste it below."
+                else
+                    "Use your TrueNAS web UI account. If two-factor authentication is on, you'll be asked for the 6-digit code. The app then keeps a session so you don't need a code every time you open it.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
@@ -189,26 +211,85 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
             )
             AnimatedVisibility(s.isHttp) {
                 InfoBanner(
-                    "Plain HTTP sends your API key unencrypted. TrueNAS 25.04+ automatically revokes API keys used over HTTP — use https:// whenever possible.",
-                    Health.CRITICAL,
+                    if (s.authMethod == AuthMethod.API_KEY)
+                        "Plain HTTP sends your API key unencrypted. TrueNAS 25.04+ automatically revokes API keys used over HTTP, so use https:// whenever possible."
+                    else "Plain HTTP sends your password unencrypted. Use https:// whenever possible.",
+                    health = Health.CRITICAL,
                 )
             }
-            OutlinedTextField(
-                value = s.apiKey, onValueChange = { v -> vm.update { it.copy(apiKey = v) } },
-                label = { Text("API key") },
-                placeholder = { if (s.hasSavedKey) Text("Saved — leave empty to keep") },
-                leadingIcon = { Icon(Icons.Rounded.Key, null) },
-                trailingIcon = {
-                    IconButton(onClick = { showKey = !showKey }) {
-                        Icon(if (showKey) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (showKey) "Hide" else "Show")
+            if (s.authMethod == AuthMethod.API_KEY) {
+                OutlinedTextField(
+                    value = s.apiKey, onValueChange = { v -> vm.update { it.copy(apiKey = v) } },
+                    label = { Text("API key") },
+                    placeholder = { if (s.hasSavedKey) Text("Saved. Leave empty to keep it") },
+                    leadingIcon = { Icon(Icons.Rounded.Key, null) },
+                    trailingIcon = {
+                        IconButton(onClick = { showKey = !showKey }) {
+                            Icon(if (showKey) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (showKey) "Hide" else "Show")
+                        }
+                    },
+                    visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    supportingText = { Text("Stored encrypted with the Android Keystore.") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                OutlinedTextField(
+                    value = s.username, onValueChange = { v -> vm.update { it.copy(username = v) } },
+                    label = { Text("Username") }, placeholder = { Text("truenas_admin") }, singleLine = true,
+                    leadingIcon = { Icon(Icons.Rounded.Person, null) },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = s.password, onValueChange = { v -> vm.update { it.copy(password = v) } },
+                    label = { Text("Password") },
+                    placeholder = { if (s.hasSavedPassword) Text("Saved. Leave empty to keep it") },
+                    leadingIcon = { Icon(Icons.Rounded.Password, null) },
+                    trailingIcon = {
+                        IconButton(onClick = { showKey = !showKey }) {
+                            Icon(if (showKey) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (showKey) "Hide" else "Show")
+                        }
+                    },
+                    visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    supportingText = { Text("Used to sign in. Only kept on the phone if you turn on \"Remember password\".") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ElevatedSection {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Remember password", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Off: when your session ends you enter password + code again. On: the password is stored encrypted " +
+                                    "(Android Keystore) and only the 2FA code is asked.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Switch(checked = s.rememberPassword, onCheckedChange = { v -> vm.update { it.copy(rememberPassword = v) } })
                     }
-                },
-                visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-                singleLine = true,
-                supportingText = { Text("Stored encrypted with the Android Keystore.") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, autoCorrectEnabled = false),
-                modifier = Modifier.fillMaxWidth(),
-            )
+                    Spacer(Modifier.height(14.dp))
+                    Text("Stay signed in for", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(8.dp))
+                    val options = listOf(1 to "1 day", 7 to "7 days", 30 to "30 days")
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        options.forEachIndexed { i, (days, label) ->
+                            SegmentedButton(
+                                selected = s.sessionDays == days, onClick = { vm.update { it.copy(sessionDays = days) } },
+                                shape = SegmentedButtonDefaults.itemShape(i, options.size),
+                            ) { Text(label) }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "The session renews each time the app connects, so you're only asked again after this long without using the app, or after the NAS restarts.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             OutlinedTextField(
                 value = s.name, onValueChange = { v -> vm.update { it.copy(name = v) } },
                 label = { Text("Nickname (optional)") }, placeholder = { Text("Home NAS") }, singleLine = true,
@@ -221,19 +302,21 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
             }
             AnimatedVisibility(advanced) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = s.username, onValueChange = { v -> vm.update { it.copy(username = v) } },
-                        label = { Text("API key owner username") }, placeholder = { Text("truenas_admin") }, singleLine = true,
-                        supportingText = { Text("Only needed on TrueNAS 26+/27, where API key login requires the username.") },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Use legacy REST API", style = MaterialTheme.typography.bodyLarge)
-                            Text("For SCALE releases older than 25.04. Detected automatically; no live stats.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (s.authMethod == AuthMethod.API_KEY) {
+                        OutlinedTextField(
+                            value = s.username, onValueChange = { v -> vm.update { it.copy(username = v) } },
+                            label = { Text("API key owner username") }, placeholder = { Text("truenas_admin") }, singleLine = true,
+                            supportingText = { Text("Only needed on TrueNAS 26+/27, where API key login requires the username.") },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Use legacy REST API", style = MaterialTheme.typography.bodyLarge)
+                                Text("For SCALE releases older than 25.04. Detected automatically; no live stats.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = s.forceRest, onCheckedChange = { v -> vm.update { it.copy(forceRest = v) } })
                         }
-                        Switch(checked = s.forceRest, onCheckedChange = { v -> vm.update { it.copy(forceRest = v) } })
                     }
                     if (s.pinnedCert != null) {
                         ElevatedSection {
@@ -245,6 +328,8 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                             }
                             Text(s.pinnedCert ?: "", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                         }
+                    } else if (s.authMethod == AuthMethod.PASSWORD) {
+                        Text("No advanced options for password sign-in.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -252,16 +337,26 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
             TestOutcomeCard(s)
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(onClick = vm::test, enabled = s.canSubmit && !s.testing, modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = vm::test, enabled = s.canTest && !s.testing, modifier = Modifier.weight(1f)) {
                     if (s.testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Rounded.NetworkCheck, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Test")
+                    Text(if (s.authMethod == AuthMethod.PASSWORD) "Test sign-in" else "Test")
                 }
-                Button(onClick = vm::save, enabled = s.canSubmit && !s.testing, modifier = Modifier.weight(1f)) { Text("Save") }
+                Button(onClick = vm::save, enabled = s.canSave && !s.testing, modifier = Modifier.weight(1f)) { Text("Save") }
+            }
+            if (s.authMethod == AuthMethod.PASSWORD) {
+                Text(
+                    "Tip: test sign-in before saving. The session from the test is kept, so you won't be asked for a code again right away.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    s.otp?.let { otp ->
+        OtpDialog(username = otp.username, error = otp.error, busy = otp.busy, onSubmit = vm::submitOtp, onCancel = vm::cancelOtp)
     }
 
     s.pendingCertificate?.let { cert ->
@@ -306,7 +401,7 @@ private fun TestOutcomeCard(s: ServerEditState) {
                 Text(o.result.info.version, style = MaterialTheme.typography.bodyMedium)
                 Text("Using ${o.result.flavor.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            is TestOutcome.Failure -> InfoBanner(o.message, Health.CRITICAL)
+            is TestOutcome.Failure -> InfoBanner(o.message, health = Health.CRITICAL)
             null -> Unit
         }
     }

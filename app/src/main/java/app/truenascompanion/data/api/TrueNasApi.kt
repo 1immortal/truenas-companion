@@ -4,6 +4,8 @@ import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.data.model.ApiFlavor
 import app.truenascompanion.data.model.AppAction
 import app.truenascompanion.data.model.AppInfo
+import app.truenascompanion.data.model.AppUpgradeSummary
+import app.truenascompanion.data.model.JobInfo
 import app.truenascompanion.data.model.Dataset
 import app.truenascompanion.data.model.Disk
 import app.truenascompanion.data.model.Pool
@@ -17,6 +19,10 @@ import kotlinx.coroutines.flow.Flow
  * - [WebSocketTrueNasApi]: JSON-RPC 2.0 over WebSocket at `/api/current` (TrueNAS 25.04+), supports live stats.
  * - [RestTrueNasApi]: legacy REST API v2.0 at `/api/v2.0` (older SCALE releases), polling only.
  */
+private fun unsupported() = TrueNasException.Unsupported(
+    "This needs the WebSocket API (TrueNAS SCALE 25.04 or newer). Switch the server's connection away from the legacy REST API.",
+)
+
 interface TrueNasApi : AutoCloseable {
     val flavor: ApiFlavor
     val supportsRealtime: Boolean
@@ -36,6 +42,18 @@ interface TrueNasApi : AutoCloseable {
     suspend fun serviceAction(service: String, start: Boolean)
     suspend fun reboot()
     suspend fun shutdown()
+
+    // --- App upgrades & jobs (WebSocket API only) ---
+    /** `app.upgrade_summary(app, {app_version: "latest"})`. */
+    suspend fun appUpgradeSummary(app: AppInfo): AppUpgradeSummary = throw unsupported()
+    /** Starts the `app.upgrade` job and returns its job id. */
+    suspend fun startAppUpgrade(app: AppInfo, snapshotHostPaths: Boolean): Long = throw unsupported()
+    /** Starts the `catalog.sync` job (refreshes the catalog so new app versions show up) and returns its job id. */
+    suspend fun startCatalogSync(): Long = throw unsupported()
+    /** Live list of recent middleware jobs: `core.get_jobs` snapshot + `core.subscribe("core.get_jobs")` updates. */
+    fun jobs(): Flow<List<JobInfo>> = kotlinx.coroutines.flow.flow { throw unsupported() }
+    /** `core.job_abort(id)`. */
+    suspend fun abortJob(id: Long): Unit = throw unsupported()
 
     override fun close()
 }

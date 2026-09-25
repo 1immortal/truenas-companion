@@ -9,15 +9,26 @@ data class ServerConfig(
     val name: String,
     /** Normalized base URL, e.g. `https://nas.local` or `http://192.168.1.10:8080`. */
     val url: String,
-    /** Only needed for TrueNAS 26+/27 where `auth.login_ex` (API_KEY_PLAIN) requires the key owner's username. */
+    /**
+     * Account name. Required for password sign-in; for API keys only needed on TrueNAS 26+/27 where
+     * `auth.login_ex` (API_KEY_PLAIN) requires the key owner's username.
+     */
     val username: String = "",
     /** SHA-256 fingerprint (hex, uppercase, colon separated) of a self-signed certificate the user chose to trust. */
     val pinnedCertSha256: String? = null,
     /** Skip the WebSocket API and use the legacy REST API v2.0 directly. */
     val forceRest: Boolean = false,
+    val authMethod: AuthMethod = AuthMethod.API_KEY,
+    /** Lifetime of the reusable session token requested after a password (+2FA) sign-in. */
+    val sessionDays: Int = 7,
 ) {
     val isHttps: Boolean get() = url.startsWith("https://", ignoreCase = true)
     val displayHost: String get() = url.substringAfter("://")
+}
+
+enum class AuthMethod(val label: String) {
+    API_KEY("API key"),
+    PASSWORD("Password"),
 }
 
 enum class ApiFlavor(val label: String) {
@@ -128,6 +139,34 @@ data class AppInfo(
     val containers: Int?,
     /** true when the app came from the pre-24.10 Kubernetes `chart.release.*` API. */
     val legacyChart: Boolean = false,
+    /** Newest catalog version (`latest_version`), when an upgrade is available. */
+    val latestVersion: String? = null,
+)
+
+/** Result of `app.upgrade_summary`. */
+data class AppUpgradeSummary(
+    val currentVersion: String?,
+    val targetVersion: String?,
+    val changelog: String?,
+)
+
+enum class JobState { WAITING, RUNNING, SUCCESS, FAILED, ABORTED, UNKNOWN;
+    val active: Boolean get() = this == WAITING || this == RUNNING
+}
+
+/** A middleware job from `core.get_jobs`. */
+data class JobInfo(
+    val id: Long,
+    val method: String,
+    val firstArgument: String?,
+    val description: String?,
+    val state: JobState,
+    val percent: Double?,
+    val progressText: String?,
+    val error: String?,
+    val abortable: Boolean,
+    val startedMillis: Long?,
+    val finishedMillis: Long?,
 )
 
 enum class AppAction(val label: String) { START("Start"), STOP("Stop"), RESTART("Restart"), REDEPLOY("Redeploy") }

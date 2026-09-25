@@ -133,7 +133,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
             } else {
                 PullToRefreshBox(isRefreshing = data.refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
                     when {
-                        data.error != null && data.system == null -> ScrollableErrorState(data.error!!) { vm.refresh() }
+                        data.error != null && data.system == null -> ScrollableErrorState(data.error!!, data.loginRequired) { vm.refresh() }
                         data.loading && data.system == null -> SkeletonGrid()
                         else -> WidgetGrid(layout.visibleWidgets, data, live, flavor, onOpen, onEdit = { vm.setEditing(true) })
                     }
@@ -191,7 +191,7 @@ private fun WidgetGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         if (data.error != null) {
-            item(span = { GridItemSpan(2) }) { InfoBanner("Showing last known data: ${data.error}", Health.WARNING) }
+            item(span = { GridItemSpan(2) }) { InfoBanner("Showing last known data: ${data.error}", health = Health.WARNING) }
         }
         if (widgets.isEmpty()) {
             item(span = { GridItemSpan(2) }) {

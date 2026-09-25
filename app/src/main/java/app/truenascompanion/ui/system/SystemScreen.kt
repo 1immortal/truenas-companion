@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Dns
@@ -98,7 +99,7 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            server.map { it?.id }.distinctUntilChanged().collect { if (it != null) { _services.value = UiState.Loading; load() } }
+            c.repository.reloadKey.collect { if (it != null) { _services.value = UiState.Loading; load() } }
         }
     }
 
@@ -147,7 +148,7 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemScreen(onServers: () -> Unit) {
+fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -182,6 +183,20 @@ fun SystemScreen(onServers: () -> Unit) {
                                 }
                             }
                             Text("Switch", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                item {
+                    ElevatedSection(onClick = onJobs) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconBadge(Icons.AutoMirrored.Rounded.ListAlt)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Tasks", style = MaterialTheme.typography.titleMedium)
+                                Text("Running and recent jobs with live progress", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
                         }
                     }

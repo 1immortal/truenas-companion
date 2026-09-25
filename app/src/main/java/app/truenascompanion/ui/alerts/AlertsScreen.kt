@@ -53,6 +53,7 @@ import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.EmptyState
 import app.truenascompanion.ui.components.ScrollableErrorState
+import app.truenascompanion.ui.components.isLoginRequired
 import app.truenascompanion.ui.components.SkeletonList
 import app.truenascompanion.ui.components.StatusChip
 import app.truenascompanion.ui.components.UiState
@@ -77,7 +78,7 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            c.repository.activeServer.map { it?.id }.distinctUntilChanged().collect { if (it != null) { _state.value = UiState.Loading; load() } }
+            c.repository.reloadKey.collect { if (it != null) { _state.value = UiState.Loading; load() } }
         }
     }
 
@@ -117,7 +118,7 @@ fun AlertsScreen() {
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
             when (val s = state) {
                 UiState.Loading -> SkeletonList(5, 90.dp)
-                is UiState.Error -> ScrollableErrorState(s.message) { vm.refresh() }
+                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
                 is UiState.Success -> {
                     val active = s.data.filter { !it.dismissed }
                     val list = if (showDismissed) s.data else active

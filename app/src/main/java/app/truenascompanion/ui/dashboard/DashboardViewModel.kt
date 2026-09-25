@@ -41,6 +41,7 @@ data class DashboardData(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     val error: String? = null,
+    val loginRequired: Boolean = false,
     val system: SystemInfo? = null,
     val pools: List<Pool>? = null,
     val apps: AppsSummary? = null,
@@ -74,8 +75,8 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
     val data: StateFlow<DashboardData> = _data.asStateFlow()
 
     /** Live stats only flow while the dashboard is on screen (collectAsStateWithLifecycle + WhileSubscribed). */
-    val live: StateFlow<LiveStats> = server.flatMapLatest { s ->
-        if (s == null) emptyFlow() else repo.realtime().catch { }
+    val live: StateFlow<LiveStats> = repo.reloadKey.flatMapLatest { key ->
+        if (key == null) emptyFlow() else repo.realtime().catch { }
     }.scan(LiveStats()) { acc, s -> acc.add(s) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(3000), LiveStats())
 
@@ -97,11 +98,13 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
             draft.debounce(400).filterNotNull().collect { l -> server.value?.id?.let { c.settings.saveDashboardLayout(it, l) } }
         }
         viewModelScope.launch {
-            server.map { it?.id }.distinctUntilChanged().collect { id ->
+            server.map { it?.id }.distinctUntilChanged().collect {
                 draft.value = null
                 _editing.value = false
-                if (id != null) { _data.value = DashboardData(); load() }
             }
+        }
+        viewModelScope.launch {
+            repo.reloadKey.collect { key -> if (key != null) { _data.value = DashboardData(); load() } }
         }
     }
 
@@ -155,7 +158,9 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                 )
             }
         } catch (e: Throwable) {
-            _data.update { it.copy(loading = false, refreshing = false, error = e.userMessage()) }
+            _data.update {
+                it.copy(loading = false, refreshing = false, error = e.userMessage(), loginRequired = e is app.truenascompanion.data.api.TrueNasException.LoginRequired)
+            }
         }
     }
 

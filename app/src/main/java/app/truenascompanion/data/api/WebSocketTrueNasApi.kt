@@ -4,6 +4,8 @@ import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.data.model.ApiFlavor
 import app.truenascompanion.data.model.AppAction
 import app.truenascompanion.data.model.AppInfo
+import app.truenascompanion.data.model.AppUpgradeSummary
+import app.truenascompanion.data.model.JobInfo
 import app.truenascompanion.data.model.Dataset
 import app.truenascompanion.data.model.Disk
 import app.truenascompanion.data.model.Pool
@@ -20,6 +22,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -33,9 +38,10 @@ import okhttp3.OkHttpClient
 
 private fun params(vararg items: JsonElement) = JsonArray(items.toList())
 private fun p(s: String) = JsonPrimitive(s)
+private const val MAX_JOBS = 60
 
 /** TrueNAS 25.04+ JSON-RPC 2.0 WebSocket API (`wss://host/api/current`). */
-class WebSocketTrueNasApi private constructor(private val rpc: JsonRpcClient) : TrueNasApi {
+class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) : TrueNasApi {
 
     override val flavor = ApiFlavor.WEBSOCKET
     override val supportsRealtime = true
@@ -76,10 +82,7 @@ class WebSocketTrueNasApi private constructor(private val rpc: JsonRpcClient) : 
                     else -> false
                 }
             }
-            if (!ok) throw TrueNasException.AuthFailed(
-                "API key rejected. Check that it was copied completely and has not been revoked " +
-                    "(TrueNAS automatically revokes keys that were sent over plain HTTP)."
-            )
+            if (!ok) throw TrueNasException.AuthFailed(API_KEY_REJECTED_MESSAGE)
         }
     }
 
@@ -217,6 +220,81 @@ class WebSocketTrueNasApi private constructor(private val rpc: JsonRpcClient) : 
 
     override suspend fun reboot() = power("system.reboot", "Reboot requested from TrueNAS Companion (Android)")
     override suspend fun shutdown() = power("system.shutdown", "Shutdown requested from TrueNAS Companion (Android)")
+
+    /**
+     * `auth.generate_token(ttl, attrs, match_origin, single_use)`. We request a reusable (single_use=false) token that is
+     * not bound to the client address (match_origin=false) because phones change networks and sit behind proxies.
+     * Returns null if the server refuses (e.g. STIG mode).
+     */
+    suspend fun generateToken(ttlSeconds: Long): String? = runCatching {
+        call("auth.generate_token", JsonPrimitive(ttlSeconds), JsonObject(emptyMap()), JsonPrimitive(false), JsonPrimitive(false))
+            .prim()?.takeIf { it.isString }?.content
+    }.getOrNull()
+
+    // --- App upgrades & jobs ---
+
+    /** Calls a job method without waiting and returns the job id. */
+    private suspend fun startJob(method: String, vararg args: JsonElement): Long =
+        call(method, *args).prim()?.takeUnless { it.isString }?.longOrNull
+            ?: throw TrueNasException.JobFailed("$method did not return a job id")
+
+    override suspend fun appUpgradeSummary(app: AppInfo): AppUpgradeSummary {
+        val res = call("app.upgrade_summary", p(app.name), buildJsonObject { put("app_version", "latest") }).obj()
+            ?: JsonObject(emptyMap())
+        return Parsers.upgradeSummary(res, app.version)
+    }
+
+    override suspend fun startAppUpgrade(app: AppInfo, snapshotHostPaths: Boolean): Long {
+        if (app.legacyChart) throw TrueNasException.Unsupported("Upgrading legacy Kubernetes apps isn't supported. Use the TrueNAS web UI.")
+        return startJob("app.upgrade", p(app.name), buildJsonObject {
+            put("app_version", "latest")
+            put("snapshot_hostpaths", snapshotHostPaths)
+        })
+    }
+
+    override suspend fun startCatalogSync(): Long = startJob("catalog.sync")
+
+    override suspend fun abortJob(id: Long) {
+        call("core.job_abort", JsonPrimitive(id))
+    }
+
+    override fun jobs(): Flow<List<JobInfo>> = channelFlow {
+        val jobs = HashMap<Long, JsonObject>()
+        val lock = Mutex()
+        suspend fun emitSnapshot() {
+            val list = jobs.values.mapNotNull(Parsers::job).sortedByDescending { it.id }.take(MAX_JOBS)
+            send(list)
+        }
+        // Subscribe first so no update is lost between the snapshot query and the subscription.
+        launch(start = CoroutineStart.UNDISPATCHED) {
+            rpc.events.collect { ev ->
+                if (ev.str("collection") != "core.get_jobs") return@collect
+                val fields = ev["fields"].obj()
+                val id = ev.long("id") ?: fields?.long("id") ?: return@collect
+                lock.withLock {
+                    when (ev.str("msg")?.lowercase()) {
+                        "removed" -> jobs.remove(id)
+                        else -> if (fields != null) jobs[id] = JsonObject((jobs[id] ?: emptyMap()) + fields)
+                    }
+                    emitSnapshot()
+                }
+            }
+        }
+        launch { // end the flow when the socket dies so the repository can reconnect
+            while (rpc.isOpen) delay(3_000)
+            close(TrueNasException.NotConnected())
+        }
+        val subId = call("core.subscribe", p("core.get_jobs"))
+        val initial = call("core.get_jobs", JsonArray(emptyList()), buildJsonObject {
+            put("order_by", buildJsonArray { add(p("-id")) })
+            put("limit", MAX_JOBS)
+        }).arr().orEmpty()
+        lock.withLock {
+            initial.forEach { e -> e.obj()?.let { o -> o.long("id")?.let { id -> jobs.putIfAbsent(id, o) } } }
+            emitSnapshot()
+        }
+        awaitClose { runCatching { rpc.notify("core.unsubscribe", params(subId)) } }
+    }
 
     override fun close() = rpc.close()
 }

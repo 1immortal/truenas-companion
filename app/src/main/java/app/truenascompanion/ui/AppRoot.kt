@@ -45,6 +45,7 @@ import app.truenascompanion.TrueNasApp
 import app.truenascompanion.data.model.WidgetType
 import app.truenascompanion.ui.alerts.AlertsScreen
 import app.truenascompanion.ui.apps.AppsScreen
+import app.truenascompanion.ui.jobs.JobsScreen
 import app.truenascompanion.ui.dashboard.DashboardScreen
 import app.truenascompanion.ui.servers.ServerEditScreen
 import app.truenascompanion.ui.servers.ServerListScreen
@@ -62,6 +63,7 @@ private enum class Tab(val route: String, val label: String, val selected: Image
 
 private object Routes {
     const val SERVERS = "servers"
+    const val JOBS = "jobs"
     const val EDIT = "server_edit?id={id}"
     fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
 }
@@ -100,6 +102,7 @@ fun AppRoot() {
             }
         },
     ) { padding ->
+        app.truenascompanion.ui.auth.AuthPromptHost()
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             NavHost(
                 navController = nav,
@@ -121,9 +124,10 @@ fun AppRoot() {
                     )
                 }
                 composable(Tab.STORAGE.route) { StorageScreen() }
-                composable(Tab.APPS.route) { AppsScreen() }
+                composable(Tab.APPS.route) { AppsScreen(onJobs = { nav.navigate(Routes.JOBS) }) }
                 composable(Tab.ALERTS.route) { AlertsScreen() }
-                composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }) }
+                composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onJobs = { nav.navigate(Routes.JOBS) }) }
+                composable(Routes.JOBS) { JobsScreen(onBack = { nav.popBackStack() }) }
                 composable(
                     Routes.SERVERS,
                     enterTransition = { slideInHorizontally { it } + fadeIn() },

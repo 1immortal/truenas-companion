@@ -2,6 +2,9 @@ package app.truenascompanion.data.api
 
 import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.data.model.AppInfo
+import app.truenascompanion.data.model.AppUpgradeSummary
+import app.truenascompanion.data.model.JobInfo
+import app.truenascompanion.data.model.JobState
 import app.truenascompanion.data.model.AppState
 import app.truenascompanion.data.model.Dataset
 import app.truenascompanion.data.model.Disk
@@ -202,8 +205,41 @@ object Parsers {
             description = o["metadata"].obj()?.str("description"),
             portalUrl = portals?.values?.firstNotNullOfOrNull { it.prim()?.contentOrNull },
             containers = o["active_workloads"].obj()?.long("containers")?.toInt(),
+            latestVersion = o.str("latest_version"),
         )
     }
+
+    fun upgradeSummary(o: JsonObject, current: String?) = AppUpgradeSummary(
+        currentVersion = current,
+        targetVersion = o.str("upgrade_human_version") ?: o.str("upgrade_version") ?: o.str("latest_human_version") ?: o.str("latest_version"),
+        changelog = o.str("changelog")?.let(::stripHtml)?.takeIf { it.isNotBlank() },
+    )
+
+    fun job(o: JsonObject): JobInfo? {
+        val id = o.long("id") ?: return null
+        val progress = o["progress"].obj()
+        return JobInfo(
+            id = id,
+            method = o.str("method") ?: "job",
+            firstArgument = o["arguments"].arr()?.firstOrNull()?.prim()?.contentOrNull,
+            description = o.str("description"),
+            state = runCatching { JobState.valueOf(o.str("state")!!.uppercase()) }.getOrDefault(JobState.UNKNOWN),
+            percent = progress?.double("percent"),
+            progressText = progress?.str("description")?.takeIf { it.isNotBlank() },
+            error = o.str("error")?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim(),
+            abortable = o.bool("abortable") ?: false,
+            startedMillis = parseDate(o["time_started"]),
+            finishedMillis = parseDate(o["time_finished"]),
+        )
+    }
+
+    internal fun stripHtml(s: String): String = s
+        .replace(Regex("(?i)<br\\s*/?>|</p>|</li>|</h\\d>"), "\n")
+        .replace(Regex("(?i)<li[^>]*>"), "• ")
+        .replace(Regex("<[^>]+>"), "")
+        .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'")
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim()
 
     /** Pre-24.10 Kubernetes based apps (`chart.release.query`). */
     fun chartRelease(o: JsonObject): AppInfo {

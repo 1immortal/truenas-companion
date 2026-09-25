@@ -3,7 +3,14 @@ package app.truenascompanion.ui.servers
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
+import app.truenascompanion.data.api.Credentials
+import app.truenascompanion.data.api.IssuedToken
+import app.truenascompanion.data.api.LoginStep
+import app.truenascompanion.data.api.PendingOtp
 import app.truenascompanion.data.api.TrueNasException
+import app.truenascompanion.data.api.WebSocketAuth
+import app.truenascompanion.data.model.AuthMethod
+import app.truenascompanion.data.repository.sessionTtlSeconds
 import app.truenascompanion.data.api.userMessage
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.net.CertificateInfo
@@ -32,36 +39,61 @@ sealed interface TestOutcome {
     data class Failure(val message: String) : TestOutcome
 }
 
+data class OtpUi(val username: String, val error: String? = null, val busy: Boolean = false)
+
 data class ServerEditState(
     val id: String? = null,
     val name: String = "",
     val url: String = "",
+    val authMethod: AuthMethod = AuthMethod.API_KEY,
     val apiKey: String = "",
     val username: String = "",
+    val password: String = "",
+    val rememberPassword: Boolean = false,
+    val sessionDays: Int = 7,
     val forceRest: Boolean = false,
     val pinnedCert: String? = null,
     val hasSavedKey: Boolean = false,
+    val hasSavedPassword: Boolean = false,
     val testing: Boolean = false,
     val outcome: TestOutcome? = null,
+    val otp: OtpUi? = null,
     val pendingCertificate: CertificateInfo? = null,
     val urlError: String? = null,
     val saved: Boolean = false,
 ) {
     val normalizedUrl: String? get() = UrlUtils.normalize(url)
     val isHttp: Boolean get() = normalizedUrl?.startsWith("http://") == true
-    val canSubmit: Boolean get() = normalizedUrl != null && (apiKey.isNotBlank() || hasSavedKey)
+    val canTest: Boolean
+        get() = normalizedUrl != null && when (authMethod) {
+            AuthMethod.API_KEY -> apiKey.isNotBlank() || hasSavedKey
+            AuthMethod.PASSWORD -> username.isNotBlank() && (password.isNotEmpty() || hasSavedPassword)
+        }
+    val canSave: Boolean
+        get() = normalizedUrl != null && when (authMethod) {
+            AuthMethod.API_KEY -> apiKey.isNotBlank() || hasSavedKey
+            AuthMethod.PASSWORD -> username.isNotBlank()
+        }
 }
 
 class ServerEditViewModel(private val c: AppContainer, serverId: String?) : ViewModel() {
     private val _state = MutableStateFlow(ServerEditState())
     val state: StateFlow<ServerEditState> = _state.asStateFlow()
 
+    private var pendingOtp: PendingOtp? = null
+    /** Session token obtained by a successful password test; saved with the server so no second 2FA prompt is needed. */
+    private var testedToken: IssuedToken? = null
+    private var testedTokenFor: String? = null
+
     init {
         if (serverId != null) viewModelScope.launch {
             val s = c.settings.servers.first().firstOrNull { it.id == serverId } ?: return@launch
+            val hasPw = c.settings.hasPassword(s.id)
             _state.value = ServerEditState(
                 id = s.id, name = s.name, url = s.url, username = s.username, forceRest = s.forceRest,
+                authMethod = s.authMethod, sessionDays = s.sessionDays,
                 pinnedCert = s.pinnedCertSha256, hasSavedKey = c.settings.apiKey(s.id) != null,
+                hasSavedPassword = hasPw, rememberPassword = hasPw,
             )
         }
     }
@@ -72,6 +104,9 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
     private suspend fun keyToUse(s: ServerEditState): String? =
         s.apiKey.trim().ifBlank { null } ?: s.id?.let { c.settings.apiKey(it) }
 
+    private suspend fun passwordToUse(s: ServerEditState): String? =
+        s.password.ifEmpty { null } ?: s.id?.let { c.settings.password(it) }
+
     private fun buildConfig(s: ServerEditState, url: String) = ServerConfig(
         id = s.id ?: UUID.randomUUID().toString(),
         name = s.name.trim().ifBlank { url.substringAfter("://") },
@@ -79,35 +114,94 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         username = s.username.trim(),
         pinnedCertSha256 = s.pinnedCert,
         forceRest = s.forceRest,
+        authMethod = s.authMethod,
+        sessionDays = s.sessionDays,
     )
+
+    private fun fingerprint(s: ServerEditState, url: String) = "$url|${s.username.trim()}|${s.pinnedCert}"
 
     fun test() {
         val s = _state.value
         val url = s.normalizedUrl ?: run { _state.update { it.copy(urlError = "Enter a valid address, e.g. https://truenas.local") }; return }
+        if (s.id == null) _state.update { it.copy(id = UUID.randomUUID().toString()) } // stable id for the tested config
         _state.update { it.copy(testing = true, outcome = null) }
         viewModelScope.launch {
-            val key = keyToUse(s)
-            if (key == null) {
-                _state.update { it.copy(testing = false, outcome = TestOutcome.Failure("Enter an API key.")) }
-                return@launch
-            }
+            val st = _state.value
+            val config = buildConfig(st, url)
             try {
-                val result = c.repository.test(buildConfig(s, url), key)
-                _state.update { it.copy(testing = false, outcome = TestOutcome.Success(result)) }
-            } catch (e: TrueNasException.UntrustedCertificate) {
-                _state.update {
-                    it.copy(
-                        testing = false,
-                        pendingCertificate = e.certificate,
-                        outcome = TestOutcome.Failure(
-                            if (e.certificate != null) "The server uses a certificate your phone doesn't trust. Review it to continue."
-                            else e.userMessage()
-                        ),
-                    )
+                when (st.authMethod) {
+                    AuthMethod.API_KEY -> {
+                        val key = keyToUse(st) ?: throw TrueNasException.AuthFailed("Enter an API key.")
+                        val result = c.repository.test(config, key)
+                        _state.update { it.copy(testing = false, outcome = TestOutcome.Success(result)) }
+                    }
+                    AuthMethod.PASSWORD -> {
+                        val pw = passwordToUse(st) ?: throw TrueNasException.AuthFailed("Enter your password.")
+                        handleStep(WebSocketAuth.login(config, Credentials.Password(config.username, pw), config.sessionTtlSeconds()), fingerprint(st, url))
+                    }
                 }
             } catch (e: Throwable) {
-                _state.update { it.copy(testing = false, outcome = TestOutcome.Failure(e.userMessage())) }
+                onTestError(e)
             }
+        }
+    }
+
+    private suspend fun handleStep(step: LoginStep, fp: String) {
+        when (step) {
+            is LoginStep.Success -> {
+                val info = try { step.api.systemInfo() } finally { step.api.close() }
+                testedToken = step.token
+                testedTokenFor = fp
+                pendingOtp = null
+                _state.update { it.copy(testing = false, otp = null, outcome = TestOutcome.Success(TestResult(step.api.flavor, info))) }
+            }
+            is LoginStep.OtpRequired -> {
+                pendingOtp = step.pending
+                _state.update { it.copy(testing = true, otp = OtpUi(step.username)) }
+            }
+        }
+    }
+
+    fun submitOtp(code: String) {
+        val pending = pendingOtp ?: return
+        val s = _state.value
+        val url = s.normalizedUrl ?: return
+        _state.update { it.copy(otp = it.otp?.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                when (val step = pending.submit(code)) {
+                    is LoginStep.Success -> handleStep(step, fingerprint(s, url))
+                    is LoginStep.OtpRequired -> _state.update {
+                        it.copy(otp = it.otp?.copy(busy = false, error = "That code didn't work. Check your authenticator app and try again."))
+                    }
+                }
+            } catch (e: Throwable) {
+                pendingOtp = null
+                _state.update { it.copy(otp = null) }
+                onTestError(e)
+            }
+        }
+    }
+
+    fun cancelOtp() {
+        pendingOtp?.cancel()
+        pendingOtp = null
+        _state.update { it.copy(otp = null, testing = false) }
+    }
+
+    private fun onTestError(e: Throwable) {
+        when (e) {
+            is TrueNasException.UntrustedCertificate -> _state.update {
+                it.copy(
+                    testing = false,
+                    pendingCertificate = e.certificate,
+                    outcome = TestOutcome.Failure(
+                        if (e.certificate != null) "The server uses a certificate your phone doesn't trust. Review it to continue."
+                        else e.userMessage()
+                    ),
+                )
+            }
+            else -> _state.update { it.copy(testing = false, outcome = TestOutcome.Failure(e.userMessage())) }
         }
     }
 
@@ -126,10 +220,30 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         val url = s.normalizedUrl ?: run { _state.update { it.copy(urlError = "Enter a valid address") }; return }
         viewModelScope.launch {
             val config = buildConfig(s, url)
-            c.settings.saveServer(config, s.apiKey.trim().ifBlank { null })
+            val previous = c.settings.servers.first().firstOrNull { it.id == config.id }
+            c.settings.saveServer(config, if (s.authMethod == AuthMethod.API_KEY) s.apiKey.trim().ifBlank { null } else null)
+            if (s.authMethod == AuthMethod.PASSWORD) {
+                when {
+                    !s.rememberPassword -> c.settings.clearPassword(config.id)
+                    s.password.isNotEmpty() -> c.settings.savePassword(config.id, s.password)
+                }
+                val token = testedToken
+                if (token != null && testedTokenFor == fingerprint(s, url)) {
+                    c.settings.saveSessionToken(config.id, token)
+                } else if (previous != null && (previous.url != config.url || previous.username != config.username || previous.authMethod != config.authMethod)) {
+                    c.settings.clearSessionToken(config.id)
+                }
+            } else {
+                c.settings.clearSessionToken(config.id)
+                c.settings.clearPassword(config.id)
+            }
             c.settings.setActiveServer(config.id)
             c.repository.disconnect()
             _state.update { it.copy(saved = true) }
         }
+    }
+
+    override fun onCleared() {
+        pendingOtp?.cancel()
     }
 }

@@ -81,9 +81,7 @@ class RestTrueNasApi private constructor(
         response.use { r ->
             val text = r.body.string()
             when {
-                r.code == 401 -> throw TrueNasException.AuthFailed(
-                    "API key rejected (HTTP 401). Check the key; TrueNAS revokes keys that were used over plain HTTP."
-                )
+                r.code == 401 -> throw TrueNasException.AuthFailed(API_KEY_REJECTED_MESSAGE)
                 r.code == 403 -> throw TrueNasException.Forbidden()
                 r.code == 404 -> throw TrueNasException.MethodNotFound(path)
                 !r.isSuccessful -> throw TrueNasException.Http(r.code, "HTTP ${r.code}: ${text.take(200)}")
