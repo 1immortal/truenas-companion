@@ -72,18 +72,31 @@ class PinningTrustManager(private val pinnedSha256: String?) : X509TrustManager 
     override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers
 }
 
+/**
+ * WebSocket keep-alive ping, per purpose. Each ping wakes the radio (and on mobile data keeps it in a high-power state
+ * for several seconds), so longer is cheaper; it must stay below reverse-proxy idle timeouts (nginx / Nginx Proxy
+ * Manager default `proxy_read_timeout` is 60 s).
+ */
+enum class Keepalive(val seconds: Long) {
+    /** App on screen: detect dead connections reasonably fast. */
+    FOREGROUND(30),
+    /** Instant-alerts service: as rare as the proxy allows. */
+    LONG_LIVED(45),
+    /** One-shot background checks: a few calls and done, no pings needed (calls have their own timeouts). */
+    NONE(0),
+}
+
 object HttpClients {
     private val base: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .pingInterval(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
     }
 
-    fun create(server: ServerConfig): Pair<OkHttpClient, PinningTrustManager> {
+    fun create(server: ServerConfig, keepalive: Keepalive = Keepalive.FOREGROUND): Pair<OkHttpClient, PinningTrustManager> {
         val tm = PinningTrustManager(server.pinnedCertSha256)
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
         val defaultVerifier = HttpsURLConnection.getDefaultHostnameVerifier()
@@ -94,6 +107,7 @@ object HttpClients {
         val client = base.newBuilder()
             .sslSocketFactory(ssl.socketFactory, tm)
             .hostnameVerifier(verifier)
+            .pingInterval(keepalive.seconds, TimeUnit.SECONDS)
             .build()
         return client to tm
     }

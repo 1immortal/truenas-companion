@@ -2,6 +2,7 @@ package app.truenascompanion.data.api
 
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.net.HttpClients
+import app.truenascompanion.data.net.Keepalive
 import app.truenascompanion.util.UrlUtils
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -71,8 +72,18 @@ class PendingOtp internal constructor(
 /** Username/password (+2FA) and session-token sign-in over the JSON-RPC WebSocket API (TrueNAS 25.04+). */
 object WebSocketAuth {
 
-    suspend fun login(server: ServerConfig, credentials: Credentials, ttlSeconds: Long): LoginStep {
-        val (client, tm) = HttpClients.create(server)
+    /**
+     * [refreshToken] = false skips `auth.generate_token` after a token sign-in (used by background checks while the
+     * saved token still has plenty of lifetime left: one RPC and one encrypted DataStore write less per check).
+     */
+    suspend fun login(
+        server: ServerConfig,
+        credentials: Credentials,
+        ttlSeconds: Long,
+        keepalive: Keepalive = Keepalive.FOREGROUND,
+        refreshToken: Boolean = true,
+    ): LoginStep {
+        val (client, tm) = HttpClients.create(server, keepalive)
         val rpc = JsonRpcClient(client, UrlUtils.webSocketUrl(server.url), tm)
         try {
             rpc.open()
@@ -111,7 +122,7 @@ object WebSocketAuth {
                         rpc.call("auth.login_with_token", JsonArray(listOf(JsonPrimitive(credentials.token)))).prim()?.booleanOrNull == true
                     }
                     if (!ok) throw TrueNasException.TokenRejected()
-                    success(rpc, ttlSeconds)
+                    if (refreshToken) success(rpc, ttlSeconds) else LoginStep.Success(WebSocketTrueNasApi(rpc), null)
                 }
             }
         } catch (e: Throwable) {

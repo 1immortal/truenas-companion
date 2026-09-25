@@ -192,7 +192,15 @@ data class JobInfo(
     val finishedMillis: Long?,
 )
 
-enum class AppAction(val label: String) { START("Start"), STOP("Stop"), RESTART("Restart"), REDEPLOY("Redeploy") }
+enum class AppAction(val label: String, val progress: String, val done: String) {
+    START("Start", "Starting", "started"),
+    STOP("Stop", "Stopping", "stopped"),
+    RESTART("Restart", "Restarting", "restarted"),
+    /** `app.redeploy`: recreates the containers with the current config. Does NOT fetch newer images for the same tag. */
+    REDEPLOY("Redeploy", "Redeploying", "redeployed"),
+    /** `app.pull_images(app, {redeploy: true})`: pulls newer builds of the app's image tags, then redeploys. */
+    PULL_REDEPLOY("Redeploy", "Pulling image", "updated to the newer image build"),
+}
 
 data class AlertItem(
     val uuid: String,

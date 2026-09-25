@@ -7,6 +7,8 @@ import app.truenascompanion.data.api.TrueNasApi
 import app.truenascompanion.data.api.TrueNasConnector
 import app.truenascompanion.data.api.TrueNasException
 import app.truenascompanion.data.api.WebSocketAuth
+import app.truenascompanion.data.api.SharedConnections
+import app.truenascompanion.data.net.Keepalive
 import app.truenascompanion.data.model.AuthMethod
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.repository.sessionTtlSeconds
@@ -28,26 +30,31 @@ enum class CheckOutcome { OK, SIGN_IN_NEEDED, NETWORK_ERROR, FAILED }
  * no credentials, rejected API key).
  */
 class BackgroundConnector(private val settings: SettingsStore) {
-    suspend fun connect(server: ServerConfig): TrueNasApi = withContext(Dispatchers.IO) {
+    /**
+     * [keepalive]: [Keepalive.NONE] for one-shot checks, [Keepalive.LONG_LIVED] for the instant-alerts socket.
+     * The session token is only renewed when less than half of its lifetime is left (see [shouldRefreshToken]).
+     */
+    suspend fun connect(server: ServerConfig, keepalive: Keepalive = Keepalive.NONE): TrueNasApi = withContext(Dispatchers.IO) {
         when (server.authMethod) {
             AuthMethod.API_KEY -> {
                 val key = settings.apiKey(server.id) ?: throw TrueNasException.LoginRequired()
                 try {
-                    TrueNasConnector.connect(server, key)
+                    TrueNasConnector.connect(server, key, keepalive)
                 } catch (e: TrueNasException.AuthFailed) {
                     throw TrueNasException.LoginRequired()
                 }
             }
-            AuthMethod.PASSWORD -> connectPassword(server)
+            AuthMethod.PASSWORD -> connectPassword(server, keepalive)
         }
     }
 
-    private suspend fun connectPassword(server: ServerConfig): TrueNasApi {
+    private suspend fun connectPassword(server: ServerConfig, keepalive: Keepalive): TrueNasApi {
         val ttl = server.sessionTtlSeconds()
         settings.sessionToken(server.id)?.let { saved ->
             if (!saved.isExpired) {
                 try {
-                    val step = WebSocketAuth.login(server, Credentials.Token(saved.token), ttl) as LoginStep.Success
+                    val refresh = shouldRefreshToken(saved.expiresAt, System.currentTimeMillis(), ttl)
+                    val step = WebSocketAuth.login(server, Credentials.Token(saved.token), ttl, keepalive, refreshToken = refresh) as LoginStep.Success
                     step.token?.let { settings.saveSessionToken(server.id, it) } // sliding expiry
                     return step.api
                 } catch (e: TrueNasException.TokenRejected) {
@@ -60,7 +67,7 @@ class BackgroundConnector(private val settings: SettingsStore) {
         val remembered = settings.password(server.id)
         if (remembered != null && server.username.isNotBlank()) {
             try {
-                when (val step = WebSocketAuth.login(server, Credentials.Password(server.username, remembered), ttl)) {
+                when (val step = WebSocketAuth.login(server, Credentials.Password(server.username, remembered), ttl, keepalive)) {
                     is LoginStep.Success -> {
                         step.token?.let { settings.saveSessionToken(server.id, it) }
                         return step.api
@@ -76,6 +83,16 @@ class BackgroundConnector(private val settings: SettingsStore) {
         }
         throw TrueNasException.LoginRequired()
     }
+
+    companion object {
+        /**
+         * Background checks run every 15–60 min, so renewing the token on every check (an extra RPC plus an encrypted
+         * DataStore write) is wasted work. Renewing once less than half of its lifetime is left still keeps the session
+         * alive indefinitely while checks run, even for the shortest 1-day session.
+         */
+        fun shouldRefreshToken(expiresAt: Long, now: Long, ttlSeconds: Long): Boolean =
+            expiresAt - now < ttlSeconds * 1000 / 2
+    }
 }
 
 /** Fetches `alert.list`, diffs it against the last-seen state and posts notifications. Shared by the worker and the service. */
@@ -83,6 +100,7 @@ class AlertChecker(
     private val settings: SettingsStore,
     private val connector: BackgroundConnector,
     private val notifier: AlertNotifier,
+    private val shared: SharedConnections = SharedConnections(),
 ) {
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val classTitles = ConcurrentHashMap<String, Map<String, String>>()
@@ -97,8 +115,10 @@ class AlertChecker(
     /** Opens a connection unless [api] is given (instant mode passes its live one). */
     suspend fun check(server: ServerConfig, api: TrueNasApi? = null): CheckOutcome = withContext(Dispatchers.IO) {
         locks.getOrPut(server.id) { Mutex() }.withLock {
+            // Reuse an open socket (instant alerts or the app on screen) before signing in on a new one.
+            val borrowed = api ?: shared.borrow(server)
             val conn = try {
-                api ?: connector.connect(server)
+                borrowed ?: connector.connect(server)
             } catch (e: TrueNasException.LoginRequired) {
                 onSignInNeeded(server)
                 return@withLock CheckOutcome.SIGN_IN_NEEDED
@@ -114,7 +134,7 @@ class AlertChecker(
                 Log.i(TAG, "check ${server.name}: ${e.message}")
                 if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
             } finally {
-                if (api == null) conn.close()
+                if (borrowed == null) conn.close()
             }
         }
     }
@@ -123,21 +143,25 @@ class AlertChecker(
         val alerts = api.alerts()
         val prefs = settings.notificationPrefs.first()
         if (server.id !in prefs.enabledServers) return
-        val titles = classTitles[server.id] ?: api.alertClassTitles().also { if (it.isNotEmpty()) classTitles[server.id] = it }
+        val previous = settings.seenAlerts(server.id)
         val now = LocalTime.now()
-        val result = AlertDiff.compute(
-            previous = settings.seenAlerts(server.id),
-            current = alerts,
-            filter = prefs.filter,
-            minuteOfDay = now.hour * 60 + now.minute,
-            titleOf = { AlertDiff.title(it, titles) },
-        )
-        settings.saveSeenAlerts(server.id, result.seen)
+        val minute = now.hour * 60 + now.minute
+        // Cheap titles first (remembered or derived from the class name): most checks find nothing new, and then the
+        // check is a single `alert.list` call. Class titles are fetched (once per process) only when notifying.
+        val known = previous.orEmpty().associate { it.uuid to it.title }
+        var result = AlertDiff.compute(previous, alerts, prefs.filter, minute) { known[it.uuid] ?: AlertDiff.title(it, emptyMap()) }
+        if (result.toNotify.isNotEmpty()) {
+            val titles = classTitles[server.id] ?: api.alertClassTitles().also { if (it.isNotEmpty()) classTitles[server.id] = it }
+            if (titles.isNotEmpty()) {
+                result = AlertDiff.compute(previous, alerts, prefs.filter, minute) { known[it.uuid] ?: AlertDiff.title(it, titles) }
+            }
+        }
+        if (result.seen != previous) settings.saveSeenAlerts(server.id, result.seen)
         val byUuid = result.seen.associate { it.uuid to it.title }
         notifier.withdraw(server, result.withdrawn)
         notifier.postAlerts(server, result.toNotify, byUuid)
         notifier.postCleared(server, result.cleared)
-        Log.i(TAG, "check ${server.name}: ${alerts.size} alerts, ${result.toNotify.size} new, baseline=${result.isBaseline}")
+        Log.d(TAG, "check ${server.name}: ${alerts.size} alerts, ${result.toNotify.size} new, baseline=${result.isBaseline}")
     }
 
     /** Emits a server id after the user signed in interactively (lets instant mode retry right away). */
@@ -162,8 +186,9 @@ class AlertChecker(
     /** Notification action: dismiss on the NAS without opening the app. */
     suspend fun dismiss(serverId: String, uuid: String): CheckOutcome = withContext(Dispatchers.IO) {
         val server = settings.servers.first().firstOrNull { it.id == serverId } ?: return@withContext CheckOutcome.FAILED
+        val borrowed = shared.borrow(server)
         val api = try {
-            connector.connect(server)
+            borrowed ?: connector.connect(server)
         } catch (e: TrueNasException.LoginRequired) {
             onSignInNeeded(server)
             return@withContext CheckOutcome.SIGN_IN_NEEDED
@@ -183,7 +208,7 @@ class AlertChecker(
         } catch (e: Throwable) {
             if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
         } finally {
-            api.close()
+            if (borrowed == null) api.close()
         }
     }
 

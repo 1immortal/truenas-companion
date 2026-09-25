@@ -14,6 +14,8 @@ import androidx.core.app.ServiceCompat
 import app.truenascompanion.TrueNasApp
 import app.truenascompanion.data.api.TrueNasApi
 import app.truenascompanion.data.api.TrueNasException
+import app.truenascompanion.data.api.SharedConnections
+import app.truenascompanion.data.net.Keepalive
 import app.truenascompanion.data.model.ServerConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -127,7 +129,11 @@ class InstantAlertService : Service() {
             var api: TrueNasApi? = null
             try {
                 setStatus(server, "connecting…")
-                api = container.backgroundConnector.connect(server)
+                // 45 s keepalive (instead of the app's 30 s): the fewest radio wake-ups that still stay under the 60 s
+                // idle timeout of a default nginx / Nginx Proxy Manager setup.
+                api = container.backgroundConnector.connect(server, Keepalive.LONG_LIVED)
+                // Let the app UI and the periodic check reuse this socket instead of opening their own.
+                container.sharedConnections.publish(server, api, SharedConnections.OWNER_SERVICE)
                 checker.onConnected(server)
                 attempt = 0
                 setStatus(server, "connected")
@@ -155,7 +161,7 @@ class InstantAlertService : Service() {
             } catch (e: Throwable) {
                 Log.i(TAG, "${server.name}: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
-                api?.close()
+                api?.let { container.sharedConnections.withdraw(server.id, it); it.close() }
             }
             attempt++
             val backoff = (MIN_BACKOFF_MS shl (attempt - 1).coerceAtMost(6)).coerceAtMost(MAX_BACKOFF_MS)

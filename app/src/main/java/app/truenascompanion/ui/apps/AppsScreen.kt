@@ -18,6 +18,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -99,6 +102,13 @@ import app.truenascompanion.ui.components.UiState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -110,6 +120,7 @@ import kotlinx.coroutines.launch
 
 data class UpgradeDialog(val app: AppInfo, val summary: AppUpgradeSummary? = null, val loading: Boolean = true, val error: String? = null)
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AppsViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<AppInfo>>>(UiState.Loading)
     val state: StateFlow<UiState<List<AppInfo>>> = _state.asStateFlow()
@@ -135,14 +146,33 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
     private val _activeJobs = MutableStateFlow(0)
     val activeJobs = _activeJobs.asStateFlow()
 
-    private var jobsCollector: Job? = null
     private val watched = mutableMapOf<Long, JobInfo>() // active jobs we report on when they finish
+    /** True while the live job subscription is running (false on the legacy REST API or while off screen). */
+    @Volatile private var jobsStreaming = false
+
+    /**
+     * Live `core.get_jobs` subscription, only while the Apps screen is visible (collected with
+     * collectAsStateWithLifecycle): no socket traffic from this screen once the app is in the background.
+     * Finished jobs seen while away are still reported on return, because [watched] survives the pause.
+     */
+    val jobsLive: StateFlow<Int> = c.repository.reloadKey
+        .onEach { watched.clear() }
+        .flatMapLatest { key ->
+            if (key == null) emptyFlow()
+            else c.repository.jobs()
+                .onStart { jobsStreaming = true }
+                .onEach { onJobs(it) }
+                .map { it.size }
+                .catch { jobsStreaming = false /* REST API / no permission: upgrade progress just isn't live */ }
+                .onCompletion { jobsStreaming = false }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     private var syncJobId: Long? = null
 
     init {
         viewModelScope.launch {
             c.repository.reloadKey.collect {
-                if (it != null) { _state.value = UiState.Loading; load(); watchJobs() }
+                if (it != null) { _state.value = UiState.Loading; load() }
             }
         }
     }
@@ -154,14 +184,6 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
             _state.value = UiState.Success(c.repository.call { it.apps() })
         } catch (e: Throwable) {
             if (_state.value !is UiState.Success) _state.value = UiState.Error(e.userMessage(), e) else _messages.trySend(e.userMessage())
-        }
-    }
-
-    private fun watchJobs() {
-        jobsCollector?.cancel()
-        watched.clear()
-        jobsCollector = viewModelScope.launch {
-            c.repository.jobs().catch { /* REST API / no permission: upgrade progress just isn't live */ }.collect { jobs -> onJobs(jobs) }
         }
     }
 
@@ -204,7 +226,7 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             try {
                 c.repository.call { it.appAction(app, action) }
-                _messages.trySend("${app.name}: ${action.label.lowercase()} done")
+                _messages.trySend("${app.name} ${action.done}")
             } catch (e: Throwable) {
                 _messages.trySend("${app.name}: ${e.userMessage()}")
             } finally {
@@ -244,7 +266,7 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
                     _messages.trySend("${app.name}: ${e.userMessage()}")
                 }
             }
-            if (jobsCollector?.isActive != true) { _pendingUpgrades.value = emptySet(); load() }
+            if (!jobsStreaming) { _pendingUpgrades.value = emptySet(); load() }
         }
     }
 
@@ -257,7 +279,7 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
                 syncJobId = id
                 watched[id] = placeholderJob(id, null, "catalog.sync")
                 _messages.trySend("Checking the catalog for app updates…")
-                if (jobsCollector?.isActive != true) { _syncStarting.value = false; load() }
+                if (!jobsStreaming) { _syncStarting.value = false; load() }
             } catch (e: Throwable) {
                 _syncStarting.value = false
                 _messages.trySend(e.userMessage())
@@ -291,8 +313,10 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
     val syncStarting by vm.syncStarting.collectAsStateWithLifecycle()
     val dialog by vm.dialog.collectAsStateWithLifecycle()
     val activeJobs by vm.activeJobs.collectAsStateWithLifecycle()
+    vm.jobsLive.collectAsStateWithLifecycle() // keeps the live job subscription running only while visible
     val snackbar = remember { SnackbarHostState() }
     var confirm by remember { mutableStateOf<Pair<AppInfo, AppAction>?>(null) }
+    var imageInfo by remember { mutableStateOf<AppInfo?>(null) }
     var confirmAll by remember { mutableStateOf<List<AppInfo>?>(null) }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     val syncing = syncStarting || catalogSync != null
@@ -362,6 +386,7 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
                                     upgradePending = app.name in pending,
                                     onAction = { action -> if (action == AppAction.START) vm.act(app, action) else confirm = app to action },
                                     onUpgrade = { vm.requestUpgrade(app) },
+                                    onImageInfo = { imageInfo = app },
                                     modifier = Modifier.animateItem(),
                                 )
                             }
@@ -371,13 +396,18 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
             }
         }
     }
+    imageInfo?.let { app ->
+        ImageUpdateDialog(app, onRedeploy = { imageInfo = null; confirm = app to AppAction.PULL_REDEPLOY }, onDismiss = { imageInfo = null })
+    }
     confirm?.let { (app, action) ->
         ConfirmDialog(
-            title = "${action.label} ${app.name}?",
+            title = if (action == AppAction.PULL_REDEPLOY) "Redeploy ${app.name} with the newer image?" else "${action.label} ${app.name}?",
             text = when (action) {
                 AppAction.STOP -> "The app's containers will be stopped until you start it again."
                 AppAction.RESTART -> "The app will be stopped and started again. It will be briefly unavailable."
-                AppAction.REDEPLOY -> "TrueNAS will stop the app, pull the latest images for its current version and start it again."
+                AppAction.REDEPLOY -> "TrueNAS will recreate the app's containers with its current settings. It does not download newer images."
+                AppAction.PULL_REDEPLOY -> "TrueNAS will download the newer image build, then restart ${app.name} with the same settings and data. " +
+                    "It will be unavailable for a moment; large images can take a few minutes to download."
                 AppAction.START -> ""
             },
             confirmLabel = action.label, destructive = action == AppAction.STOP,
@@ -514,13 +544,15 @@ private fun VersionLine(current: String?, target: String?) {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun AppCard(
+@androidx.annotation.VisibleForTesting
+internal fun AppCard(
     app: AppInfo,
     busyAction: AppAction?,
     upgradeJob: JobInfo?,
     upgradePending: Boolean,
     onAction: (AppAction) -> Unit,
     onUpgrade: () -> Unit,
+    onImageInfo: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -545,7 +577,11 @@ private fun AppCard(
                     }
                     DropdownMenuItem(text = { Text("Restart") }, leadingIcon = { Icon(Icons.Rounded.RestartAlt, null) },
                         enabled = busyAction == null && !upgrading && app.state == AppState.RUNNING, onClick = { menu = false; onAction(AppAction.RESTART) })
-                    DropdownMenuItem(text = { Text("Redeploy (pull images)") }, leadingIcon = { Icon(Icons.Rounded.CloudSync, null) },
+                    if (app.imageUpdatesAvailable && !app.upgradeAvailable) {
+                        DropdownMenuItem(text = { Text("Newer image build…") }, leadingIcon = { Icon(Icons.Rounded.Layers, null) },
+                            enabled = busyAction == null && !upgrading, onClick = { menu = false; onImageInfo() })
+                    }
+                    DropdownMenuItem(text = { Text("Redeploy") }, leadingIcon = { Icon(Icons.Rounded.CloudSync, null) },
                         enabled = busyAction == null && !upgrading, onClick = { menu = false; onAction(AppAction.REDEPLOY) })
                     app.portalUrl?.let { url ->
                         DropdownMenuItem(text = { Text("Open web UI") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) },
@@ -557,10 +593,12 @@ private fun AppCard(
                 }
             }
         }
-        AnimatedVisibility(!upgrading && (app.upgradeAvailable || app.imageUpdatesAvailable)) {
-            Row(Modifier.padding(top = 10.dp)) {
-                StatusChip(Health.WARNING, if (app.upgradeAvailable) "Update available" else "New image available · use Redeploy")
-            }
+        AnimatedVisibility(!upgrading && app.upgradeAvailable) {
+            Row(Modifier.padding(top = 10.dp)) { StatusChip(Health.WARNING, "Update available") }
+        }
+        // image_updates_available without upgrade_available: same catalog version, newer build of the same image tag.
+        AnimatedVisibility(!upgrading && busyAction == null && app.imageUpdatesAvailable && !app.upgradeAvailable) {
+            ImageUpdateBanner(onClick = onImageInfo, modifier = Modifier.padding(top = 10.dp))
         }
         if (upgrading) {
             Spacer(Modifier.height(12.dp))
@@ -580,7 +618,7 @@ private fun AppCard(
         ) {
             if (busyAction != null) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Text("${busyAction.label}ing…".replace("Stoping", "Stopping"), style = MaterialTheme.typography.bodyMedium)
+                Text("${busyAction.progress}…", style = MaterialTheme.typography.bodyMedium)
             } else if (app.state == AppState.RUNNING || app.state == AppState.DEPLOYING) {
                 OutlinedButton(onClick = { onAction(AppAction.STOP) }) { Icon(Icons.Rounded.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop") }
                 FilledTonalButton(onClick = { onAction(AppAction.RESTART) }, enabled = app.state == AppState.RUNNING) {
@@ -596,4 +634,61 @@ private fun AppCard(
             }
         }
     }
+}
+
+/** Calm, tappable note for `image_updates_available` (not urgent, so an info/cyan tone instead of the amber warning). */
+@Composable
+fun ImageUpdateBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val brand = app.truenascompanion.ui.theme.LocalBrandColors.current
+    val tint = if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary
+    Surface(
+        onClick = onClick,
+        color = tint.copy(alpha = if (brand.dark) 0.12f else 0.08f),
+        contentColor = tint,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = 0.25f)),
+        modifier = modifier,
+    ) {
+        Row(Modifier.padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Layers, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Newer image build · same version",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(Icons.Rounded.ChevronRight, "What does this mean?", Modifier.size(18.dp))
+        }
+    }
+}
+
+/** Plain-language explanation of an image-only update, with a shortcut to pull + redeploy. */
+@Composable
+fun ImageUpdateDialog(app: AppInfo, onRedeploy: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Rounded.Layers, null) },
+        title = { Text("Newer image build", textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "The version of ${app.name}" + (app.version?.let { " ($it)" } ?: "") + " hasn't changed. " +
+                        "The image maintainers published a newer build of the same image tag, usually small fixes or security patches. " +
+                        "That's why the TrueNAS web UI doesn't list an update.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Redeploy downloads the newer build and restarts the app. Your settings and data are kept.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "If this note is still shown after redeploying, TrueNAS's image check may be misreporting and you can ignore it.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { GlowButton(onClick = onRedeploy) { Text("Redeploy", maxLines = 1) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close", maxLines = 1) } },
+    )
 }

@@ -1,6 +1,7 @@
 package app.truenascompanion
 
 import android.app.Application
+import app.truenascompanion.data.api.SharedConnections
 import app.truenascompanion.data.repository.TrueNasRepository
 import app.truenascompanion.data.security.SecretCipher
 import app.truenascompanion.data.store.SettingsStore
@@ -24,9 +25,11 @@ class AppContainer(app: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settings = SettingsStore(app, SecretCipher())
     val notifier = AlertNotifier(app)
+    /** One signed-in socket per server, shared by the UI, the periodic check and instant alerts where possible. */
+    val sharedConnections = SharedConnections()
     val backgroundConnector = BackgroundConnector(settings)
-    val alertChecker = AlertChecker(settings, backgroundConnector, notifier)
-    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) })
+    val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections)
+    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
 }
 

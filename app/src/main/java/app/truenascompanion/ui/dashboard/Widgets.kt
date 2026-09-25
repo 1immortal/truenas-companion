@@ -1,5 +1,10 @@
 package app.truenascompanion.ui.dashboard
 
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -137,17 +142,35 @@ private fun BigValue(text: String, modifier: Modifier = Modifier, color: Color =
 private fun Muted(text: String, modifier: Modifier = Modifier, maxLines: Int = 2) =
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
 
-/** Pulsing "live" indicator with a soft halo. */
+/**
+ * Pulsing "live" indicator with a soft halo.
+ * Battery: the pulse is read only in the draw phase (no recomposition per frame) and the dot rests
+ * between pulses, so the screen isn't asked for new frames most of the time.
+ */
 @Composable
 fun LiveDot() {
-    val t = rememberInfiniteTransition(label = "live")
-    val p by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Restart), label = "livePulse")
+    val pulse = remember { Animatable(1f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            pulse.snapTo(0f)
+            pulse.animateTo(1f, tween(LIVE_PULSE_MS, easing = LinearEasing))
+            kotlinx.coroutines.delay(LIVE_REST_MS)
+        }
+    }
     val color = LocalStatusColors.current.healthy
-    Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(14.dp).scale(0.5f + p * 0.7f).alpha((1f - p) * 0.55f).clip(CircleShape).background(color))
+    Box(
+        Modifier.size(14.dp).drawBehind {
+            val p = pulse.value
+            drawCircle(color.copy(alpha = (1f - p) * 0.55f), radius = size.minDimension / 2f * (0.5f + p * 0.7f))
+        },
+        contentAlignment = Alignment.Center,
+    ) {
         Box(Modifier.size(7.dp).glow(color, 6.dp).clip(CircleShape).background(color))
     }
 }
+
+private const val LIVE_PULSE_MS = 1200
+private const val LIVE_REST_MS = 1800L
 
 private val WidgetMinHeight = 136.dp
 

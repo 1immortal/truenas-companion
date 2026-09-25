@@ -7,6 +7,7 @@ import app.truenascompanion.data.api.TrueNasApi
 import app.truenascompanion.data.api.TrueNasConnector
 import app.truenascompanion.data.api.TrueNasException
 import app.truenascompanion.data.api.WebSocketAuth
+import app.truenascompanion.data.api.SharedConnections
 import app.truenascompanion.data.api.userMessage
 import app.truenascompanion.data.model.ApiFlavor
 import app.truenascompanion.data.model.AuthMethod
@@ -31,11 +32,11 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 sealed interface ConnectionState {
     data object NoServer : ConnectionState
@@ -83,6 +84,7 @@ class TrueNasRepository(
     private val scope: CoroutineScope,
     /** Called after every successful interactive sign-in (clears the "sign in to keep receiving alerts" reminder). */
     private val onSignedIn: suspend (serverId: String) -> Unit = {},
+    private val shared: SharedConnections = SharedConnections(),
 ) {
 
     val activeServer: StateFlow<ServerConfig?> = combine(settings.servers, settings.activeServerId) { servers, id ->
@@ -106,6 +108,25 @@ class TrueNasRepository(
     private val mutex = Mutex()
     private var api: TrueNasApi? = null
     private var apiFor: ServerConfig? = null
+    /** True when [api] belongs to someone else (the instant-alerts service): never close it, just drop it. */
+    private var borrowed = false
+
+    /** Calls in flight; the background auto-disconnect waits for them (e.g. a long image pull job). */
+    private val activeCalls = java.util.concurrent.atomic.AtomicInteger(0)
+    private var backgroundJob: kotlinx.coroutines.Job? = null
+
+    /** Must hold [mutex]. Closes our own connection, or just forgets a borrowed one. */
+    private fun releaseApi() {
+        val a = api ?: return
+        val s = apiFor
+        if (!borrowed) {
+            s?.let { shared.withdraw(it.id, a) }
+            a.close()
+        }
+        api = null
+        apiFor = null
+        borrowed = false
+    }
 
     private var pendingOtp: PendingOtp? = null
     private var pendingPassword: String? = null
@@ -114,11 +135,7 @@ class TrueNasRepository(
     init {
         activeServer.onEach { server ->
             mutex.withLock {
-                if (server != apiFor) {
-                    api?.close()
-                    api = null
-                    apiFor = null
-                }
+                if (server != apiFor) releaseApi()
             }
             if (_prompt.value != null && _prompt.value?.server?.id != server?.id) cancelPrompt()
             _state.value = if (server == null) ConnectionState.NoServer else ConnectionState.Idle
@@ -129,8 +146,13 @@ class TrueNasRepository(
         mutex.withLock {
             val server = activeServer.value ?: throw TrueNasException.NoServer()
             api?.takeIf { it.isAlive && apiFor == server }?.let { return@withLock it }
-            api?.close()
-            api = null
+            releaseApi()
+            // Instant alerts already hold a signed-in socket to this server: reuse it instead of opening a second one.
+            shared.borrow(server, excludeOwner = SharedConnections.OWNER_APP)?.let { live ->
+                install(server, live)
+                borrowed = true
+                return@withLock live
+            }
             _state.value = ConnectionState.Connecting
             try {
                 val newApi = when (server.authMethod) {
@@ -141,6 +163,7 @@ class TrueNasRepository(
                     AuthMethod.PASSWORD -> connectWithSession(server)
                 }
                 install(server, newApi)
+                shared.publish(server, newApi, SharedConnections.OWNER_APP)
                 newApi
             } catch (e: Throwable) {
                 _state.value = ConnectionState.Failed(e.userMessage(), e)
@@ -153,6 +176,7 @@ class TrueNasRepository(
         val info = runCatching { newApi.systemInfo() }.getOrNull()
         api = newApi
         apiFor = server
+        borrowed = false
         _state.value = ConnectionState.Connected(newApi.flavor, info)
     }
 
@@ -278,8 +302,9 @@ class TrueNasRepository(
             if (remember) settings.savePassword(server.id, password) else settings.clearPassword(server.id)
         }
         mutex.withLock {
-            api?.close()
+            releaseApi()
             install(server, step.api)
+            shared.publish(server, step.api, SharedConnections.OWNER_APP)
         }
         pendingOtp = null
         pendingPassword = null
@@ -291,42 +316,70 @@ class TrueNasRepository(
 
     /** Runs [block] against the API, retrying once with a fresh connection if the socket had dropped. */
     suspend fun <T> call(block: suspend (TrueNasApi) -> T): T = withContext(Dispatchers.IO) {
+        activeCalls.incrementAndGet()
         try {
-            block(api())
-        } catch (e: TrueNasException.NotConnected) {
-            block(api())
+            try {
+                block(api())
+            } catch (e: TrueNasException.NotConnected) {
+                block(api())
+            }
+        } finally {
+            activeCalls.decrementAndGet()
         }
     }
 
-    /** Live stats (WebSocket only). Re-subscribes after connection loss with a small backoff. */
-    fun realtime(): Flow<RealtimeStats> = flow {
-        val a = api()
-        if (!a.supportsRealtime) return@flow
-        emitAll(a.realtimeStats())
-        throw TrueNasException.NotConnected() // subscription ended -> retry
-    }.retryWhen { cause, attempt ->
-        val retry = cause is TrueNasException.NotConnected || cause is TrueNasException.Timeout || cause is TrueNasException.Unreachable
-        if (retry) delay((2000L * (attempt + 1)).coerceAtMost(15_000))
-        retry
-    }.flowOn(Dispatchers.IO)
+    /** Live stats (WebSocket only). Re-subscribes after connection loss with exponential backoff. */
+    fun realtime(): Flow<RealtimeStats> = reconnecting { a -> if (a.supportsRealtime) a.realtimeStats() else null }
 
     /** Live middleware jobs; reconnects after connection loss. */
-    fun jobs(): Flow<List<JobInfo>> = flow {
-        emitAll(api().jobs())
-        throw TrueNasException.NotConnected()
-    }.retryWhen { cause, attempt ->
-        val retry = cause is TrueNasException.NotConnected || cause is TrueNasException.Timeout || cause is TrueNasException.Unreachable
-        if (retry) delay((2000L * (attempt + 1)).coerceAtMost(15_000))
-        retry
+    fun jobs(): Flow<List<JobInfo>> = reconnecting { a -> a.jobs() }
+
+    /**
+     * Collects [open]'s flow and transparently reconnects when the socket drops. The backoff (2 s … 60 s) resets as
+     * soon as data flows again, so a long session with the odd Wi-Fi hiccup doesn't end up waiting a minute.
+     * [open] returning null means "not supported here": the flow just completes.
+     */
+    private fun <T> reconnecting(open: (TrueNasApi) -> Flow<T>?): Flow<T> = flow {
+        var attempt = 0L
+        while (true) {
+            try {
+                val source = open(api()) ?: return@flow
+                source.collect { attempt = 0; emit(it) }
+                throw TrueNasException.NotConnected() // subscription ended -> reconnect
+            } catch (e: TrueNasException) {
+                val retry = e is TrueNasException.NotConnected || e is TrueNasException.Timeout || e is TrueNasException.Unreachable
+                if (!retry) throw e
+            }
+            delay(reconnectDelayMs(attempt++))
+        }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * App visibility (MainActivity onStart/onStop). The foreground socket pings the server every 30 s, which keeps
+     * the phone's radio busy; once the app has been in the background for [BACKGROUND_GRACE_MS] and nothing is in
+     * flight, it is closed. The next screen that needs data reconnects (with the saved session) transparently.
+     */
+    fun setForeground(foreground: Boolean) {
+        backgroundJob?.cancel()
+        backgroundJob = null
+        if (foreground) return
+        backgroundJob = scope.launch {
+            delay(BACKGROUND_GRACE_MS)
+            while (activeCalls.get() > 0) delay(BACKGROUND_GRACE_MS) // e.g. an image pull job is still being awaited
+            mutex.withLock { releaseApi() }
+        }
+    }
+
+    companion object {
+        const val BACKGROUND_GRACE_MS = 30_000L
+
+        /** 2 s, 4 s, 8 s … capped at 60 s: a dead server doesn't get hammered while a screen is open. */
+        fun reconnectDelayMs(attempt: Long): Long = (2_000L shl attempt.coerceIn(0, 5).toInt()).coerceAtMost(60_000L)
+    }
 
     /** Drops the current connection; the next call reconnects with the latest settings/credentials. */
     suspend fun disconnect() {
-        mutex.withLock {
-            api?.close()
-            api = null
-            apiFor = null
-        }
+        mutex.withLock { releaseApi() }
         _state.value = if (activeServer.value == null) ConnectionState.NoServer else ConnectionState.Idle
     }
 

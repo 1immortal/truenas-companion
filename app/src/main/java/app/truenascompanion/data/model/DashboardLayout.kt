@@ -4,6 +4,9 @@ import kotlinx.serialization.Serializable
 
 enum class WidgetSize { HALF, FULL }
 
+/** Cards that render `reporting.realtime` data. */
+val LIVE_TYPES = setOf(WidgetType.SYSTEM, WidgetType.CPU, WidgetType.MEMORY, WidgetType.TEMPERATURE, WidgetType.NETWORK)
+
 enum class WidgetType(val title: String, val defaultSize: WidgetSize, val shortTitle: String = title) {
     SYSTEM("System", WidgetSize.FULL),
     CPU("CPU", WidgetSize.HALF),
@@ -24,6 +27,9 @@ data class WidgetConfig(
 
 @Serializable
 data class DashboardLayout(val widgets: List<WidgetConfig>) {
+
+    /** True when a visible card renders realtime stats, i.e. the live subscription is worth keeping open. */
+    val needsLiveStats: Boolean get() = widgets.any { it.visible && it.type in LIVE_TYPES }
 
     /** Drops duplicates/unknowns and appends widget types added in newer app versions. */
     fun normalized(): DashboardLayout {

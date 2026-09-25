@@ -3,6 +3,7 @@ package app.truenascompanion.screenshots
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -240,4 +241,29 @@ class ScreenshotTest {
 
     @Test fun notifMockDark() = shot("preview-notif-mock-dark") { Frame(true) { NotificationShadeMock(dark = true) } }
     @Test fun notifMockLight() = shot("preview-notif-mock-light") { Frame(false) { NotificationShadeMock(dark = false) } }
+
+    // --- v0.3.1 image-update banner ---
+
+    private val immich = app.truenascompanion.data.model.AppInfo(
+        name = "immich", state = app.truenascompanion.data.model.AppState.RUNNING, version = "v3.2.2_1.14.39",
+        upgradeAvailable = false, imageUpdatesAvailable = true, description = "High performance self-hosted photo and video management",
+        portalUrl = "http://nas.local:30041", containers = 4,
+    )
+    private val jellyfin = immich.copy(name = "jellyfin", version = "10.11.0_1.2.3", imageUpdatesAvailable = false, containers = 1)
+
+    @Composable
+    private fun AppCards() = Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        app.truenascompanion.ui.apps.AppCard(immich, null, null, false, {}, {})
+        app.truenascompanion.ui.apps.AppCard(jellyfin, null, null, false, {}, {})
+    }
+
+    @Test fun imageBannerDark() = shot("preview-image-banner-dark") { Frame(true) { AppCards() } }
+    @Test fun imageBannerLight() = shot("preview-image-banner-light") { Frame(false) { AppCards() } }
+    @Test fun imageBannerLargeFont() = shot("audit-image-banner-dark-font130") { Frame(true, 1.3f) { AppCards() } }
+    @Test fun imageDialogDark() = dialogShot("preview-image-dialog-dark", true, 1f) {
+        app.truenascompanion.ui.apps.ImageUpdateDialog(immich, onRedeploy = {}, onDismiss = {})
+    }
+    @Test fun imageDialogLargeFont() = dialogShot("audit-image-dialog-font130", false, 1.3f) {
+        app.truenascompanion.ui.apps.ImageUpdateDialog(immich, onRedeploy = {}, onDismiss = {})
+    }
 }

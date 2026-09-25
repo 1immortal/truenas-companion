@@ -31,6 +31,7 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 **Apps:** installed apps with their state, **start / stop / restart / redeploy**, and an "open web UI" portal link.
 - **App upgrades (new in 0.2):** apps with a newer catalog version show `current → latest` and an **Upgrade** button. The confirmation dialog shows the target version and release notes (`app.upgrade_summary`) and has an optional *Snapshot host paths first* switch. The upgrade runs as a TrueNAS job (`app.upgrade`) with a live progress bar on the app card.
 - **Upgrade all** appears when two or more apps have updates. It starts one `app.upgrade` job per app, and you confirm the list first.
+- **Newer image build (new in 0.3.1):** sometimes TrueNAS reports a newer build of an app's container image while the app version stays the same (the web UI doesn't show this as an update). The app card then shows a calm *Newer image build · same version* note. Tapping it explains what that means and offers **Redeploy**, which pulls the newer image and restarts the app (`app.pull_images` with `redeploy: true`; `chart.release.pull_container_images` on 24.04). The plain **Redeploy** menu action only recreates the containers from the images already on the NAS. It does not download anything.
 - **Check for updates** (refresh icon in the top bar) runs `catalog.sync` so new versions appear, then reports how many updates are available.
 
 **Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from the System tab. Jobs started in the web UI show up too.
@@ -44,7 +45,8 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 - **Notifications:** separate channels for *Critical & errors*, *Warnings*, *Info & notices* and *Cleared alerts*, so you can tune sound and vibration in Android settings. The title is the alert type, the text is the TrueNAS message, and the server name is shown as subtext. Several alerts are grouped together. Tapping one opens the Alerts tab for that server. **Dismiss** dismisses the alert on the NAS in the background, and **Open** opens the app.
 - Optional: *Notify when an alert clears*, and *Quiet hours* (only Critical and more severe alerts come through), plus a *Send test notification* button.
 - Turn it on in **System › Phone alerts**, or from the card on the Alerts tab. On Android 13+ the app explains why before asking for the notification permission. A hint links to Android's *allow background activity* setting if battery optimization is on; this is optional and never forced.
-- **Battery:** periodic checks are cheap. There is one short connection per interval, and Android batches them with other apps' work, so a 15-minute check may run a few minutes late, especially in Doze. Instant mode keeps a TLS WebSocket open with a 20 s ping, which costs noticeably more battery on mobile data. Use it if you need alerts within seconds.
+- **Battery:** periodic checks are cheap. There is one short connection per interval, and Android batches them with other apps' work, so a 15-minute check may run a few minutes late, especially in Doze. Instant mode keeps one TLS WebSocket open with a 45 s ping, which costs noticeably more battery on mobile data. Use it if you need alerts within seconds. The app screens and periodic checks reuse that same connection instead of opening their own.
+- **Battery design (0.3.1):** the app's own connection closes 30 s after you leave the app. Live dashboard stats and job lists only stream while their screen is visible, and live stats stop completely if you hide every card that uses them. Dropped streams reconnect with backoff (2 s up to 60 s). Long TrueNAS jobs are polled every 1 s at first, then gradually less often, up to every 5 s. Periodic checks only renew the session token when less than half of its lifetime is left. They look up alert titles only when there is something new to notify.
 
 **System:** services list with start/stop switches (stopping asks you to confirm), **reboot / shutdown** with confirmation dialogs, appearance settings, and a server switcher.
 
@@ -86,7 +88,7 @@ TrueNAS sees an insecure connection and **rejects and revokes your API key**, ev
 - In the proxy, set the upstream to **https** and TrueNAS's HTTPS port (NPM: *Scheme `https`*, *Forward Port `443`*, *Websockets Support* on). Then reset the key in TrueNAS (**My API Keys › Edit › Reset**) and paste the new one. **Or:**
 - Switch the server to **Username & password** in the app.
 
-Either way, make sure the proxy has **WebSockets support** enabled (the app uses `wss://HOST/api/current`).
+Either way, make sure the proxy has **WebSockets support** enabled (the app uses `wss://HOST/api/current`). The app pings every 30 s (45 s for instant alerts). That keeps the connection under nginx's default 60 s idle timeout, so NPM needs no extra timeout settings.
 
 ## Supported TrueNAS versions / APIs
 
@@ -99,7 +101,7 @@ Either way, make sure the proxy has **WebSockets support** enabled (the app uses
 Methods used on the WebSocket API: `auth.login_ex` / `auth.login_ex_continue` / `auth.generate_token` (password sign-in), `system.info`, `core.subscribe("reporting.realtime")`, `pool.query`, `disk.query`, `disk.temperatures`,
 `pool.dataset.query`, `app.query` / `app.start` / `app.stop` / `app.redeploy` (jobs, tracked with `core.get_jobs`), `alert.list` / `alert.dismiss`,
 `service.query`, `service.control` (falls back to `service.start`/`service.stop`), `system.reboot` / `system.shutdown`,
-`app.upgrade_summary` / `app.upgrade` / `catalog.sync`, `core.get_jobs` / `core.job_abort`.
+`app.upgrade_summary` / `app.upgrade` / `app.pull_images` / `catalog.sync`, `core.get_jobs` / `core.job_abort`.
 The method names come from the official docs at <https://api.truenas.com/>.
 
 ## Create a TrueNAS API key

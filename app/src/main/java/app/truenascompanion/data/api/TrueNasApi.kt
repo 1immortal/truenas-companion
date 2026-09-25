@@ -32,6 +32,8 @@ interface TrueNasApi : AutoCloseable {
     fun realtimeStats(): Flow<RealtimeStats>
     suspend fun pools(): List<Pool>
     suspend fun disks(): List<Disk>
+    /** Disk names only (for temperature lookups); implementations can avoid the pool query that [disks] needs. */
+    suspend fun diskNames(): List<String> = disks().map { it.name }
     suspend fun diskTemperatures(names: List<String>): Map<String, Double>
     suspend fun datasets(): List<Dataset>
     suspend fun apps(): List<AppInfo>

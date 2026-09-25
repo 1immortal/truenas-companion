@@ -73,6 +73,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
 import java.util.Locale
 
 /** Friendly title for a middleware job. */
@@ -110,26 +115,25 @@ fun JobState.health(): Health = when (this) {
     JobState.ABORTED, JobState.UNKNOWN -> Health.UNKNOWN
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class JobsViewModel(private val c: AppContainer) : ViewModel() {
-    private val _state = MutableStateFlow<UiState<List<JobInfo>>>(UiState.Loading)
-    val state: StateFlow<UiState<List<JobInfo>>> = _state.asStateFlow()
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
-    private var collector: Job? = null
+    private val retry = MutableStateFlow(0)
 
-    init {
-        viewModelScope.launch { c.repository.reloadKey.collect { if (it != null) start() } }
-    }
+    /** Live job list; the subscription only runs while the screen is visible (WhileSubscribed + lifecycle collection). */
+    val state: StateFlow<UiState<List<JobInfo>>> =
+        kotlinx.coroutines.flow.combine(c.repository.reloadKey, retry) { key, n -> key to n }
+            .flatMapLatest { (key, n) ->
+                if (key == null) kotlinx.coroutines.flow.emptyFlow()
+                else c.repository.jobs()
+                    .map<List<JobInfo>, UiState<List<JobInfo>>> { UiState.Success(it) }
+                    .let { f -> if (n > 0) f.onStart { emit(UiState.Loading) } else f }
+                    .catch { e -> emit(UiState.Error(e.userMessage(), e)) }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Loading)
 
-    fun start() {
-        collector?.cancel()
-        _state.value = UiState.Loading
-        collector = viewModelScope.launch {
-            c.repository.jobs()
-                .catch { e -> _state.value = UiState.Error(e.userMessage(), e) }
-                .collect { _state.value = UiState.Success(it) }
-        }
-    }
+    fun start() { retry.value++ }
 
     fun abort(job: JobInfo) = viewModelScope.launch {
         try {

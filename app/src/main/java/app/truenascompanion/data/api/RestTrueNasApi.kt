@@ -146,6 +146,10 @@ class RestTrueNasApi private constructor(
                 AppAction.STOP -> post("/chart/release/scale", scale(0))
                 AppAction.RESTART -> { post("/chart/release/scale", scale(0)); post("/chart/release/scale", scale(1)) }
                 AppAction.REDEPLOY -> post("/chart/release/redeploy", name)
+                AppAction.PULL_REDEPLOY -> post("/chart/release/pull_container_images", buildJsonObject {
+                    put("release_name", app.name)
+                    put("pull_container_images_options", buildJsonObject { put("redeploy", true) })
+                })
             }
             return
         }
@@ -154,6 +158,10 @@ class RestTrueNasApi private constructor(
             AppAction.STOP -> post("/app/stop", name)
             AppAction.RESTART -> post("/app/redeploy", name)
             AppAction.REDEPLOY -> post("/app/redeploy", name)
+            AppAction.PULL_REDEPLOY -> post("/app/pull_images", buildJsonObject {
+                put("app_name", app.name)
+                put("options", buildJsonObject { put("redeploy", true) })
+            })
         }
     }
 

@@ -29,6 +29,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -93,6 +95,7 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
         val first = call(method, *args)
         val jobId = first.prim()?.takeUnless { it.isString }?.longOrNull ?: return first
         return withTimeout(timeoutMs) {
+            var polls = 0
             var result: JsonElement? = null
             var done = false
             while (!done) {
@@ -103,7 +106,7 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
                     "FAILED", "ABORTED" -> throw TrueNasException.JobFailed(
                         job.str("error")?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "$method failed"
                     )
-                    else -> delay(1000)
+                    else -> delay(jobPollDelayMs(polls++))
                 }
             }
             result
@@ -122,6 +125,10 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
             }
         }
         val subId = call("core.subscribe", p("reporting.realtime"))
+        launch { // end the flow when the socket dies so the repository reconnects (no polling needed)
+            rpc.closed.await()
+            close(TrueNasException.NotConnected())
+        }
         awaitClose { runCatching { rpc.notify("core.unsubscribe", params(subId)) } }
     }
 
@@ -132,6 +139,12 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
             .flatMap { pool -> pool.diskNames.map { it to pool.name } }.toMap()
         return call("disk.query").arr()?.mapNotNull { it.obj()?.let { o -> Parsers.disk(o, poolByDisk) } }
             ?.sortedBy { it.name } ?: emptyList()
+    }
+
+    override suspend fun diskNames(): List<String> {
+        val options = buildJsonObject { put("select", JsonArray(listOf(p("name")))) }
+        return call("disk.query", JsonArray(emptyList()), options).arr()
+            ?.mapNotNull { it.obj()?.get("name")?.jsonPrimitive?.contentOrNull }?.sorted() ?: emptyList()
     }
 
     override suspend fun diskTemperatures(names: List<String>): Map<String, Double> {
@@ -173,6 +186,9 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
                 AppAction.STOP -> callJob("chart.release.scale", p(app.name), scale(0))
                 AppAction.RESTART -> { callJob("chart.release.scale", p(app.name), scale(0)); callJob("chart.release.scale", p(app.name), scale(1)) }
                 AppAction.REDEPLOY -> callJob("chart.release.redeploy", p(app.name))
+                AppAction.PULL_REDEPLOY -> callJob(
+                    "chart.release.pull_container_images", p(app.name), buildJsonObject { put("redeploy", true) }, timeoutMs = PULL_TIMEOUT_MS,
+                )
             }
             return
         }
@@ -181,6 +197,10 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
             AppAction.STOP -> callJob("app.stop", p(app.name))
             AppAction.RESTART -> { callJob("app.stop", p(app.name)); callJob("app.start", p(app.name)) }
             AppAction.REDEPLOY -> callJob("app.redeploy", p(app.name))
+            // Redeploy alone runs `compose up --force-recreate` with the default "missing" pull policy, so an image
+            // rebuilt under the same tag is not fetched. app.pull_images runs `compose pull --policy always`, clears
+            // the image-update flag and then redeploys (middlewared plugins/apps/pull_images.py, 25.10).
+            AppAction.PULL_REDEPLOY -> callJob("app.pull_images", p(app.name), buildJsonObject { put("redeploy", true) }, timeoutMs = PULL_TIMEOUT_MS)
         }
     }
 
@@ -303,8 +323,8 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
                 }
             }
         }
-        launch { // end the flow when the socket dies so the repository can reconnect
-            while (rpc.isOpen) delay(3_000)
+        launch { // end the flow when the socket dies so the repository can reconnect (was a 3 s polling loop)
+            rpc.closed.await()
             close(TrueNasException.NotConnected())
         }
         val subId = call("core.subscribe", p("core.get_jobs"))
@@ -321,3 +341,17 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
 
     override fun close() = rpc.close()
 }
+
+/**
+ * Job status polling: quick at first (most actions finish in a few seconds), then gradually slower up to 5 s, so a
+ * 20-minute image pull costs ~250 small requests instead of ~1200.
+ */
+internal fun jobPollDelayMs(poll: Int): Long = when {
+    poll < 5 -> 1_000L
+    poll < 15 -> 2_000L
+    poll < 30 -> 3_000L
+    else -> 5_000L
+}
+
+/** Large images (e.g. immich) can take many minutes to pull; middlewared allows compose 20 min. */
+private const val PULL_TIMEOUT_MS = 25 * 60_000L

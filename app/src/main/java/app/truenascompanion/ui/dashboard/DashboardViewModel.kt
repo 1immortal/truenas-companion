@@ -74,12 +74,6 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
 
-    /** Live stats only flow while the dashboard is on screen (collectAsStateWithLifecycle + WhileSubscribed). */
-    val live: StateFlow<LiveStats> = repo.reloadKey.flatMapLatest { key ->
-        if (key == null) emptyFlow() else repo.realtime().catch { }
-    }.scan(LiveStats()) { acc, s -> acc.add(s) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(3000), LiveStats())
-
     private val savedLayout: StateFlow<DashboardLayout> = server.filterNotNull().map { it.id }.distinctUntilChanged()
         .flatMapLatest { c.settings.dashboardLayout(it) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, DashboardLayout.DEFAULT)
@@ -92,6 +86,19 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
 
     val layout: StateFlow<DashboardLayout> = kotlinx.coroutines.flow.combine(savedLayout, draft) { saved, d -> d ?: saved }
         .stateIn(viewModelScope, SharingStarted.Eagerly, DashboardLayout.DEFAULT)
+
+    /**
+     * Live stats only flow while the dashboard is on screen (collectAsStateWithLifecycle + WhileSubscribed)
+     * and only when at least one card that shows them is visible (or the layout is being edited):
+     * hiding CPU/memory/network/temperature/system cards stops the once-a-second stream entirely.
+     */
+    val live: StateFlow<LiveStats> = kotlinx.coroutines.flow.combine(
+        repo.reloadKey,
+        kotlinx.coroutines.flow.combine(layout, _editing) { l, e -> e || l.needsLiveStats }.distinctUntilChanged(),
+    ) { key, needed -> key.takeIf { needed } }
+        .flatMapLatest { key -> if (key == null) emptyFlow() else repo.realtime().catch { } }
+        .scan(LiveStats()) { acc, s -> acc.add(s) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(3000), LiveStats())
 
     init {
         viewModelScope.launch {
@@ -122,7 +129,7 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                 val alerts = async { runCatching { repo.call { it.alerts() } }.getOrNull() }
                 val temps = async {
                     runCatching {
-                        repo.call { api -> api.diskTemperatures(api.disks().map { it.name }) }
+                        repo.call { api -> api.diskTemperatures(api.diskNames()) }
                     }.getOrNull()
                 }
                 val system = sys.await()
@@ -136,7 +143,7 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                         AppsSummary(
                             total = l.size,
                             running = l.count { it.state == AppState.RUNNING },
-                            updates = l.count { it.upgradeAvailable || it.imageUpdatesAvailable },
+                            updates = l.count { it.upgradeAvailable }, // catalog upgrades only, like the web UI
                             problems = l.count { it.state == AppState.CRASHED },
                         )
                     },

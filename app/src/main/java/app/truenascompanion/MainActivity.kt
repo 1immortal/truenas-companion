@@ -26,6 +26,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        (application as TrueNasApp).container.repository.setForeground(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Rotation stops/starts the activity within milliseconds; the repository waits 30 s before closing the socket.
+        (application as TrueNasApp).container.repository.setForeground(false)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
