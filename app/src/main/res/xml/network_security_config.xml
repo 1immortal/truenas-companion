@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Home NAS boxes are frequently reached over plain HTTP on the LAN, so cleartext is permitted.
+  The app warns loudly when an http:// URL is used, because TrueNAS revokes API keys that are
+  sent over an insecure transport. Self-signed HTTPS certificates are handled in code by
+  certificate pinning (trust-on-first-use), not by trusting user CAs globally.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,171 @@
+package app.truenascompanion.data.model
+
+import kotlinx.serialization.Serializable
+
+/** A saved TrueNAS server. The API key is stored separately, encrypted with an Android Keystore key. */
+@Serializable
+data class ServerConfig(
+    val id: String,
+    val name: String,
+    /** Normalized base URL, e.g. `https://nas.local` or `http://192.168.1.10:8080`. */
+    val url: String,
+    /** Only needed for TrueNAS 26+/27 where `auth.login_ex` (API_KEY_PLAIN) requires the key owner's username. */
+    val username: String = "",
+    /** SHA-256 fingerprint (hex, uppercase, colon separated) of a self-signed certificate the user chose to trust. */
+    val pinnedCertSha256: String? = null,
+    /** Skip the WebSocket API and use the legacy REST API v2.0 directly. */
+    val forceRest: Boolean = false,
+) {
+    val isHttps: Boolean get() = url.startsWith("https://", ignoreCase = true)
+    val displayHost: String get() = url.substringAfter("://")
+}
+
+enum class ApiFlavor(val label: String) {
+    WEBSOCKET("JSON-RPC WebSocket (/api/current)"),
+    REST("REST API v2.0 (legacy)"),
+}
+
+data class SystemInfo(
+    val hostname: String,
+    val version: String,
+    val uptimeSeconds: Long?,
+    val uptimeText: String?,
+    val cpuModel: String?,
+    val cores: Int?,
+    val physicalMemory: Long?,
+    val loadAverage: List<Double>,
+    val systemProduct: String?,
+    val eccMemory: Boolean?,
+)
+
+data class RealtimeStats(
+    val cpuPercent: Double?,
+    val cpuTempC: Double?,
+    val memoryTotal: Long?,
+    val memoryAvailable: Long?,
+    val arcSize: Long?,
+    val netRxBytesPerSec: Double?,
+    val netTxBytesPerSec: Double?,
+    val timestamp: Long = System.currentTimeMillis(),
+) {
+    val memoryUsed: Long?
+        get() = if (memoryTotal != null && memoryAvailable != null) (memoryTotal - memoryAvailable).coerceAtLeast(0) else null
+}
+
+enum class Health { HEALTHY, WARNING, CRITICAL, UNKNOWN }
+
+data class Pool(
+    val id: Long,
+    val name: String,
+    val status: String,
+    val healthy: Boolean,
+    val warning: Boolean,
+    val statusDetail: String?,
+    val size: Long?,
+    val allocated: Long?,
+    val free: Long?,
+    val fragmentation: String?,
+    val scanFunction: String?,
+    val scanState: String?,
+    val scanPercent: Double?,
+    val scanErrors: Long?,
+    val diskNames: List<String>,
+) {
+    val health: Health
+        get() = when {
+            status.equals("ONLINE", true) && healthy && !warning -> Health.HEALTHY
+            status.equals("ONLINE", true) || status.equals("DEGRADED", true) || warning -> Health.WARNING
+            else -> Health.CRITICAL
+        }
+    val usedFraction: Float
+        get() = if (size != null && size > 0 && allocated != null) (allocated.toDouble() / size).toFloat().coerceIn(0f, 1f) else 0f
+}
+
+data class Disk(
+    val name: String,
+    val serial: String?,
+    val model: String?,
+    val size: Long?,
+    val type: String?,
+    val rotationRate: Int?,
+    val pool: String?,
+    val temperatureC: Double?,
+)
+
+data class Dataset(
+    val id: String,
+    val pool: String,
+    val type: String,
+    val used: Long?,
+    val available: Long?,
+    val encrypted: Boolean,
+    val locked: Boolean,
+    val mountpoint: String?,
+) {
+    val depth: Int get() = id.count { it == '/' }
+    val shortName: String get() = id.substringAfterLast('/')
+    val isSystem: Boolean
+        get() = id.contains("/.system") || id.contains("/ix-applications") || id.contains("/.ix-") ||
+            id.contains("/ix-apps") || shortName.startsWith(".")
+    val usedFraction: Float
+        get() {
+            val u = used ?: return 0f
+            val total = u + (available ?: return 0f)
+            return if (total > 0) (u.toDouble() / total).toFloat() else 0f
+        }
+}
+
+enum class AppState { RUNNING, STOPPED, DEPLOYING, STOPPING, CRASHED, UNKNOWN }
+
+data class AppInfo(
+    val name: String,
+    val state: AppState,
+    val version: String?,
+    val upgradeAvailable: Boolean,
+    val imageUpdatesAvailable: Boolean,
+    val description: String?,
+    val portalUrl: String?,
+    val containers: Int?,
+    /** true when the app came from the pre-24.10 Kubernetes `chart.release.*` API. */
+    val legacyChart: Boolean = false,
+)
+
+enum class AppAction(val label: String) { START("Start"), STOP("Stop"), RESTART("Restart"), REDEPLOY("Redeploy") }
+
+data class AlertItem(
+    val uuid: String,
+    val level: String,
+    val text: String,
+    val klass: String?,
+    val datetimeMillis: Long?,
+    val dismissed: Boolean,
+    val oneShot: Boolean,
+) {
+    val health: Health
+        get() = when (level.uppercase()) {
+            "INFO", "NOTICE" -> Health.HEALTHY
+            "WARNING" -> Health.WARNING
+            else -> Health.CRITICAL
+        }
+}
+
+data class ServiceInfo(
+    val id: Long,
+    val service: String,
+    val running: Boolean,
+    val enabledOnBoot: Boolean,
+) {
+    val displayName: String get() = SERVICE_NAMES[service] ?: service.uppercase()
+
+    companion object {
+        val SERVICE_NAMES = mapOf(
+            "cifs" to "SMB", "nfs" to "NFS", "ssh" to "SSH", "ftp" to "FTP",
+            "iscsitarget" to "iSCSI", "snmp" to "SNMP", "ups" to "UPS", "smartd" to "S.M.A.R.T.",
+            "nvmet" to "NVMe-oF", "webdav" to "WebDAV", "rsync" to "Rsync", "s3" to "S3",
+            "lldp" to "LLDP", "openvpn_client" to "OpenVPN Client", "openvpn_server" to "OpenVPN Server",
+            "dynamicdns" to "Dynamic DNS", "netdata" to "Netdata", "tftp" to "TFTP", "webshare" to "WebShare",
+            "docker" to "Docker", "incus" to "Incus", "mdns" to "mDNS", "wsdd" to "WS-Discovery",
+            "keepalived" to "Keepalived", "truecommand" to "TrueCommand",
+        )
+    }
+}

@@ -1,0 +1,313 @@
+package app.truenascompanion.ui.servers
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.truenascompanion.data.model.Health
+import app.truenascompanion.data.model.ServerConfig
+import app.truenascompanion.ui.appViewModel
+import app.truenascompanion.ui.components.ConfirmDialog
+import app.truenascompanion.ui.components.ElevatedSection
+import app.truenascompanion.ui.components.EmptyState
+import app.truenascompanion.ui.components.IconBadge
+import app.truenascompanion.ui.components.InfoBanner
+import app.truenascompanion.ui.components.SkeletonList
+import app.truenascompanion.ui.components.StatusChip
+import app.truenascompanion.ui.theme.LocalStatusColors
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> Unit, onBack: (() -> Unit)?) {
+    val vm = appViewModel { ServerListViewModel(it) }
+    val servers by vm.servers.collectAsStateWithLifecycle()
+    val activeId by vm.activeId.collectAsStateWithLifecycle()
+    var toDelete by remember { mutableStateOf<ServerConfig?>(null) }
+    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { Text("Your servers") },
+                navigationIcon = { onBack?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } } },
+                scrollBehavior = scroll,
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add server") })
+        },
+    ) { padding ->
+        val list = servers
+        when {
+            list == null -> Column(Modifier.padding(padding)) { SkeletonList(3) }
+            list.isEmpty() -> Column(Modifier.padding(padding).fillMaxSize(), verticalArrangement = Arrangement.Center) {
+                EmptyState(
+                    icon = Icons.Rounded.Storage,
+                    title = "Welcome to TrueNAS Companion",
+                    message = "Add your TrueNAS SCALE server to monitor storage, apps, alerts and more — right from your phone.",
+                    action = { Button(onClick = onAdd) { Text("Add your first server") } },
+                )
+            }
+            else -> LazyColumn(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(list, key = { it.id }) { server ->
+                    val active = server.id == activeId
+                    ElevatedSection(onClick = { vm.select(server.id); onOpen() }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconBadge(Icons.Rounded.Dns)
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(server.name, style = MaterialTheme.typography.titleMedium)
+                                Text(server.displayHost, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(6.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (active) StatusChip(Health.HEALTHY, "Active")
+                                    if (!server.isHttps) StatusChip(Health.WARNING, "HTTP")
+                                    else if (server.pinnedCertSha256 != null) StatusChip(Health.UNKNOWN, "Pinned cert", showIcon = false)
+                                }
+                            }
+                            IconButton(onClick = { onEdit(server.id) }) { Icon(Icons.Rounded.Edit, "Edit") }
+                            IconButton(onClick = { toDelete = server }) { Icon(Icons.Rounded.Delete, "Delete") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    toDelete?.let { s ->
+        ConfirmDialog(
+            title = "Remove ${s.name}?",
+            text = "The saved API key and dashboard layout for this server will be deleted from this phone.",
+            confirmLabel = "Remove", destructive = true, icon = Icons.Rounded.Delete,
+            onConfirm = { vm.delete(s.id); toDelete = null }, onDismiss = { toDelete = null },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)?) {
+    val vm = appViewModel(key = "edit-$serverId") { ServerEditViewModel(it, serverId) }
+    val s by vm.state.collectAsStateWithLifecycle()
+    var showKey by rememberSaveable { mutableStateOf(false) }
+    var advanced by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(s.saved) { if (s.saved) onDone() }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (serverId == null) "Connect to TrueNAS" else "Edit server") },
+                navigationIcon = { onBack?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } } },
+            )
+        },
+    ) { padding ->
+        Column(
+            Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                "In the TrueNAS web UI open the account menu (top right) › My API Keys › Add, or Credentials › Users › View API Keys. Copy the key (it is shown only once) and paste it below.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = s.url, onValueChange = { v -> vm.update { it.copy(url = v) } },
+                label = { Text("Server address") }, placeholder = { Text("https://truenas.local") },
+                leadingIcon = { Icon(if (s.isHttp) Icons.Rounded.LockOpen else Icons.Rounded.Lock, null) },
+                singleLine = true, isError = s.urlError != null,
+                supportingText = { Text(s.urlError ?: "Host or IP, optional port. https:// is assumed if omitted.") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            AnimatedVisibility(s.isHttp) {
+                InfoBanner(
+                    "Plain HTTP sends your API key unencrypted. TrueNAS 25.04+ automatically revokes API keys used over HTTP — use https:// whenever possible.",
+                    Health.CRITICAL,
+                )
+            }
+            OutlinedTextField(
+                value = s.apiKey, onValueChange = { v -> vm.update { it.copy(apiKey = v) } },
+                label = { Text("API key") },
+                placeholder = { if (s.hasSavedKey) Text("Saved — leave empty to keep") },
+                leadingIcon = { Icon(Icons.Rounded.Key, null) },
+                trailingIcon = {
+                    IconButton(onClick = { showKey = !showKey }) {
+                        Icon(if (showKey) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (showKey) "Hide" else "Show")
+                    }
+                },
+                visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                singleLine = true,
+                supportingText = { Text("Stored encrypted with the Android Keystore.") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = s.name, onValueChange = { v -> vm.update { it.copy(name = v) } },
+                label = { Text("Nickname (optional)") }, placeholder = { Text("Home NAS") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            TextButton(onClick = { advanced = !advanced }) {
+                Text("Advanced options")
+                Icon(if (advanced) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
+            }
+            AnimatedVisibility(advanced) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = s.username, onValueChange = { v -> vm.update { it.copy(username = v) } },
+                        label = { Text("API key owner username") }, placeholder = { Text("truenas_admin") }, singleLine = true,
+                        supportingText = { Text("Only needed on TrueNAS 26+/27, where API key login requires the username.") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Use legacy REST API", style = MaterialTheme.typography.bodyLarge)
+                            Text("For SCALE releases older than 25.04. Detected automatically; no live stats.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = s.forceRest, onCheckedChange = { v -> vm.update { it.copy(forceRest = v) } })
+                    }
+                    if (s.pinnedCert != null) {
+                        ElevatedSection {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.Shield, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Trusted self-signed certificate", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                TextButton(onClick = vm::forgetPinnedCertificate) { Text("Forget") }
+                            }
+                            Text(s.pinnedCert ?: "", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+
+            TestOutcomeCard(s)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                FilledTonalButton(onClick = vm::test, enabled = s.canSubmit && !s.testing, modifier = Modifier.weight(1f)) {
+                    if (s.testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Rounded.NetworkCheck, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Test")
+                }
+                Button(onClick = vm::save, enabled = s.canSubmit && !s.testing, modifier = Modifier.weight(1f)) { Text("Save") }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    s.pendingCertificate?.let { cert ->
+        AlertDialog(
+            onDismissRequest = vm::dismissCertificate,
+            icon = { Icon(Icons.Rounded.Shield, null) },
+            title = { Text("Trust this server?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (cert.selfSigned) "This server uses a self-signed certificate (normal for a home NAS). Only trust it if you are sure this is your server."
+                        else "This certificate is not trusted by your phone or doesn't match the address. Only trust it if you are sure this is your server."
+                    )
+                    Text("Subject", style = MaterialTheme.typography.labelMedium)
+                    Text(cert.subject, style = MaterialTheme.typography.bodySmall)
+                    Text("Valid", style = MaterialTheme.typography.labelMedium)
+                    Text("${cert.validFrom} – ${cert.validUntil}", style = MaterialTheme.typography.bodySmall)
+                    Text("SHA-256 fingerprint", style = MaterialTheme.typography.labelMedium)
+                    Text(cert.sha256, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    Text("The app will trust exactly this certificate for this server and warn if it ever changes.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { Button(onClick = vm::trustPendingCertificate) { Text("Trust") } },
+            dismissButton = { TextButton(onClick = vm::dismissCertificate) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun TestOutcomeCard(s: ServerEditState) {
+    val status = LocalStatusColors.current
+    AnimatedVisibility(s.outcome != null) {
+        when (val o = s.outcome) {
+            is TestOutcome.Success -> ElevatedSection {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = status.healthy)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Connected to ${o.result.info.hostname}", style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(o.result.info.version, style = MaterialTheme.typography.bodyMedium)
+                Text("Using ${o.result.flavor.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            is TestOutcome.Failure -> InfoBanner(o.message, Health.CRITICAL)
+            null -> Unit
+        }
+    }
+}

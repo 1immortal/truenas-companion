@@ -1,0 +1,171 @@
+package app.truenascompanion.ui
+
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import app.truenascompanion.TrueNasApp
+import app.truenascompanion.data.model.WidgetType
+import app.truenascompanion.ui.alerts.AlertsScreen
+import app.truenascompanion.ui.apps.AppsScreen
+import app.truenascompanion.ui.dashboard.DashboardScreen
+import app.truenascompanion.ui.servers.ServerEditScreen
+import app.truenascompanion.ui.servers.ServerListScreen
+import app.truenascompanion.ui.storage.StorageScreen
+import app.truenascompanion.ui.system.SystemScreen
+import androidx.compose.ui.platform.LocalContext
+
+private enum class Tab(val route: String, val label: String, val selected: ImageVector, val unselected: ImageVector) {
+    DASHBOARD("dashboard", "Dashboard", Icons.Rounded.Dashboard, Icons.Outlined.Dashboard),
+    STORAGE("storage", "Storage", Icons.Rounded.Storage, Icons.Outlined.Storage),
+    APPS("apps", "Apps", Icons.Rounded.Apps, Icons.Outlined.Apps),
+    ALERTS("alerts", "Alerts", Icons.Rounded.Notifications, Icons.Outlined.Notifications),
+    SYSTEM("system", "System", Icons.Rounded.Settings, Icons.Outlined.Settings),
+}
+
+private object Routes {
+    const val SERVERS = "servers"
+    const val EDIT = "server_edit?id={id}"
+    fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
+}
+
+@Composable
+fun AppRoot() {
+    val container = (LocalContext.current.applicationContext as TrueNasApp).container
+    val servers by container.settings.servers.collectAsStateWithLifecycle(initialValue = null)
+    val list = servers
+    if (list == null) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {}
+        return
+    }
+    val nav = rememberNavController()
+    // First run: open the connection setup on top of the (empty) dashboard.
+    LaunchedEffect(Unit) { if (list.isEmpty()) nav.navigate(Routes.edit()) }
+    val entry by nav.currentBackStackEntryAsState()
+    val route = entry?.destination?.route
+    val showBar = Tab.entries.any { it.route == route }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0),
+        bottomBar = {
+            if (showBar) {
+                NavigationBar {
+                    Tab.entries.forEach { tab ->
+                        val selected = route == tab.route
+                        NavigationBarItem(
+                            selected = selected,
+                            onClick = { nav.switchTab(tab.route) },
+                            icon = { Icon(if (selected) tab.selected else tab.unselected, null) },
+                            label = { Text(tab.label) },
+                        )
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
+            NavHost(
+                navController = nav,
+                startDestination = Tab.DASHBOARD.route,
+                enterTransition = { fadeIn() },
+                exitTransition = { fadeOut() },
+            ) {
+                composable(Tab.DASHBOARD.route) {
+                    DashboardScreen(
+                        onOpen = { type ->
+                            when (type) {
+                                WidgetType.POOLS, WidgetType.TEMPERATURE -> nav.switchTab(Tab.STORAGE.route)
+                                WidgetType.APPS -> nav.switchTab(Tab.APPS.route)
+                                WidgetType.ALERTS -> nav.switchTab(Tab.ALERTS.route)
+                                else -> Unit
+                            }
+                        },
+                        onServers = { nav.navigate(Routes.SERVERS) },
+                    )
+                }
+                composable(Tab.STORAGE.route) { StorageScreen() }
+                composable(Tab.APPS.route) { AppsScreen() }
+                composable(Tab.ALERTS.route) { AlertsScreen() }
+                composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }) }
+                composable(
+                    Routes.SERVERS,
+                    enterTransition = { slideInHorizontally { it } + fadeIn() },
+                    popExitTransition = { slideOutHorizontally { it } + fadeOut() },
+                ) {
+                    ServerListScreen(
+                        onAdd = { nav.navigate(Routes.edit()) },
+                        onEdit = { nav.navigate(Routes.edit(it)) },
+                        onOpen = { nav.backToDashboard() },
+                        onBack = if (list.isNotEmpty()) ({ nav.popBackStack() }) else null,
+                    )
+                }
+                composable(
+                    Routes.EDIT,
+                    arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null }),
+                    enterTransition = { slideInHorizontally { it } + fadeIn() },
+                    popExitTransition = { slideOutHorizontally { it } + fadeOut() },
+                ) { backStack ->
+                    val id = backStack.arguments?.getString("id")
+                    val canGoBack = nav.previousBackStackEntry != null
+                    ServerEditScreen(
+                        serverId = id,
+                        onDone = {
+                            if (nav.previousBackStackEntry?.destination?.route == Routes.SERVERS) nav.popBackStack()
+                            else nav.backToDashboard()
+                        },
+                        onBack = if (canGoBack) ({ nav.popBackStack() }) else null,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun NavHostController.switchTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        restoreState = true
+        launchSingleTop = true
+    }
+}
+
+private fun NavHostController.backToDashboard() {
+    if (!popBackStack(Tab.DASHBOARD.route, inclusive = false)) switchTab(Tab.DASHBOARD.route)
+}
