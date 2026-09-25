@@ -27,8 +27,8 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -115,9 +115,14 @@ fun LocalAddressSection(
 
             if (s.normalizedLocalUrl != null) {
                 Text("Which address to use", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    RouteMode.entries.forEach { m ->
-                        FilterChip(selected = s.routeMode == m, onClick = { onMode(m) }, label = { Text(m.label, maxLines = 1) })
+                androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    RouteMode.entries.forEachIndexed { i, m ->
+                        SegmentedButton(
+                            selected = s.routeMode == m, onClick = { onMode(m) },
+                            shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, RouteMode.entries.size),
+                            icon = {},
+                            label = { Text(when (m) { RouteMode.AUTO -> "Auto"; RouteMode.LOCAL -> "Local"; RouteMode.REMOTE -> "Remote" }, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                        )
                     }
                 }
                 Text(

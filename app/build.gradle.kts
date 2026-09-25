@@ -15,8 +15,8 @@ android {
         applicationId = "app.truenascompanion"
         minSdk = 26
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.3.1"
+        versionCode = 6
+        versionName = "0.4.0"
     }
 
     buildTypes {
@@ -68,6 +68,9 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment.ktx)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.coil.svg)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

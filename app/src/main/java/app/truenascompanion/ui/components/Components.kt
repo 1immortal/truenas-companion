@@ -61,6 +61,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -462,6 +463,32 @@ fun RouteChip(route: app.truenascompanion.data.model.Route, modifier: Modifier =
             )
             Spacer(Modifier.width(4.dp))
             Text(route.label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * App/catalog icon loaded with Coil (memory + disk cache, so each icon is downloaded once), with the letter avatar
+ * as placeholder and fallback.
+ */
+@Composable
+fun AppIcon(url: String?, name: String, size: Dp = 44.dp) {
+    var failed by androidx.compose.runtime.remember(url) { androidx.compose.runtime.mutableStateOf(false) }
+    var loaded by androidx.compose.runtime.remember(url) { androidx.compose.runtime.mutableStateOf(false) }
+    if (url == null || failed) { LetterAvatar(name, size); return }
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        if (!loaded) LetterAvatar(name, size)
+        androidx.compose.foundation.layout.Box(
+            Modifier.size(size).clip(RoundedCornerShape(size * 0.28f))
+                .background(if (loaded) androidx.compose.ui.graphics.Color.White.copy(alpha = 0.92f) else androidx.compose.ui.graphics.Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            coil3.compose.AsyncImage(
+                model = url, contentDescription = null,
+                modifier = Modifier.size(size * 0.78f),
+                onSuccess = { loaded = true },
+                onError = { failed = true },
+            )
         }
     }
 }

@@ -193,6 +193,70 @@ data class AppInfo(
     val legacyChart: Boolean = false,
     /** Newest catalog version (`latest_version`), when an upgrade is available. */
     val latestVersion: String? = null,
+    val customApp: Boolean = false,
+    /** Catalog icon (`metadata.icon`). */
+    val iconUrl: String? = null,
+    val train: String? = null,
+    /** Catalog app name (`metadata.name`), e.g. "immich" even if the app was installed as "photos". */
+    val catalogName: String? = null,
+    val containerDetails: List<AppContainerInfo> = emptyList(),
+    /** All portals (label -> URL); [portalUrl] is the first one. */
+    val portals: Map<String, String> = emptyMap(),
+    val notes: String? = null,
+)
+
+/** One container of an app (`active_workloads.container_details`). */
+data class AppContainerInfo(val id: String, val service: String, val image: String?, val state: String?)
+
+/** An app in the catalog (`app.available`). */
+data class CatalogApp(
+    val name: String,
+    val title: String,
+    val description: String,
+    val iconUrl: String?,
+    val categories: List<String>,
+    val train: String,
+    val installed: Boolean,
+    val latestVersion: String?,
+    val latestAppVersion: String?,
+    val popularity: Int? = null,
+    val recommended: Boolean = false,
+    val home: String? = null,
+)
+
+/** `catalog.get_app_details` for the version that would be installed. */
+data class CatalogAppDetails(
+    val app: CatalogApp,
+    val version: String,
+    val appVersion: String?,
+    val readme: String?,
+    /** `schema` of the version: `{groups: [...], questions: [...]}`. */
+    val schema: kotlinx.serialization.json.JsonObject?,
+    /** Default values for the questions. */
+    val defaults: kotlinx.serialization.json.JsonObject,
+    val screenshots: List<String>,
+    val sources: List<String>,
+)
+
+/** Current configuration of an installed app plus the questions of its installed version (for the edit form). */
+data class AppEditData(
+    val app: String,
+    val values: kotlinx.serialization.json.JsonObject,
+    val schema: kotlinx.serialization.json.JsonObject?,
+    val customApp: Boolean,
+)
+
+data class LogLine(val text: String, val timestamp: String?)
+
+/** `app.stats` sample for one app. */
+data class AppStats(
+    val app: String,
+    val cpuPercent: Int,
+    val memoryBytes: Long,
+    val rxBytesPerSec: Long,
+    val txBytesPerSec: Long,
+    val blkReadBytes: Long,
+    val blkWriteBytes: Long,
 )
 
 /** Result of `app.upgrade_summary`. */

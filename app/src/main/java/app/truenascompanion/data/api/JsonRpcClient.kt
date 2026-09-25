@@ -39,7 +39,7 @@ class JsonRpcClient(
     private val json = Json { ignoreUnknownKeys = true }
     private val pending = ConcurrentHashMap<String, CompletableDeferred<JsonElement>>()
     private val ids = AtomicLong(1)
-    private val _events = MutableSharedFlow<JsonObject>(extraBufferCapacity = 64)
+    private val _events = MutableSharedFlow<JsonObject>(extraBufferCapacity = 1024) // log tails arrive in bursts
     val events: SharedFlow<JsonObject> = _events
 
     @Volatile

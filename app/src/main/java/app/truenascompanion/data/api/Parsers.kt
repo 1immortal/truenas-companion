@@ -2,6 +2,10 @@ package app.truenascompanion.data.api
 
 import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.data.model.AppInfo
+import app.truenascompanion.data.model.AppStats
+import app.truenascompanion.data.model.CatalogAppDetails
+import app.truenascompanion.data.model.CatalogApp
+import app.truenascompanion.data.model.AppContainerInfo
 import app.truenascompanion.data.model.AppUpgradeSummary
 import app.truenascompanion.data.model.JobInfo
 import app.truenascompanion.data.model.JobState
@@ -215,6 +219,85 @@ object Parsers {
             portalUrl = portals?.values?.firstNotNullOfOrNull { it.prim()?.contentOrNull },
             containers = o["active_workloads"].obj()?.long("containers")?.toInt(),
             latestVersion = o.str("latest_version"),
+            customApp = o.bool("custom_app") ?: false,
+            iconUrl = o["metadata"].obj()?.str("icon")?.takeIf { it.startsWith("http") },
+            train = o["metadata"].obj()?.str("train"),
+            catalogName = o["metadata"].obj()?.str("name"),
+            containerDetails = o["active_workloads"].obj()?.get("container_details").arr()?.mapNotNull { c ->
+                val co = c.obj() ?: return@mapNotNull null
+                AppContainerInfo(co.str("id") ?: return@mapNotNull null, co.str("service_name") ?: "container", co.str("image"), co.str("state"))
+            } ?: emptyList(),
+            portals = portals?.mapNotNull { (k, v) -> v.prim()?.contentOrNull?.let { k to it } }?.toMap() ?: emptyMap(),
+            notes = o.str("notes")?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    fun catalogApp(o: JsonObject, trainOverride: String? = null): CatalogApp? {
+        val name = o.str("name") ?: return null
+        return CatalogApp(
+            name = name,
+            title = o.str("title")?.takeIf { it.isNotBlank() } ?: name,
+            description = o.str("description").orEmpty(),
+            iconUrl = o.str("icon_url")?.takeIf { it.startsWith("http") },
+            categories = o["categories"].arr()?.mapNotNull { it.prim()?.contentOrNull } ?: emptyList(),
+            train = trainOverride ?: o.str("train") ?: "stable",
+            installed = o.bool("installed") ?: false,
+            latestVersion = o.str("latest_version"),
+            latestAppVersion = o.str("latest_app_version") ?: o.str("latest_human_version"),
+            popularity = o.long("popularity_rank")?.toInt(),
+            recommended = o.bool("recommended") ?: false,
+            home = o.str("home"),
+        )
+    }
+
+    /** `catalog.get_app_details`: picks [version] (or the app's latest) from `versions`. */
+    fun catalogDetails(o: JsonObject, train: String, version: String? = null): CatalogAppDetails? {
+        val app = catalogApp(o, train) ?: return null
+        val versions = o["versions"].obj() ?: JsonObject(emptyMap())
+        val key = version?.takeIf { it in versions } ?: app.latestVersion?.takeIf { it in versions }
+            ?: versions.keys.maxWithOrNull(::compareVersions) ?: return null
+        val v = versions[key].obj() ?: return null
+        val meta = v["app_metadata"].obj()
+        return CatalogAppDetails(
+            app = app,
+            version = key,
+            appVersion = meta?.str("app_version") ?: v.str("human_version") ?: app.latestAppVersion,
+            readme = (o.str("app_readme") ?: v.str("readme"))?.let(::stripHtml)?.takeIf { it.isNotBlank() },
+            schema = v["schema"].obj(),
+            defaults = v["values"].obj() ?: JsonObject(emptyMap()),
+            screenshots = (meta?.get("screenshots") ?: o["screenshots"]).arr()?.mapNotNull { it.prim()?.contentOrNull?.takeIf { u -> u.startsWith("http") } } ?: emptyList(),
+            sources = (meta?.get("sources") ?: o["sources"]).arr()?.mapNotNull { it.prim()?.contentOrNull } ?: emptyList(),
+        )
+    }
+
+    /** Numeric-aware comparison of catalog versions like "1.10.2" vs "1.9.0". */
+    fun compareVersions(a: String, b: String): Int {
+        val pa = a.split('.', '-', '_'); val pb = b.split('.', '-', '_')
+        for (i in 0 until maxOf(pa.size, pb.size)) {
+            val x = pa.getOrNull(i); val y = pb.getOrNull(i)
+            if (x == null) return -1
+            if (y == null) return 1
+            val c = when {
+                x.toLongOrNull() != null && y.toLongOrNull() != null -> x.toLong().compareTo(y.toLong())
+                else -> x.compareTo(y)
+            }
+            if (c != 0) return c
+        }
+        return 0
+    }
+
+    fun appStats(o: JsonObject): AppStats? {
+        val name = o.str("app_name") ?: return null
+        val nets = o["networks"].arr()?.mapNotNull { it.obj() } ?: emptyList()
+        val blk = o["blkio"].obj()
+        return AppStats(
+            app = name,
+            cpuPercent = o.double("cpu_usage")?.let { Math.round(it).toInt() } ?: 0,
+            memoryBytes = o.long("memory") ?: 0,
+            rxBytesPerSec = nets.sumOf { it.long("rx_bytes") ?: 0 },
+            txBytesPerSec = nets.sumOf { it.long("tx_bytes") ?: 0 },
+            blkReadBytes = blk?.long("read") ?: 0,
+            blkWriteBytes = blk?.long("write") ?: 0,
         )
     }
 
@@ -230,7 +313,7 @@ object Parsers {
         return JobInfo(
             id = id,
             method = o.str("method") ?: "job",
-            firstArgument = o["arguments"].arr()?.firstOrNull()?.prim()?.contentOrNull,
+            firstArgument = o["arguments"].arr()?.firstOrNull()?.let { a -> a.prim()?.contentOrNull ?: a.obj()?.str("app_name") },
             description = o.str("description"),
             state = runCatching { JobState.valueOf(o.str("state")!!.uppercase()) }.getOrDefault(JobState.UNKNOWN),
             percent = progress?.double("percent"),

@@ -39,6 +39,12 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import app.truenascompanion.ui.apps.AppDetailScreen
+import app.truenascompanion.ui.apps.AppFormMode
+import app.truenascompanion.ui.apps.AppFormScreen
+import app.truenascompanion.ui.apps.CatalogDetailScreen
+import app.truenascompanion.ui.apps.CatalogScreen
+import app.truenascompanion.ui.apps.LogsScreen
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -72,6 +78,18 @@ private object Routes {
     const val JOBS = "jobs"
     const val EDIT = "server_edit?id={id}"
     fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
+    const val CATALOG = "catalog"
+    const val CATALOG_APP = "catalog/{train}/{name}"
+    const val INSTALL = "install/{train}/{name}"
+    const val APP = "app/{name}"
+    const val APP_EDIT = "app/{name}/edit"
+    const val LOGS = "app/{name}/logs?container={container}"
+    private fun enc(v: String) = android.net.Uri.encode(v)
+    fun catalogApp(train: String, name: String) = "catalog/${enc(train)}/${enc(name)}"
+    fun install(train: String, name: String) = "install/${enc(train)}/${enc(name)}"
+    fun app(name: String) = "app/${enc(name)}"
+    fun appEdit(name: String) = "app/${enc(name)}/edit"
+    fun logs(name: String, container: String?) = "app/${enc(name)}/logs" + (container?.let { "?container=${enc(it)}" } ?: "")
 }
 
 @Composable
@@ -148,7 +166,35 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     )
                 }
                 composable(Tab.STORAGE.route) { StorageScreen() }
-                composable(Tab.APPS.route) { AppsScreen(onJobs = { nav.navigate(Routes.JOBS) }) }
+                composable(Tab.APPS.route) {
+                    AppsScreen(
+                        onJobs = { nav.navigate(Routes.JOBS) },
+                        onCatalog = { nav.navigate(Routes.CATALOG) },
+                        onOpenApp = { nav.navigate(Routes.app(it)) },
+                    )
+                }
+                pushed(Routes.CATALOG) {
+                    CatalogScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(Routes.catalogApp(it.train, it.name)) })
+                }
+                pushed(Routes.CATALOG_APP, "train", "name") { a ->
+                    CatalogDetailScreen(a.getValue("name"), a.getValue("train"), onBack = { nav.popBackStack() },
+                        onInstall = { name, train -> nav.navigate(Routes.install(train, name)) })
+                }
+                pushed(Routes.INSTALL, "train", "name") { a ->
+                    AppFormScreen(AppFormMode.Install(a.getValue("name"), a.getValue("train")), onBack = { nav.popBackStack() },
+                        onDone = { nav.backToApps() })
+                }
+                pushed(Routes.APP, "name") { a ->
+                    val name = a.getValue("name")
+                    AppDetailScreen(name, onBack = { nav.popBackStack() }, onEdit = { nav.navigate(Routes.appEdit(name)) },
+                        onLogs = { nav.navigate(Routes.logs(name, it)) }, onFinished = { nav.backToApps() })
+                }
+                pushed(Routes.APP_EDIT, "name") { a ->
+                    AppFormScreen(AppFormMode.Edit(a.getValue("name")), onBack = { nav.popBackStack() }, onDone = { nav.backToApps() })
+                }
+                pushed(Routes.LOGS, "name", "container?") { a ->
+                    LogsScreen(a.getValue("name"), a["container"], onBack = { nav.popBackStack() })
+                }
                 composable(Tab.ALERTS.route) { AlertsScreen() }
                 composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onJobs = { nav.navigate(Routes.JOBS) }) }
                 composable(Routes.JOBS) { JobsScreen(onBack = { nav.popBackStack() }) }
@@ -191,6 +237,27 @@ private fun NavHostController.switchTab(route: String) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         restoreState = true
         launchSingleTop = true
+    }
+}
+
+/** Install/edit/delete finished: back to the Apps list, whose job watcher reports progress. */
+private fun NavHostController.backToApps() {
+    if (!popBackStack(Tab.APPS.route, inclusive = false)) switchTab(Tab.APPS.route)
+}
+
+/** A pushed (non-tab) screen with string arguments; names ending in `?` are optional. */
+private fun androidx.navigation.NavGraphBuilder.pushed(route: String, vararg args: String, content: @Composable (Map<String, String>) -> Unit) {
+    composable(
+        route,
+        arguments = args.map { raw ->
+            val optional = raw.endsWith("?")
+            navArgument(raw.removeSuffix("?")) { type = NavType.StringType; nullable = optional; if (optional) defaultValue = null }
+        },
+        enterTransition = { slideInHorizontally { it } + fadeIn() },
+        popExitTransition = { slideOutHorizontally { it } + fadeOut() },
+    ) { entry ->
+        val values = args.map { it.removeSuffix("?") }.mapNotNull { k -> entry.arguments?.getString(k)?.let { k to it } }.toMap()
+        content(values)
     }
 }
 

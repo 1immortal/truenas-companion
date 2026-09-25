@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -92,6 +93,8 @@ import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.ConfirmDialog
 import app.truenascompanion.ui.components.GlowButton
 import app.truenascompanion.ui.components.ElevatedSection
+import app.truenascompanion.ui.components.AppIcon
+import app.truenascompanion.util.PortalUrls
 import app.truenascompanion.ui.components.EmptyState
 import app.truenascompanion.ui.components.LetterAvatar
 import app.truenascompanion.ui.components.ScrollableErrorState
@@ -122,6 +125,10 @@ data class UpgradeDialog(val app: AppInfo, val summary: AppUpgradeSummary? = nul
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AppsViewModel(private val c: AppContainer) : ViewModel() {
+    companion object {
+        val LIFECYCLE_METHODS = setOf("app.create", "app.update", "app.delete", "app.rollback")
+    }
+
     private val _state = MutableStateFlow<UiState<List<AppInfo>>>(UiState.Loading)
     val state: StateFlow<UiState<List<AppInfo>>> = _state.asStateFlow()
     private val _refreshing = MutableStateFlow(false)
@@ -147,6 +154,10 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
     val activeJobs = _activeJobs.asStateFlow()
 
     private val watched = mutableMapOf<Long, JobInfo>() // active jobs we report on when they finish
+    val portalBase: String? get() = c.repository.connectedBaseUrl
+    private val _lifecycleJobs = MutableStateFlow<Map<String, JobInfo>>(emptyMap())
+    /** Running install / edit / delete / rollback jobs by app name (progress on the app card). */
+    val lifecycleJobs = _lifecycleJobs.asStateFlow()
     /** True while the live job subscription is running (false on the legacy REST API or while off screen). */
     @Volatile private var jobsStreaming = false
 
@@ -187,6 +198,17 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
+    private fun lifecycleMessage(job: JobInfo): String {
+        val name = job.firstArgument ?: "App"
+        val ok = job.state == JobState.SUCCESS
+        return when (job.method) {
+            "app.create" -> if (ok) "$name installed" else "Install of $name ${job.state.name.lowercase()}"
+            "app.update" -> if (ok) "$name settings saved" else "Saving $name settings ${job.state.name.lowercase()}"
+            "app.delete" -> if (ok) "$name deleted" else "Deleting $name ${job.state.name.lowercase()}"
+            else -> if (ok) "$name rolled back" else "Rollback of $name ${job.state.name.lowercase()}"
+        } + if (!ok) (job.error?.let { ": $it" } ?: "") else ""
+    }
+
     private suspend fun onJobs(jobs: List<JobInfo>) {
         _activeJobs.value = jobs.count { it.state.active }
         val upgrades = jobs.filter { it.method == "app.upgrade" && it.state.active && it.firstArgument != null }
@@ -195,12 +217,15 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
         _catalogSync.value = jobs.firstOrNull { it.method == "catalog.sync" && it.state.active }
         if (_catalogSync.value != null) _syncStarting.value = false
 
+        _lifecycleJobs.value = jobs.filter { it.method in LIFECYCLE_METHODS && it.state.active && it.firstArgument != null }
+            .associateBy { it.firstArgument!! }
         var reload = false
         for (job in jobs) {
-            if (job.state.active && (job.method == "app.upgrade" || job.id == syncJobId)) watched[job.id] = job
+            if (job.state.active && (job.method == "app.upgrade" || job.method in LIFECYCLE_METHODS || job.id == syncJobId)) watched[job.id] = job
             else if (watched.remove(job.id) != null) {
                 reload = true
                 val msg = when {
+                    job.method in LIFECYCLE_METHODS -> lifecycleMessage(job)
                     job.method == "app.upgrade" && job.state == JobState.SUCCESS -> "${job.firstArgument} upgraded successfully"
                     job.method == "app.upgrade" -> "Upgrade of ${job.firstArgument} ${job.state.name.lowercase()}" + (job.error?.let { ": $it" } ?: "")
                     job.state == JobState.SUCCESS -> null // catalog sync: summarised after reload
@@ -302,7 +327,7 @@ fun AppState.health(): Health = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppsScreen(onJobs: () -> Unit = {}) {
+fun AppsScreen(onJobs: () -> Unit = {}, onCatalog: () -> Unit = {}, onOpenApp: (String) -> Unit = {}) {
     val vm = appViewModel { AppsViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -313,6 +338,7 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
     val syncStarting by vm.syncStarting.collectAsStateWithLifecycle()
     val dialog by vm.dialog.collectAsStateWithLifecycle()
     val activeJobs by vm.activeJobs.collectAsStateWithLifecycle()
+    val lifecycleJobs by vm.lifecycleJobs.collectAsStateWithLifecycle()
     vm.jobsLive.collectAsStateWithLifecycle() // keeps the live job subscription running only while visible
     val snackbar = remember { SnackbarHostState() }
     var confirm by remember { mutableStateOf<Pair<AppInfo, AppAction>?>(null) }
@@ -326,6 +352,7 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
             TopAppBar(
                 title = { Text("Apps") },
                 actions = {
+                    IconButton(onClick = onCatalog) { Icon(Icons.Rounded.AddCircleOutline, "Install apps from the catalog") }
                     IconButton(onClick = { vm.checkForUpdates() }, enabled = !syncing) {
                         if (syncing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Rounded.Refresh, "Check for app updates")
@@ -348,7 +375,11 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
                     val apps = s.data
                     if (apps.isEmpty()) {
                         LazyColumn(Modifier.fillMaxSize()) {
-                            item { EmptyState(Icons.Rounded.Apps, "No apps installed", "Apps you install from the TrueNAS catalog will appear here.") }
+                            item {
+                                EmptyState(Icons.Rounded.Apps, "No apps installed", "Apps you install from the TrueNAS catalog will appear here.") {
+                                    app.truenascompanion.ui.components.GlowButton(onClick = onCatalog) { Text("Browse the catalog") }
+                                }
+                            }
                         }
                     } else {
                         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
@@ -388,6 +419,9 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
                                     onUpgrade = { vm.requestUpgrade(app) },
                                     onImageInfo = { imageInfo = app },
                                     modifier = Modifier.animateItem(),
+                                    lifecycleJob = lifecycleJobs[app.name],
+                                    portalBase = vm.portalBase,
+                                    onOpen = if (app.legacyChart) null else ({ onOpenApp(app.name) }),
                                 )
                             }
                         }
@@ -416,7 +450,10 @@ fun AppsScreen(onJobs: () -> Unit = {}) {
     }
     dialog?.let { d -> UpgradeConfirmDialog(d, onConfirm = { snap -> vm.upgrade(listOf(d.app), snap) }, onDismiss = { vm.dismissDialog() }) }
     confirmAll?.let { list ->
-        UpgradeAllDialog(list, onConfirm = { snap -> vm.upgrade(list, snap); confirmAll = null }, onDismiss = { confirmAll = null })
+        val guard = app.truenascompanion.ui.lock.LocalDangerGuard.current
+        UpgradeAllDialog(list, onConfirm = { snap ->
+            guard.guard("Upgrade ${list.size} apps") { vm.upgrade(list, snap); confirmAll = null }
+        }, onDismiss = { confirmAll = null })
     }
 }
 
@@ -542,6 +579,13 @@ private fun VersionLine(current: String?, target: String?) {
     }
 }
 
+internal fun lifecycleLabel(method: String) = when (method) {
+    "app.create" -> "Installing…"
+    "app.update" -> "Saving settings…"
+    "app.delete" -> "Deleting…"
+    else -> "Rolling back…"
+}
+
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 @androidx.annotation.VisibleForTesting
@@ -554,13 +598,16 @@ internal fun AppCard(
     onUpgrade: () -> Unit,
     onImageInfo: () -> Unit = {},
     modifier: Modifier = Modifier,
+    lifecycleJob: JobInfo? = null,
+    portalBase: String? = null,
+    onOpen: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
-    val upgrading = upgradeJob != null || upgradePending
-    ElevatedSection(modifier = modifier.animateContentSize(), contentPadding = 14.dp) {
+    val upgrading = upgradeJob != null || upgradePending || lifecycleJob != null
+    ElevatedSection(modifier = modifier.animateContentSize(), contentPadding = 14.dp, onClick = onOpen) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LetterAvatar(app.name)
+            AppIcon(app.iconUrl, app.name)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -587,7 +634,7 @@ internal fun AppCard(
                         DropdownMenuItem(text = { Text("Open web UI") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) },
                             onClick = {
                                 menu = false
-                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, PortalUrls.rewrite(url, portalBase).toUri())) }
                             })
                     }
                 }
@@ -603,11 +650,16 @@ internal fun AppCard(
         if (upgrading) {
             Spacer(Modifier.height(12.dp))
             Text(
-                if (upgradeJob == null) "Starting upgrade…" else "Upgrading" + (app.latestVersion?.let { " to $it" } ?: "") + "…",
+                when {
+                    lifecycleJob != null -> lifecycleLabel(lifecycleJob.method)
+                    upgradeJob == null -> "Starting upgrade…"
+                    else -> "Upgrading" + (app.latestVersion?.let { " to $it" } ?: "") + "…"
+                },
                 style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.height(6.dp))
-            if (upgradeJob != null) JobProgress(upgradeJob) else LinearProgressIndicator(Modifier.fillMaxWidth())
+            val job = lifecycleJob ?: upgradeJob
+            if (job != null) JobProgress(job) else LinearProgressIndicator(Modifier.fillMaxWidth())
             return@ElevatedSection
         }
         Spacer(Modifier.height(12.dp))

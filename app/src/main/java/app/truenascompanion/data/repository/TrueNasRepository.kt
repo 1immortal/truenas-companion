@@ -366,6 +366,17 @@ class TrueNasRepository(
     /** Live stats (WebSocket only). Re-subscribes after connection loss with exponential backoff. */
     fun realtime(): Flow<RealtimeStats> = reconnecting { a -> if (a.supportsRealtime) a.realtimeStats() else null }
 
+    /** Per-app CPU / memory / network (`app.stats`), only while a screen collects it; reconnects after loss. */
+    fun appStats(): Flow<List<app.truenascompanion.data.model.AppStats>> = reconnecting { a -> a.appStats(3) }
+
+    /**
+     * Follows a container's log. Not auto-reconnected: a reconnect would replay the tail and duplicate lines, so the
+     * logs screen offers "Resume" instead.
+     */
+    fun appLogs(appName: String, containerId: String, tail: Int = 500): Flow<app.truenascompanion.data.model.LogLine> = flow {
+        emitAll(api().appLogs(appName, containerId, tail))
+    }.flowOn(Dispatchers.IO)
+
     /** Live middleware jobs; reconnects after connection loss. */
     fun jobs(): Flow<List<JobInfo>> = reconnecting { a -> a.jobs() }
 
@@ -407,9 +418,24 @@ class TrueNasRepository(
 
     companion object {
         const val BACKGROUND_GRACE_MS = 30_000L
+        const val CATALOG_TTL_MS = 10 * 60_000L
 
         /** 2 s, 4 s, 8 s … capped at 60 s: a dead server doesn't get hammered while a screen is open. */
         fun reconnectDelayMs(attempt: Long): Long = (2_000L shl attempt.coerceIn(0, 5).toInt()).coerceAtMost(60_000L)
+    }
+
+    /** Base URL of the address currently in use (local or remote), for rewriting app portal links. */
+    val connectedBaseUrl: String? get() = apiFor?.url ?: activeServer.value?.url
+
+    private var catalogCache: Triple<String, Long, List<app.truenascompanion.data.model.CatalogApp>>? = null
+
+    /** Catalog apps, cached for 10 minutes per server (one `app.available` call instead of one per visit). */
+    suspend fun catalogApps(force: Boolean = false): List<app.truenascompanion.data.model.CatalogApp> {
+        val id = activeServer.value?.id ?: throw TrueNasException.NoServer()
+        catalogCache?.let { (sid, at, list) ->
+            if (!force && sid == id && System.currentTimeMillis() - at < CATALOG_TTL_MS) return list
+        }
+        return call { it.catalogApps() }.also { catalogCache = Triple(id, System.currentTimeMillis(), it) }
     }
 
     /** Drops the current connection; the next call reconnects with the latest settings/credentials. */

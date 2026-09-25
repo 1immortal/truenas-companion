@@ -4,6 +4,11 @@ import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.data.model.ApiFlavor
 import app.truenascompanion.data.model.AppAction
 import app.truenascompanion.data.model.AppInfo
+import app.truenascompanion.data.model.LogLine
+import app.truenascompanion.data.model.CatalogAppDetails
+import app.truenascompanion.data.model.CatalogApp
+import app.truenascompanion.data.model.AppStats
+import app.truenascompanion.data.model.AppEditData
 import app.truenascompanion.data.model.AppUpgradeSummary
 import app.truenascompanion.data.model.JobInfo
 import app.truenascompanion.data.model.Dataset
@@ -19,6 +24,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -338,6 +344,93 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
         }
         awaitClose { runCatching { rpc.notify("core.unsubscribe", params(subId)) } }
     }
+
+    // --- Apps batch (method names verified against the 25.10.3 middleware source) ---
+
+    override suspend fun catalogApps(): List<CatalogApp> =
+        call("app.available").arr()?.mapNotNull { it.obj()?.let { o -> Parsers.catalogApp(o) } } ?: emptyList()
+
+    override suspend fun catalogAppDetails(name: String, train: String): CatalogAppDetails {
+        val o = call("catalog.get_app_details", p(name), buildJsonObject { put("train", train) }).obj()
+            ?: throw TrueNasException.Rpc(0, null, "No details for $name")
+        return Parsers.catalogDetails(o, train) ?: throw TrueNasException.Rpc(0, null, "$name has no installable version")
+    }
+
+    override suspend fun startAppInstall(catalogApp: String, appName: String, train: String, version: String, values: JsonObject): Long =
+        startJob("app.create", buildJsonObject {
+            put("custom_app", false)
+            put("catalog_app", catalogApp)
+            put("app_name", appName)
+            put("train", train)
+            put("version", version)
+            put("values", values)
+        })
+
+    override suspend fun appEditData(appName: String): AppEditData {
+        val filter = buildJsonArray { add(buildJsonArray { add(p("name")); add(p("=")); add(p(appName)) }) }
+        val options = buildJsonObject { put("extra", buildJsonObject { put("include_app_schema", true); put("retrieve_config", true) }) }
+        val o = call("app.query", filter, options).arr()?.firstOrNull()?.obj() ?: throw TrueNasException.Rpc(0, "ENOENT", "App $appName not found")
+        val custom = o.bool("custom_app") ?: false
+        return AppEditData(
+            app = appName,
+            values = o["config"].obj() ?: JsonObject(emptyMap()),
+            schema = o["version_details"].obj()?.get("schema").obj(),
+            customApp = custom,
+        )
+    }
+
+    override suspend fun startAppUpdate(appName: String, values: JsonObject, customApp: Boolean): Long =
+        startJob("app.update", p(appName), buildJsonObject {
+            if (customApp) put("custom_compose_config", values) else put("values", values)
+        })
+
+    override suspend fun startAppDelete(appName: String, removeVolumes: Boolean): Long =
+        startJob("app.delete", p(appName), buildJsonObject {
+            put("remove_images", true)
+            put("remove_ix_volumes", removeVolumes)
+        })
+
+    override suspend fun appRollbackVersions(appName: String): List<String> =
+        call("app.rollback_versions", p(appName)).arr()?.mapNotNull { it.prim()?.contentOrNull }
+            ?.sortedWith { a, b -> Parsers.compareVersions(b, a) } ?: emptyList()
+
+    override suspend fun startAppRollback(appName: String, version: String, snapshot: Boolean): Long =
+        startJob("app.rollback", p(appName), buildJsonObject {
+            put("app_version", version)
+            put("rollback_snapshot", snapshot)
+        })
+
+    override fun appLogs(appName: String, containerId: String, tail: Int): Flow<LogLine> =
+        eventSource("app.container_log_follow", buildJsonObject {
+            put("app_name", appName); put("container_id", containerId); put("tail_lines", tail)
+        }) { fields -> fields.obj()?.let { LogLine(it.str("data").orEmpty().trimEnd('\n', '\r'), it.str("timestamp")) } }
+
+    override fun appStats(intervalSeconds: Int): Flow<List<AppStats>> =
+        eventSource("app.stats", buildJsonObject { put("interval", intervalSeconds.coerceAtLeast(2)) }) { fields ->
+            fields.arr()?.mapNotNull { it.obj()?.let(Parsers::appStats) }
+        }
+
+    /**
+     * Subscribes to a middleware event source (`core.subscribe("name:{json args}")`). Ends when the server
+     * unsubscribes us (e.g. the container stopped) or the socket dies; unsubscribes when the collector goes away.
+     */
+    private fun <T : Any> eventSource(name: String, args: JsonObject, map: (JsonElement) -> T?): Flow<T> = channelFlow {
+        val full = "$name:$args"
+        launch(start = CoroutineStart.UNDISPATCHED) {
+            rpc.events.collect { ev ->
+                if (ev.str("collection") != full) return@collect
+                if (ev.containsKey("msg")) {
+                    ev["fields"]?.let(map)?.let { send(it) }
+                } else { // notify_unsubscribed
+                    val err = ev["error"].obj()
+                    close(err?.let { TrueNasException.Rpc(0, it.str("errname"), it.str("reason") ?: "Stream ended") })
+                }
+            }
+        }
+        val subId = call("core.subscribe", p(full))
+        launch { rpc.closed.await(); close(TrueNasException.NotConnected()) }
+        awaitClose { runCatching { rpc.notify("core.unsubscribe", params(subId)) } }
+    }.buffer(kotlinx.coroutines.channels.Channel.UNLIMITED) // never slow the shared event flow down
 
     override fun close() = rpc.close()
 }

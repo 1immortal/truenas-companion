@@ -33,6 +33,13 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 - **Upgrade all** appears when two or more apps have updates. It starts one `app.upgrade` job per app, and you confirm the list first.
 - **Newer image build (new in 0.3.1):** sometimes TrueNAS reports a newer build of an app's container image while the app version stays the same (the web UI doesn't show this as an update). The app card then shows a calm *Newer image build · same version* note. Tapping it explains what that means and offers **Redeploy**, which pulls the newer image and restarts the app (`app.pull_images` with `redeploy: true`; `chart.release.pull_container_images` on 24.04). The plain **Redeploy** menu action only recreates the containers from the images already on the NAS. It does not download anything.
 - **Check for updates** (refresh icon in the top bar) runs `catalog.sync` so new versions appear, then reports how many updates are available.
+- **Catalog and install (new in 0.4):** the ⊕ button opens the app catalog (`app.available`). You can search it, filter by category, and see which apps are already installed (✓). An app's page shows its version, description, readme and sources (`catalog.get_app_details`). **Install** opens a form generated from the app's own questions schema, with collapsible groups, text/number/password/choice/switch fields, lists (add/remove items), nested sections, `show_if` conditions and inline validation. The name is checked with the same rule TrueNAS uses. A field type the form can't draw keeps its default and is listed at the top. **JSON** mode lets you edit the raw values instead. Installing runs `app.create` as a job, with progress on the Apps tab.
+- **App details (new in 0.4):** tap an app card for live **CPU / memory / network / disk** (`app.stats`, streamed only while the screen is open), its containers, notes, **Open web UI**, **Edit**, **Logs**, **Roll back** and **Delete**.
+  - **Edit** reloads the current configuration with the schema (`app.query` with `include_app_schema` / `retrieve_config`) and saves it with `app.update`. Custom (compose) apps are edited as JSON.
+  - **Roll back** lists earlier versions (`app.rollback_versions`) and can take a snapshot first (`app.rollback`).
+  - **Delete** (`app.delete`) removes the app and its containers. Deleting the app's ixVolume data is a separate, unchecked option. Your own host-path datasets are never touched.
+  - **Logs** follows a container's log (`app.container_log_follow`), with 500 lines of history and at most 3,000 lines kept. It has a container picker, a filter that highlights matches, error and warning colouring, **Follow** (auto-scroll; scrolling up turns it off) and **Pause** (freezes the view and counts new lines). The stream stops when you leave the screen.
+  - The web UI link uses the address the app is connected to right now, keeping the app's port and path, so it also works on the local address at home.
 
 **Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from the System tab. Jobs started in the web UI show up too.
 
@@ -47,6 +54,21 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 - Turn it on in **System › Phone alerts**, or from the card on the Alerts tab. On Android 13+ the app explains why before asking for the notification permission. A hint links to Android's *allow background activity* setting if battery optimization is on; this is optional and never forced.
 - **Battery:** periodic checks are cheap. There is one short connection per interval, and Android batches them with other apps' work, so a 15-minute check may run a few minutes late, especially in Doze. Instant mode keeps one TLS WebSocket open with a 45 s ping, which costs noticeably more battery on mobile data. Use it if you need alerts within seconds. The app screens and periodic checks reuse that same connection instead of opening their own.
 - **Battery design (0.3.1):** the app's own connection closes 30 s after you leave the app. Live dashboard stats and job lists only stream while their screen is visible, and live stats stop completely if you hide every card that uses them. Dropped streams reconnect with backoff (2 s up to 60 s). Long TrueNAS jobs are polled every 1 s at first, then gradually less often, up to every 5 s. Periodic checks only renew the session token when less than half of its lifetime is left. They look up alert titles only when there is something new to notify.
+
+**App lock (new in 0.4):** in **System › Security**, lock the app with your **fingerprint, face or screen lock** (AndroidX Biometric: class-2 biometrics or device PIN/pattern/password).
+- Relock right away, or after 1, 5 or 15 minutes in the background. The app always locks after a restart.
+- While locked, nothing behind the lock screen is composed, so no NAS data is drawn.
+- **Hide content in recents** blanks the app in the app switcher (`setRecentsScreenshotEnabled(false)` on Android 13+, `FLAG_SECURE` on older versions and while locked).
+- **Confirm dangerous actions** asks for your fingerprint again before shutdown, reboot, stopping services, deleting or rolling back an app, and *Upgrade all*.
+- Turning the lock on or off also needs a fingerprint. If the phone has no screen lock, the app says so and offers a shortcut to set one up. If you remove the phone's screen lock later, the app turns its lock off so you aren't locked out.
+- Notification actions (Dismiss) keep working while the app is locked.
+
+**Home network (new in 0.4):** a server can have a **local address** as well as its main one, for example `https://192.168.1.10` at home and `https://nas.example.com` through your reverse proxy elsewhere.
+- **Auto-detect:** type the NAS's IP or hostname and the app probes, in parallel with short timeouts, https on 443 / 444 / 8443 / 9443, then http on 80 / 81 / 8080 / 8000. This is useful when Nginx Proxy Manager runs as a TrueNAS app and the TrueNAS UI has moved off 80/443. A port counts only if it answers like TrueNAS: `/api/versions` returns TrueNAS API versions, or the login page is TrueNAS rather than NPM. No credentials are sent while probing. HTTPS is preferred. You confirm the address it found, and a self-signed certificate goes through the usual *Trust this certificate* fingerprint step.
+- **http only?** The app warns that your password would cross the LAN unencrypted and suggests turning on HTTPS in TrueNAS (**System › General › GUI**). It still lets you use the address with **password sign-in**. It **never sends an API key over http**, because TrueNAS revokes it.
+- **Check** confirms the local address works and is the **same NAS** as the main address (it compares the unauthenticated `/api/boot_id`, which returns `system.boot_id`).
+- **Which address to use:** *Auto* (default), *Local* or *Remote*. In Auto the app tries the local address once per network (Wi-Fi, Ethernet or VPN, with a 1.5 s probe; never on mobile data) and remembers the result until the network changes. If the local address stops answering, it falls back to the main one. A small **Local / Remote** chip next to the server name on the dashboard shows which one is in use. Phone alerts and instant alerts follow the same choice and reconnect when you switch networks.
+- *Only on my home Wi-Fi (SSID)* is deliberately not offered. Reading the Wi-Fi name needs precise and background location permission, and the reachability probe plus the certificate pin plus the same-NAS check is a stronger signal anyway.
 
 **System:** services list with start/stop switches (stopping asks you to confirm), **reboot / shutdown** with confirmation dialogs, appearance settings, and a server switcher.
 
@@ -101,7 +123,10 @@ Either way, make sure the proxy has **WebSockets support** enabled (the app uses
 Methods used on the WebSocket API: `auth.login_ex` / `auth.login_ex_continue` / `auth.generate_token` (password sign-in), `system.info`, `core.subscribe("reporting.realtime")`, `pool.query`, `disk.query`, `disk.temperatures`,
 `pool.dataset.query`, `app.query` / `app.start` / `app.stop` / `app.redeploy` (jobs, tracked with `core.get_jobs`), `alert.list` / `alert.dismiss`,
 `service.query`, `service.control` (falls back to `service.start`/`service.stop`), `system.reboot` / `system.shutdown`,
-`app.upgrade_summary` / `app.upgrade` / `app.pull_images` / `catalog.sync`, `core.get_jobs` / `core.job_abort`.
+`app.upgrade_summary` / `app.upgrade` / `app.pull_images` / `catalog.sync`, `core.get_jobs` / `core.job_abort`,
+`app.available` / `app.categories` / `catalog.get_app_details` / `app.create` / `app.update` / `app.delete` / `app.rollback_versions` / `app.rollback` (0.4, jobs),
+`core.subscribe("app.stats:{interval}")`, `core.subscribe("app.container_log_follow:{app_name, container_id, tail_lines}")`, `GET /api/versions` (auto-detect) and `GET /api/boot_id` (same-NAS check).
+Method names and payloads for 0.4 were checked against the middleware source of TrueNAS 25.10.3.
 The method names come from the official docs at <https://api.truenas.com/>.
 
 ## Create a TrueNAS API key
@@ -150,29 +175,32 @@ app/src/main/java/app/truenascompanion/
 ├── data/
 │   ├── api/          TrueNasApi interface, JSON-RPC WebSocket client + implementation, WebSocketAuth (password/2FA/token), REST v2.0 implementation,
 │   │                 tolerant JSON parsers, error mapping, connector (WebSocket first, REST fallback)
-│   ├── net/          OkHttp client factory, certificate pinning trust manager ("trust this server")
-│   ├── security/     Android Keystore AES-GCM secret cipher
+│   ├── net/          OkHttp client factory, certificate pinning trust manager ("trust this server"), RouteResolver (local/remote),
+│   │                 LocalDetector (auto-detect), LocalCheck (same-NAS check)
+│   ├── security/     Android Keystore AES-GCM secret cipher, AppLock state machine
 │   ├── store/        DataStore: servers, encrypted keys, per-server dashboard layout, appearance
 │   ├── repository/   TrueNasRepository: active connection, lazy reconnect, live stats with retry
 │   └── model/        Domain models and the dashboard layout model
 └── ui/               Compose screens + ViewModels (dashboard, storage, apps, jobs, alerts, system, servers, auth dialogs), theme, components
 ```
 Stack: Kotlin, Jetpack Compose, Material 3, Navigation Compose, Coroutines/Flow, OkHttp (WebSocket + HTTP), kotlinx.serialization,
-DataStore, [Reorderable](https://github.com/Calvin-LL/Reorderable) for drag-and-drop. minSdk 26, target/compile SDK 37.
+DataStore, AndroidX Biometric, [Coil](https://coil-kt.github.io/coil/) for catalog icons, [Reorderable](https://github.com/Calvin-LL/Reorderable) for drag-and-drop. minSdk 26, target/compile SDK 37.
 
 ## Security notes
 - API keys, session tokens and saved passwords are stored only on the device, encrypted with a non-exportable Android Keystore key. Saving the password is off by default. App backup and device-transfer are disabled, so keys are never included in cloud backups.
 - Self-signed certificates are accepted only if their SHA-256 fingerprint matches one you pinned for that server. Everything else goes through normal system CA validation. If the server's certificate changes (for example after it is regenerated), the connection fails until you trust the new one.
 - Cleartext HTTP is allowed because many home NAS boxes are reached that way on the LAN. Remember that TrueNAS revokes API keys sent over HTTP, and that password sign-in over HTTP sends your password unencrypted. The app warns you in both cases.
 - Session tokens are created with `match_origin=false` so that they keep working when your phone's IP changes (Wi-Fi ↔ mobile data). Anyone who pulls the token out of the encrypted store could use it until it expires. Pick a shorter *Stay signed in* period if that worries you.
-- No analytics, crash reporting, ads or third-party network calls. Phone alerts are fetched directly from your NAS; nothing goes through a push service.
+- No analytics, crash reporting or ads. Phone alerts are fetched directly from your NAS; nothing goes through a push service. The only requests that don't go to your NAS are **app icons** (0.4). The phone downloads these from the URLs in the TrueNAS catalog (TrueNAS's own CDN) and caches them. No credentials or NAS data are sent with them.
 
 ## Known limitations
 - **Not yet verified against a live TrueNAS server.** Payload formats were taken from the official API docs (v25.04–v27). The parsers are deliberately tolerant, but some fields may differ in practice, especially `reporting.realtime` on older releases, `disk.temperatures` output, and REST-mode actions.
 - Live stats (CPU, memory, network, CPU temperature) need the WebSocket API (25.04+). REST mode shows system info, storage, apps, alerts and services without live charts.
 - Password sign-in, 2FA, session tokens, app upgrades and the task list were built against the documented API (v25.10) and a fake test server. **They have not been verified on a live NAS.** In particular it is unverified whether a `TOKEN_PLAIN` token sign-in ever asks for 2FA again (the docs don't say it does), and whether tokens survive a NAS reboot.
 - Password sign-in, app upgrades and the task list need the WebSocket API (25.04+). They are not available in legacy REST mode.
-- VM management, snapshots, shares, and replication/cloud-sync/S.M.A.R.T. tasks are not in v0.2 yet.
+- App install/edit forms, logs, stats, rollback and delete (0.4) were built from the 25.10.3 middleware source and tested with sample schemas. **They have not been tried against real catalog apps on a live NAS.** Some field types (for example certificate or GPU pickers) are shown as "kept at default" and can be changed in JSON mode.
+- Auto-detect, local/remote switching and the app lock were tested with unit tests and a fake server only. Real-network behaviour (VPN apps, captive portals, OEM biometric prompts) is unverified.
+- VM management (coming in 0.4.1), snapshots, shares, and replication/cloud-sync/S.M.A.R.T. tasks are not in v0.2 yet.
 - The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used. REST is used instead.
 - No home-screen widgets yet.
 - Phone alerts depend on Android letting the app run in the background. Aggressive OEM battery savers (some Xiaomi, Huawei and Samsung settings) can delay or stop checks unless the app is allowed to run in the background. Instant mode only reconnects after a reboot if Android lets it start a foreground service at boot.
