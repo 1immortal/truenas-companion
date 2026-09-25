@@ -54,7 +54,6 @@ import androidx.navigation.navArgument
 import app.truenascompanion.TrueNasApp
 import app.truenascompanion.data.model.WidgetType
 import app.truenascompanion.ui.alerts.AlertsScreen
-import app.truenascompanion.ui.apps.AppsScreen
 import app.truenascompanion.ui.jobs.JobsScreen
 import app.truenascompanion.ui.dashboard.DashboardScreen
 import app.truenascompanion.ui.servers.ServerEditScreen
@@ -79,6 +78,8 @@ private object Routes {
     const val EDIT = "server_edit?id={id}"
     fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
     const val CATALOG = "catalog"
+    const val VM = "vm/{id}"
+    const val VM_NEW = "vm_new"
     const val CATALOG_APP = "catalog/{train}/{name}"
     const val INSTALL = "install/{train}/{name}"
     const val APP = "app/{name}"
@@ -167,11 +168,21 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 }
                 composable(Tab.STORAGE.route) { StorageScreen() }
                 composable(Tab.APPS.route) {
-                    AppsScreen(
+                    app.truenascompanion.ui.virt.WorkloadsScreen(
                         onJobs = { nav.navigate(Routes.JOBS) },
                         onCatalog = { nav.navigate(Routes.CATALOG) },
                         onOpenApp = { nav.navigate(Routes.app(it)) },
+                        onOpenVm = { nav.navigate("vm/$it") },
+                        onCreateVm = { nav.navigate(Routes.VM_NEW) },
                     )
+                }
+                pushed(Routes.VM, "id") { a ->
+                    app.truenascompanion.ui.virt.VmDetailScreen(a.getValue("id").toInt(), onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.VM_NEW) {
+                    app.truenascompanion.ui.virt.VmCreateScreen(onBack = { nav.popBackStack() }, onCreated = { id ->
+                        nav.navigate("vm/$id") { popUpTo(Routes.VM_NEW) { inclusive = true } }
+                    })
                 }
                 pushed(Routes.CATALOG) {
                     CatalogScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(Routes.catalogApp(it.train, it.name)) })

@@ -41,6 +41,13 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
   - **Logs** follows a container's log (`app.container_log_follow`), with 500 lines of history and at most 3,000 lines kept. It has a container picker, a filter that highlights matches, error and warning colouring, **Follow** (auto-scroll; scrolling up turns it off) and **Pause** (freezes the view and counts new lines). The stream stops when you leave the screen.
   - The web UI link uses the address the app is connected to right now, keeping the app's port and path, so it also works on the local address at home.
 
+**VMs and containers (new in 0.4.1):** the Apps tab has an **Apps / VMs / Containers** switch, which keeps the bottom bar at five tabs.
+- **VMs** (`vm.*`, TrueNAS 25.04.2+ / 25.10): a list with state, vCPUs and memory, plus **Start**, **Shut down** (a clean ACPI shutdown, run as a job), **Restart** and **Power off** (asks first, and needs your fingerprint when the app lock guards dangerous actions).
+  - Tap a VM for its resources and devices (disks, CD-ROM, NICs, display, PCI/USB), **Edit resources** (vCPUs / cores / threads, memory, autostart, description; `vm.update`), **Open display** (the SPICE web display from `vm.get_display_web_uri`, built for the address you're connected through), and **Delete** (only when stopped; deleting the zvols is a separate, unchecked option).
+  - **New VM** creates the VM (`vm.create`) and then its devices (`vm.device.create`): a new VirtIO zvol in a dataset you pick, an installer ISO chosen with a small file browser (`filesystem.listdir` under /mnt), a VirtIO NIC on an interface from `vm.device.nic_attach_choices`, and an optional SPICE web display (TrueNAS requires a display password). If a device fails, the app says the VM was created and which device to fix.
+- **Containers** (`virt.instance.*`, Incus/LXC on 25.04+): a list with status and image. Tap a card for its CPU/memory limits, autostart, pool and IP addresses. **Start / Stop / Restart** and **Delete** (only when stopped, and asks first) run as jobs. If containers aren't set up (no pool chosen), the app says so instead of showing an empty list. There's no in-app shell (that needs a terminal emulator); use the TrueNAS web UI for that.
+- Lists load when you open them and refresh after each action. Pull to refresh. Job progress is followed only while the screen is visible, with no background polling.
+
 **Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from the System tab. Jobs started in the web UI show up too.
 
 **Alerts:** severity-colored list, relative time, **dismiss**, and an option to show dismissed alerts.
@@ -125,8 +132,10 @@ Methods used on the WebSocket API: `auth.login_ex` / `auth.login_ex_continue` / 
 `service.query`, `service.control` (falls back to `service.start`/`service.stop`), `system.reboot` / `system.shutdown`,
 `app.upgrade_summary` / `app.upgrade` / `app.pull_images` / `catalog.sync`, `core.get_jobs` / `core.job_abort`,
 `app.available` / `app.categories` / `catalog.get_app_details` / `app.create` / `app.update` / `app.delete` / `app.rollback_versions` / `app.rollback` (0.4, jobs),
+`vm.query` / `vm.start` / `vm.stop` / `vm.poweroff` / `vm.restart` / `vm.update` / `vm.delete` / `vm.create` / `vm.device.create` / `vm.device.nic_attach_choices` / `vm.get_display_web_uri`, `filesystem.listdir`,
+`virt.global.config` / `virt.instance.query` / `virt.instance.start` / `virt.instance.stop` / `virt.instance.restart` / `virt.instance.delete` (0.4.1),
 `core.subscribe("app.stats:{interval}")`, `core.subscribe("app.container_log_follow:{app_name, container_id, tail_lines}")`, `GET /api/versions` (auto-detect) and `GET /api/boot_id` (same-NAS check).
-Method names and payloads for 0.4 were checked against the middleware source of TrueNAS 25.10.3.
+Method names and payloads for 0.4 / 0.4.1 were checked against the middleware source of TrueNAS 25.10.3.
 The method names come from the official docs at <https://api.truenas.com/>.
 
 ## Create a TrueNAS API key
@@ -200,7 +209,8 @@ DataStore, AndroidX Biometric, [Coil](https://coil-kt.github.io/coil/) for catal
 - Password sign-in, app upgrades and the task list need the WebSocket API (25.04+). They are not available in legacy REST mode.
 - App install/edit forms, logs, stats, rollback and delete (0.4) were built from the 25.10.3 middleware source and tested with sample schemas. **They have not been tried against real catalog apps on a live NAS.** Some field types (for example certificate or GPU pickers) are shown as "kept at default" and can be changed in JSON mode.
 - Auto-detect, local/remote switching and the app lock were tested with unit tests and a fake server only. Real-network behaviour (VPN apps, captive portals, OEM biometric prompts) is unverified.
-- VM management (coming in 0.4.1), snapshots, shares, and replication/cloud-sync/S.M.A.R.T. tasks are not in v0.2 yet.
+- VM and container actions (0.4.1) were built from the 25.10.3 middleware source and tested against a fake server. **They are unverified on a real NAS.** In particular, whether the SPICE web display opens without first signing in to the TrueNAS web UI in the same browser is unverified. VM creation covers the common case (one disk, ISO, NIC, display); passthrough devices, CPU pinning and similar options are left to the web UI.
+- Snapshots, shares, and replication/cloud-sync/S.M.A.R.T. tasks are not in v0.2 yet.
 - The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used. REST is used instead.
 - No home-screen widgets yet.
 - Phone alerts depend on Android letting the app run in the background. Aggressive OEM battery savers (some Xiaomi, Huawei and Samsung settings) can delay or stop checks unless the app is allowed to run in the background. Instant mode only reconnects after a reboot if Android lets it start a foreground service at boot.

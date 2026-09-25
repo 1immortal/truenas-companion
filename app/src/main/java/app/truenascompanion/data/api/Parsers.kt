@@ -3,6 +3,11 @@ package app.truenascompanion.data.api
 import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.data.model.AppInfo
 import app.truenascompanion.data.model.AppStats
+import app.truenascompanion.data.model.InstanceStatus
+import app.truenascompanion.data.model.VirtInstance
+import app.truenascompanion.data.model.VmDevice
+import app.truenascompanion.data.model.VmInfo
+import app.truenascompanion.data.model.VmState
 import app.truenascompanion.data.model.CatalogAppDetails
 import app.truenascompanion.data.model.CatalogApp
 import app.truenascompanion.data.model.AppContainerInfo
@@ -284,6 +289,75 @@ object Parsers {
             if (c != 0) return c
         }
         return 0
+    }
+
+    fun vm(o: JsonObject): VmInfo? {
+        val id = o.long("id")?.toInt() ?: return null
+        return VmInfo(
+            id = id,
+            name = o.str("name") ?: "vm$id",
+            description = o.str("description").orEmpty(),
+            state = when (o["status"].obj()?.str("state")?.uppercase()) {
+                "RUNNING" -> VmState.RUNNING
+                "STOPPED" -> VmState.STOPPED
+                "SUSPENDED" -> VmState.SUSPENDED
+                else -> VmState.UNKNOWN
+            },
+            vcpus = o.long("vcpus")?.toInt() ?: 1,
+            cores = o.long("cores")?.toInt() ?: 1,
+            threads = o.long("threads")?.toInt() ?: 1,
+            memoryMb = o.long("memory") ?: 0,
+            autostart = o.bool("autostart") ?: false,
+            bootloader = o.str("bootloader"),
+            devices = o["devices"].arr()?.mapNotNull { it.obj()?.let(::vmDevice) }?.sortedBy { deviceOrder(it.kind) } ?: emptyList(),
+            displayAvailable = o.bool("display_available") ?: false,
+        )
+    }
+
+    private fun deviceOrder(kind: String) = listOf("DISK", "RAW", "CDROM", "NIC", "DISPLAY", "PCI", "USB").indexOf(kind).let { if (it < 0) 99 else it }
+
+    fun vmDevice(o: JsonObject): VmDevice? {
+        val id = o.long("id")?.toInt() ?: return null
+        val a = o["attributes"].obj() ?: return null
+        val kind = a.str("dtype")?.uppercase() ?: return null
+        val path = a.str("path")
+        return when (kind) {
+            "DISK" -> VmDevice(id, kind, "Disk", listOfNotNull(path?.removePrefix("/dev/zvol/"), a.str("type")).joinToString(" · "))
+            "RAW" -> VmDevice(id, kind, "Disk image", listOfNotNull(path, a.str("type")).joinToString(" · "))
+            "CDROM" -> VmDevice(id, kind, "CD-ROM", path?.substringAfterLast('/'))
+            "NIC" -> VmDevice(id, kind, "Network", listOfNotNull(a.str("type"), a.str("nic_attach"), a.str("mac")).joinToString(" · "))
+            "DISPLAY" -> VmDevice(id, kind, "Display", listOfNotNull(
+                a.str("type") ?: "SPICE", a.long("port")?.let { "port $it" }, if (a.bool("web") == true) "web" else null,
+            ).joinToString(" · "))
+            "PCI" -> VmDevice(id, kind, "PCI passthrough", a.str("pptdev"))
+            "USB" -> VmDevice(id, kind, "USB", a.str("device") ?: a["usb"].obj()?.let { u -> listOfNotNull(u.str("vendor_id"), u.str("product_id")).joinToString(":") })
+            else -> VmDevice(id, kind, kind.lowercase().replaceFirstChar { it.uppercase() }, null)
+        }
+    }
+
+    fun virtInstance(o: JsonObject): VirtInstance? {
+        val id = o.str("id") ?: o.str("name") ?: return null
+        val img = o["image"].obj()
+        return VirtInstance(
+            id = id,
+            name = o.str("name") ?: id,
+            type = o.str("type") ?: "CONTAINER",
+            status = when (o.str("status")?.uppercase()) {
+                "RUNNING" -> InstanceStatus.RUNNING
+                "STOPPED" -> InstanceStatus.STOPPED
+                "STARTING" -> InstanceStatus.STARTING
+                "STOPPING", "ABORTING" -> InstanceStatus.STOPPING
+                "FROZEN", "FREEZING" -> InstanceStatus.FROZEN
+                "ERROR" -> InstanceStatus.ERROR
+                else -> InstanceStatus.UNKNOWN
+            },
+            cpu = o.str("cpu")?.takeIf { it.isNotBlank() },
+            memoryBytes = o.long("memory"),
+            autostart = o.bool("autostart") ?: false,
+            image = img?.let { i -> i.str("description")?.takeIf { it.isNotBlank() } ?: listOfNotNull(i.str("os"), i.str("release")).joinToString(" ").takeIf { it.isNotBlank() } },
+            addresses = o["aliases"].arr()?.mapNotNull { it.obj()?.str("address") } ?: emptyList(),
+            storagePool = o.str("storage_pool"),
+        )
     }
 
     fun appStats(o: JsonObject): AppStats? {

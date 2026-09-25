@@ -87,6 +87,29 @@ interface TrueNasApi : AutoCloseable {
     suspend fun appRollbackVersions(appName: String): List<String> = throw unsupported()
     /** `app.rollback` job. */
     suspend fun startAppRollback(appName: String, version: String, snapshot: Boolean): Long = throw unsupported()
+
+    // --- Virtualization (0.4.1) ---
+    suspend fun vms(): List<app.truenascompanion.data.model.VmInfo> = throw unsupported()
+    suspend fun vmStart(id: Int, overcommit: Boolean = false): Unit = throw unsupported()
+    /** Graceful shutdown (ACPI), as a job. */
+    suspend fun startVmStop(id: Int): Long = throw unsupported()
+    suspend fun vmPowerOff(id: Int): Unit = throw unsupported()
+    suspend fun startVmRestart(id: Int): Long = throw unsupported()
+    suspend fun vmDelete(id: Int, deleteZvols: Boolean): Unit = throw unsupported()
+    suspend fun vmUpdateResources(id: Int, vcpus: Int, cores: Int, threads: Int, memoryMb: Long, autostart: Boolean, description: String): Unit = throw unsupported()
+    /** Creates the VM, then its devices. Returns the new VM id. */
+    suspend fun vmCreate(request: app.truenascompanion.data.model.VmCreateRequest): Int = throw unsupported()
+    suspend fun vmDisplayUri(id: Int, host: String, https: Boolean): String? = throw unsupported()
+    suspend fun nicAttachChoices(): List<String> = throw unsupported()
+    suspend fun listDir(path: String): List<app.truenascompanion.data.model.FsEntry> = throw unsupported()
+    suspend fun zvolParents(): List<String> = throw unsupported()
+    /** `virt.global.config` state, e.g. INITIALIZED / NO_POOL; null when the API has no containers. */
+    suspend fun containersState(): String? = throw unsupported()
+    suspend fun virtInstances(): List<app.truenascompanion.data.model.VirtInstance> = throw unsupported()
+    suspend fun startVirtStart(id: String): Long = throw unsupported()
+    suspend fun startVirtStop(id: String, force: Boolean): Long = throw unsupported()
+    suspend fun startVirtRestart(id: String): Long = throw unsupported()
+    suspend fun startVirtDelete(id: String): Long = throw unsupported()
     /** `app.container_log_follow` event source: the last [tail] lines, then new lines as they are written. */
     fun appLogs(appName: String, containerId: String, tail: Int = 500): Flow<LogLine> = kotlinx.coroutines.flow.flow { throw unsupported() }
     /** `app.stats` event source (all apps, every [intervalSeconds]). */

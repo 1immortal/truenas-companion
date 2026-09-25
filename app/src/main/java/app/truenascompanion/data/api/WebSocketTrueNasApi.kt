@@ -46,6 +46,7 @@ import okhttp3.OkHttpClient
 
 private fun params(vararg items: JsonElement) = JsonArray(items.toList())
 private fun p(s: String) = JsonPrimitive(s)
+private fun p(i: Int) = JsonPrimitive(i)
 private const val MAX_JOBS = 60
 
 /** TrueNAS 25.04+ JSON-RPC 2.0 WebSocket API (`wss://host/api/current`). */
@@ -399,6 +400,103 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
             put("app_version", version)
             put("rollback_snapshot", snapshot)
         })
+
+    // --- Virtualization ---
+
+    override suspend fun vms(): List<app.truenascompanion.data.model.VmInfo> =
+        call("vm.query", JsonArray(emptyList()), buildJsonObject { put("order_by", JsonArray(listOf(JsonPrimitive("name")))) })
+            .arr()?.mapNotNull { it.obj()?.let(Parsers::vm) } ?: emptyList()
+
+    override suspend fun vmStart(id: Int, overcommit: Boolean) {
+        call("vm.start", p(id), buildJsonObject { put("overcommit", overcommit) })
+    }
+
+    override suspend fun startVmStop(id: Int): Long =
+        startJob("vm.stop", p(id), buildJsonObject { put("force", false); put("force_after_timeout", false) })
+
+    override suspend fun vmPowerOff(id: Int) { call("vm.poweroff", p(id)) }
+
+    override suspend fun startVmRestart(id: Int): Long = startJob("vm.restart", p(id))
+
+    override suspend fun vmDelete(id: Int, deleteZvols: Boolean) {
+        call("vm.delete", p(id), buildJsonObject { put("zvols", deleteZvols); put("force", false) })
+    }
+
+    override suspend fun vmUpdateResources(id: Int, vcpus: Int, cores: Int, threads: Int, memoryMb: Long, autostart: Boolean, description: String) {
+        call("vm.update", p(id), buildJsonObject {
+            put("vcpus", vcpus); put("cores", cores); put("threads", threads); put("memory", memoryMb)
+            put("autostart", autostart); put("description", description)
+        })
+    }
+
+    override suspend fun vmCreate(request: app.truenascompanion.data.model.VmCreateRequest): Int {
+        val r = request
+        val vm = call("vm.create", buildJsonObject {
+            put("name", r.name); put("description", r.description)
+            put("vcpus", r.vcpus); put("cores", r.cores); put("threads", r.threads); put("memory", r.memoryMb)
+            put("bootloader", r.bootloader); put("autostart", r.autostart)
+        }).obj()
+        val id = vm?.long("id")?.toInt() ?: throw TrueNasException.Rpc(0, null, "vm.create did not return an id")
+        fun device(order: Int, attrs: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) = buildJsonObject {
+            put("vm", id); put("order", order); put("attributes", buildJsonObject(attrs))
+        }
+        val devices = buildList {
+            if (r.isoPath != null) add(device(1000) { put("dtype", "CDROM"); put("path", r.isoPath) })
+            if (r.diskParent != null) add(device(1001) {
+                put("dtype", "DISK"); put("type", "VIRTIO"); put("create_zvol", true)
+                put("zvol_name", "${r.diskParent.trimEnd('/')}/${r.name}-disk0")
+                put("zvol_volsize", r.diskSizeGiB.toLong() * 1024 * 1024 * 1024)
+            })
+            if (r.nicAttach != null) add(device(1002) { put("dtype", "NIC"); put("type", "VIRTIO"); put("nic_attach", r.nicAttach) })
+            if (!r.displayPassword.isNullOrBlank()) add(device(1003) {
+                put("dtype", "DISPLAY"); put("type", "SPICE"); put("bind", "0.0.0.0"); put("web", true); put("password", r.displayPassword)
+            })
+        }
+        val failures = mutableListOf<String>()
+        for (d in devices) {
+            try { call("vm.device.create", d) }
+            catch (e: TrueNasException) { failures += "${d["attributes"].obj()?.str("dtype")?.lowercase()}: ${e.message}" }
+        }
+        if (failures.isNotEmpty()) throw TrueNasException.Rpc(0, null, "VM ${r.name} was created, but some devices failed (${failures.joinToString("; ")}). Fix them in the TrueNAS web UI.")
+        return id
+    }
+
+    override suspend fun vmDisplayUri(id: Int, host: String, https: Boolean): String? {
+        val res = call("vm.get_display_web_uri", p(id), p(host), buildJsonObject { put("protocol", if (https) "HTTPS" else "HTTP") }).obj()
+        res?.str("error")?.let { throw TrueNasException.Rpc(0, null, it) }
+        return res?.str("uri")
+    }
+
+    override suspend fun nicAttachChoices(): List<String> =
+        call("vm.device.nic_attach_choices").obj()?.keys?.sorted() ?: emptyList()
+
+    override suspend fun listDir(path: String): List<app.truenascompanion.data.model.FsEntry> =
+        call("filesystem.listdir", p(path), JsonArray(emptyList()), buildJsonObject { put("order_by", JsonArray(listOf(JsonPrimitive("name")))) })
+            .arr()?.mapNotNull { e ->
+                val o = e.obj() ?: return@mapNotNull null
+                val name = o.str("name") ?: return@mapNotNull null
+                if (name.startsWith(".")) return@mapNotNull null
+                app.truenascompanion.data.model.FsEntry(name, o.str("path") ?: "$path/$name", o.str("type") == "DIRECTORY")
+            } ?: emptyList()
+
+    override suspend fun zvolParents(): List<String> =
+        call("pool.dataset.query", JsonArray(listOf(JsonArray(listOf(p("type"), p("="), p("FILESYSTEM"))))),
+            buildJsonObject { put("extra", buildJsonObject { put("flat", true); put("retrieve_children", true); put("properties", JsonArray(listOf(p("name")))) }); put("order_by", JsonArray(listOf(p("name")))) })
+            .arr()?.mapNotNull { it.obj()?.str("id") }
+            ?.filterNot { id -> id.contains("/ix-") || id.contains("/.") || id.substringAfter('/', "").startsWith("ix-") }
+            ?: emptyList()
+
+    override suspend fun containersState(): String? = call("virt.global.config").obj()?.str("state")
+
+    override suspend fun virtInstances(): List<app.truenascompanion.data.model.VirtInstance> =
+        call("virt.instance.query").arr()?.mapNotNull { it.obj()?.let(Parsers::virtInstance) }?.sortedBy { it.name.lowercase() } ?: emptyList()
+
+    override suspend fun startVirtStart(id: String): Long = startJob("virt.instance.start", p(id))
+    override suspend fun startVirtStop(id: String, force: Boolean): Long =
+        startJob("virt.instance.stop", p(id), buildJsonObject { put("timeout", if (force) -1 else 60); put("force", force) })
+    override suspend fun startVirtRestart(id: String): Long =
+        startJob("virt.instance.restart", p(id), buildJsonObject { put("timeout", 60); put("force", false) })
+    override suspend fun startVirtDelete(id: String): Long = startJob("virt.instance.delete", p(id))
 
     override fun appLogs(appName: String, containerId: String, tail: Int): Flow<LogLine> =
         eventSource("app.container_log_follow", buildJsonObject {

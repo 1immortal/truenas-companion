@@ -332,3 +332,63 @@ data class ServiceInfo(
         )
     }
 }
+
+// --- Virtualization (0.4.1): classic VMs (`vm.*`) and Incus containers (`virt.instance.*`) ---
+
+enum class VmState { RUNNING, STOPPED, SUSPENDED, UNKNOWN }
+
+/** A VM device reduced to what the details screen shows. [kind] is the middleware `dtype`. */
+data class VmDevice(val id: Int, val kind: String, val title: String, val detail: String?)
+
+data class VmInfo(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val state: VmState,
+    val vcpus: Int,
+    val cores: Int,
+    val threads: Int,
+    val memoryMb: Long,
+    val autostart: Boolean,
+    val bootloader: String?,
+    val devices: List<VmDevice>,
+    val displayAvailable: Boolean,
+) {
+    val totalCpus: Int get() = vcpus * cores * threads
+    val hasWebDisplay: Boolean get() = devices.any { it.kind == "DISPLAY" && it.detail?.contains("web") == true }
+}
+
+enum class InstanceStatus { RUNNING, STOPPED, STARTING, STOPPING, FROZEN, ERROR, UNKNOWN }
+
+data class VirtInstance(
+    val id: String,
+    val name: String,
+    val type: String,
+    val status: InstanceStatus,
+    val cpu: String?,
+    val memoryBytes: Long?,
+    val autostart: Boolean,
+    val image: String?,
+    val addresses: List<String>,
+    val storagePool: String?,
+)
+
+/** Everything the "New VM" form collects; the repository turns it into `vm.create` + `vm.device.create` calls. */
+data class VmCreateRequest(
+    val name: String,
+    val description: String,
+    val vcpus: Int,
+    val cores: Int,
+    val threads: Int,
+    val memoryMb: Long,
+    val bootloader: String,
+    val autostart: Boolean,
+    /** Parent dataset for a new zvol, e.g. "tank/vms"; null = no disk. */
+    val diskParent: String?,
+    val diskSizeGiB: Int,
+    val isoPath: String?,
+    val nicAttach: String?,
+    val displayPassword: String?,
+)
+
+data class FsEntry(val name: String, val path: String, val isDirectory: Boolean)

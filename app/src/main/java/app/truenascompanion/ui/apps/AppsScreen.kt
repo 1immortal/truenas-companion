@@ -327,7 +327,7 @@ fun AppState.health(): Health = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppsScreen(onJobs: () -> Unit = {}, onCatalog: () -> Unit = {}, onOpenApp: (String) -> Unit = {}) {
+fun AppsScreen(onJobs: () -> Unit = {}, onCatalog: () -> Unit = {}, onOpenApp: (String) -> Unit = {}, header: @Composable () -> Unit = {}) {
     val vm = appViewModel { AppsViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -367,7 +367,9 @@ fun AppsScreen(onJobs: () -> Unit = {}, onCatalog: () -> Unit = {}, onOpenApp: (
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
+        Column(Modifier.padding(padding).fillMaxSize()) {
+        header()
+        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
             when (val s = state) {
                 UiState.Loading -> SkeletonList(6, 88.dp)
                 is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
@@ -428,6 +430,7 @@ fun AppsScreen(onJobs: () -> Unit = {}, onCatalog: () -> Unit = {}, onOpenApp: (
                     }
                 }
             }
+        }
         }
     }
     imageInfo?.let { app ->
