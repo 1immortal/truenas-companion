@@ -133,7 +133,11 @@ data class Pool(
     val scanPercent: Double?,
     val scanErrors: Long?,
     val diskNames: List<String>,
+    val scanStartMillis: Long? = null,
+    val scanEndMillis: Long? = null,
 ) {
+    /** A scrub (not a resilver) is running right now. */
+    val scrubRunning: Boolean get() = scanFunction.equals("SCRUB", true) && scanState.equals("SCANNING", true)
     val health: Health
         get() = when {
             status.equals("ONLINE", true) && healthy && !warning -> Health.HEALTHY
@@ -153,6 +157,8 @@ data class Disk(
     val rotationRate: Int?,
     val pool: String?,
     val temperatureC: Double?,
+    /** `disk.query` identifier, e.g. `{serial_lunid}…`; used by SMART test cron jobs. */
+    val identifier: String? = null,
 )
 
 data class Dataset(

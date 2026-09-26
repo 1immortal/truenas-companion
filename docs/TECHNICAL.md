@@ -44,6 +44,29 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 
 **Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from the System tab. Jobs started in the web UI show up too.
 
+**Data protection (new in 0.5):** a **Protection** tab in Storage, a *Data protection* dashboard card (tap it to open the tab; existing dashboards get the card appended, and you can hide it) and a snapshots screen per dataset.
+- **Summary:** four lines, one each for snapshots, scrubs, SMART and backups: *OK*, *Running*, *Not set up*, *Overdue* or *Failed*. A snapshot or backup task counts as overdue when its last successful run is older than twice its schedule interval plus an hour. A pool counts as overdue when its last scrub is older than the scrub threshold (default 35 days) plus 7 days, or when it has never been scrubbed. Manual-only backup tasks are never overdue.
+- **Snapshots** (tap a dataset in *Datasets*): list with creation time, unique and referenced size and hold state (`pool.snapshot.query` with `extra.properties` and `holds`), search, sort (newest / oldest / largest) and long-press multi-select delete. **Take snapshot** (`pool.snapshot.create`, optional recursive). **Roll back** (`pool.snapshot.rollback`) explains that every change since then is lost. If newer snapshots exist, ZFS can only roll back by destroying them (`recursive: true`); the dialog names how many and needs a tick box, and it asks for your fingerprint when *Confirm dangerous actions* is on. **Clone** to a new dataset (`pool.snapshot.clone`), **Hold / Release** (`pool.snapshot.hold` / `release`) and **Delete**.
+- **Periodic snapshot tasks** (`pool.snapshottask.*`): list with schedule, retention and last run state; enable switch, **Run now** (`pool.snapshottask.run`), edit, add and delete. The editor has dataset, *Include child datasets* with exclusions, a schedule (hourly / daily / weekly / monthly presets or a custom cron line, plus an *Only between* window), retention (amount + hour/day/week/month/year), naming schema (must contain `%Y %m %d %H %M`), *Take empty snapshots* and *Enabled*. Editing and deleting pass `fixate_removal_date: true`, so snapshots the task already took keep their current removal date, as in the web UI.
+- **Scrubs:** per pool, last scrub time and errors, **Start**, and **Pause / Stop** with live progress while a scrub runs (`pool.scrub.scrub`; the tab polls `pool.query` every 5 s only while it is visible and something is running). The scrub schedule (`pool.scrub.*`: schedule, threshold in days, enabled) can be edited or added.
+- **Backups:** replication, cloud sync and rsync tasks (`replication.query`, `cloudsync.query`, `rsynctask.query`) with direction, target, last run state and time, and live progress. **Run now** (`replication.run`, `cloudsync.sync`, `rsynctask.run`), an enable switch (pausing asks first) and the **last log** (`logs_excerpt` of the last job). Creating and fully editing these tasks involves credentials, SSH connections and many options, so that stays in the web UI.
+
+**SMART on TrueNAS 25.10 (0.5), scoped honestly.** TrueNAS 25.10 removed S.M.A.R.T. from its web UI and public API: `smart.test.*`, the SMART test results and the per-disk SMART pages are gone (checked against the 25.10.3 middleware source). What is left:
+- a private method `disk.smart_test(type, disks)` that starts self-tests on disks (its source comment says it exists only for the migration below; cron runs it as root through `midclt`),
+- the migration (`drop_smart`) that turned existing SMART test schedules into **cron jobs** running `midclt call disk.smart_test TYPE '["*"]'` (or a list of disk identifiers) as root, with the description *S.M.A.R.T. Test*,
+- SMART **alerts** (for example a failed self-test), which TrueNAS still raises.
+
+So the app does what's possible and says so in the UI:
+- **Schedules** are those cron jobs (`cronjob.query` filtered on the command). You can add (short / long / conveyance test, schedule, all disks or specific disks by `disk.query` identifier), edit, enable/disable, **Run now** (`cronjob.run`) and delete them. They also appear in the web UI under *System › Advanced › Cron Jobs*. Disk identifiers are validated before they go into the command, so shell quoting stays safe.
+- **Run a SMART test now** creates a temporary, disabled cron job with the same command, runs it once with `cronjob.run(id, skip_disabled=false)` and deletes it again. Leftovers (for example if the app was killed half-way) are removed the next time the tab loads.
+- **Results:** there is no API for test results or progress on 25.10, so the app can't show them. If a test fails, TrueNAS raises an alert, which the Protection summary shows as *SMART problem reported* and phone alerts deliver as a notification. On TrueNAS 25.04 and older, SMART tests are still managed by the old `smart.test.*` API, which the app doesn't use: schedules made there don't show up in the app, so manage them in the web UI (the Protection summary still reports SMART alerts).
+
+**In-app updates (new in 0.5):** **System › About** shows the version, a **Check for updates** button and a *Check for updates daily* switch (on by default).
+- The check is one anonymous request to the public GitHub API: `GET https://api.github.com/repos/1immortal/truenas-companion/releases/latest`, with no token and no personal data. The repository is baked in at build time (`-PupdateRepo=owner/name` changes it for forks). A 404 (no public release or private repository) and GitHub's hourly rate limit for anonymous requests (60 per IP) are reported calmly as "can't check right now".
+- **Daily check:** a WorkManager job every 24 h (only with a network connection and when the battery isn't low; first run an hour after install). It posts one low-importance notification per new version on the *App updates* channel. Tapping it opens System.
+- **Download & install:** the APK is downloaded to the app's cache and its **SHA-256 is checked** against the digest GitHub publishes for the release asset (or the `.sha256` file attached to the release as a fallback). A release without a checksum is refused. Then the app checks that the APK has the **same package name, a higher version code and the same signing certificate** as the installed app, and hands it to Android's package installer, where you confirm. The first time, Android asks you to allow *Install unknown apps* for TrueNAS Companion (the app explains this and opens the setting). The APK is shared with the installer through a `FileProvider`, and nothing is installed silently.
+- **Battery:** one small HTTPS request a day, batched by WorkManager. Turn the switch off to stop it completely.
+
 **Alerts:** severity-colored list, relative time, **dismiss**, and an option to show dismissed alerts.
 
 **Phone alerts (new in 0.3):** notifications for new TrueNAS alerts, with **no push service, no Firebase and no server of ours**. The phone checks your NAS directly.
@@ -154,12 +177,14 @@ Methods used on the WebSocket API: `auth.login_ex` / `auth.login_ex_continue` / 
 `app.available` / `app.categories` / `catalog.get_app_details` / `app.create` / `app.update` / `app.delete` / `app.rollback_versions` / `app.rollback` (0.4, jobs),
 `vm.query` / `vm.start` / `vm.stop` / `vm.poweroff` / `vm.restart` / `vm.update` / `vm.delete` / `vm.create` / `vm.device.create` / `vm.device.nic_attach_choices` / `vm.get_display_web_uri`, `filesystem.listdir`,
 `virt.global.config` / `virt.instance.query` / `virt.instance.start` / `virt.instance.stop` / `virt.instance.restart` / `virt.instance.delete` (0.4.1),
+`pool.snapshot.query` / `create` / `delete` / `rollback` / `clone` / `hold` / `release`, `pool.snapshottask.query` / `create` / `update` / `delete` / `run`, `pool.scrub.query` / `create` / `update` / `scrub`, `cronjob.query` / `create` / `update` / `delete` / `run`, `replication.query` / `update` / `run`, `cloudsync.query` / `update` / `sync`, `rsynctask.query` / `update` / `run` (0.5),
 `core.subscribe("app.stats:{interval}")`, `core.subscribe("app.container_log_follow:{app_name, container_id, tail_lines}")`, `GET /api/versions` (auto-detect) and `GET /api/boot_id` (same-NAS check).
-Method names and payloads for 0.4 / 0.4.1 were checked against the middleware source of TrueNAS 25.10.3.
+Method names and payloads for 0.4 / 0.4.1 / 0.5 were checked against the middleware source of TrueNAS 25.10.3.
 The method names come from the official docs at <https://api.truenas.com/>.
 
 ## Installing APKs: details
 
+- **In the app (0.5+):** System › About › Check for updates downloads, verifies and installs new releases (see *In-app updates*).
 - **Releases:** download `truenas-companion-vX.Y.Z-debug.apk` from the latest GitHub Release. Release APKs are all signed with the same key, so a new release **installs as an update** over the previous one and keeps your servers and settings. **Or:**
 - **Actions:** open the latest successful *Android CI* run and download the `truenas-companion-debug-apk` artifact (a zip containing the APK).
 
@@ -180,6 +205,8 @@ app/src/main/java/app/truenascompanion/
 │   ├── security/     Android Keystore AES-GCM secret cipher, AppLock state machine
 │   ├── store/        DataStore: servers, encrypted keys, per-server dashboard layout, appearance
 │   ├── repository/   TrueNasRepository: active connection, lazy reconnect, live stats with retry
+│   ├── protection/   Schedule presets/descriptions and the protection summary rules (0.5)
+│   ├── update/       GitHub release check, verified download + install, daily worker (0.5)
 │   └── model/        Domain models and the dashboard layout model
 └── ui/               Compose screens + ViewModels (dashboard, storage, apps, jobs, alerts, system, servers, auth dialogs), theme, components
 ```
@@ -191,7 +218,7 @@ DataStore, AndroidX Biometric, [Coil](https://coil-kt.github.io/coil/) for catal
 - Self-signed certificates are accepted only if their SHA-256 fingerprint matches one you pinned for that server. Everything else goes through normal system CA validation. If the server's certificate changes (for example after it is regenerated), the connection fails until you trust the new one.
 - Cleartext HTTP is allowed because many home NAS boxes are reached that way on the LAN. Remember that TrueNAS revokes API keys sent over HTTP, and that password sign-in over HTTP sends your password unencrypted. The app warns you in both cases.
 - Session tokens are created with `match_origin=false` so that they keep working when your phone's IP changes (Wi-Fi ↔ mobile data). Anyone who pulls the token out of the encrypted store could use it until it expires. Pick a shorter *Stay signed in* period if that worries you.
-- No analytics, crash reporting or ads. Phone alerts are fetched directly from your NAS; nothing goes through a push service. The only requests that don't go to your NAS are **app icons** (0.4). The phone downloads these from the URLs in the TrueNAS catalog (TrueNAS's own CDN) and caches them. No credentials or NAS data are sent with them.
+- No analytics, crash reporting or ads. Phone alerts are fetched directly from your NAS; nothing goes through a push service. The only requests that don't go to your NAS are **app icons** (0.4) and the **update check** (0.5). The phone downloads icons from the URLs in the TrueNAS catalog (TrueNAS's own CDN) and caches them. The update check is an anonymous request to the GitHub API once a day (and when you tap *Check for updates*); downloaded updates are verified by SHA-256 and signing certificate before Android installs them. No credentials or NAS data are sent with either.
 
 ## Known limitations
 - **Not yet verified against a live TrueNAS server.** Payload formats were taken from the official API docs (v25.04–v27). The parsers are deliberately tolerant, but some fields may differ in practice, especially `reporting.realtime` on older releases, `disk.temperatures` output, and REST-mode actions.
@@ -201,7 +228,9 @@ DataStore, AndroidX Biometric, [Coil](https://coil-kt.github.io/coil/) for catal
 - App install/edit forms, logs, stats, rollback and delete (0.4) were built from the 25.10.3 middleware source and tested with sample schemas. **They have not been tried against real catalog apps on a live NAS.** Some field types (for example certificate or GPU pickers) are shown as "kept at default" and can be changed in JSON mode.
 - Auto-detect, local/remote switching and the app lock were tested with unit tests and a fake server only. Real-network behaviour (VPN apps, captive portals, OEM biometric prompts) is unverified.
 - VM and container actions (0.4.1) were built from the 25.10.3 middleware source and tested against a fake server. **They are unverified on a real NAS.** In particular, whether the SPICE web display opens without first signing in to the TrueNAS web UI in the same browser is unverified. VM creation covers the common case (one disk, ISO, NIC, display); passthrough devices, CPU pinning and similar options are left to the web UI.
-- Snapshots, shares, and replication/cloud-sync/S.M.A.R.T. tasks are not in v0.2 yet.
+- Data protection (0.5) was built from the 25.10.3 middleware source and tested with unit tests and a fake API. **It is unverified on a real NAS.** In particular: the one-off SMART test via a temporary cron job, toggling cloud sync tasks with a partial `cloudsync.update`, and rollback error messages when clones exist. Creating replication, cloud sync and rsync tasks is left to the web UI, and SMART test results can't be shown on 25.10 (see above).
+- The in-app installer (0.5) was tested with unit tests; the download → verify → system installer flow is **unverified on a real phone**.
+- Shares (SMB/NFS) can't be managed yet.
 - The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used. REST is used instead.
 - No home-screen widgets yet.
 - Phone alerts depend on Android letting the app run in the background. Aggressive OEM battery savers (some Xiaomi, Huawei and Samsung settings) can delay or stop checks unless the app is allowed to run in the background. Instant mode only reconnects after a reboot if Android lets it start a foreground service at boot.

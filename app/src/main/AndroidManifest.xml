@@ -12,6 +12,8 @@
     <!-- Only used to open the system "allow background activity" dialog when the user taps the hint. Not on Google Play. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
         tools:ignore="BatteryLife" />
+    <!-- In-app updates (0.5): hands a downloaded, verified release APK to the system installer. The user confirms there. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".TrueNasApp"
@@ -47,6 +49,16 @@
         </service>
 
         <receiver android:name=".notify.AlertActionReceiver" android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <receiver android:name=".notify.BootReceiver" android:exported="false">
             <intent-filter>

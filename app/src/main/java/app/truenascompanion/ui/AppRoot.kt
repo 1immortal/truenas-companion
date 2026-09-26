@@ -85,6 +85,10 @@ private object Routes {
     const val APP = "app/{name}"
     const val APP_EDIT = "app/{name}/edit"
     const val LOGS = "app/{name}/logs?container={container}"
+    const val SNAPSHOTS = "snapshots/{dataset}"
+    const val SNAP_TASK = "snapshot_task?id={id}"
+    fun snapshots(dataset: String) = "snapshots/${enc(dataset)}"
+    fun snapTask(id: Int?) = if (id == null) "snapshot_task" else "snapshot_task?id=$id"
     private fun enc(v: String) = android.net.Uri.encode(v)
     fun catalogApp(train: String, name: String) = "catalog/${enc(train)}/${enc(name)}"
     fun install(train: String, name: String) = "install/${enc(train)}/${enc(name)}"
@@ -160,13 +164,22 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                                 WidgetType.POOLS, WidgetType.TEMPERATURE -> nav.switchTab(Tab.STORAGE.route)
                                 WidgetType.APPS -> nav.switchTab(Tab.APPS.route)
                                 WidgetType.ALERTS -> nav.switchTab(Tab.ALERTS.route)
+                                WidgetType.PROTECTION -> { container.storageTabRequest.value = 3; nav.switchTab(Tab.STORAGE.route) }
                                 else -> Unit
                             }
                         },
                         onServers = { nav.navigate(Routes.SERVERS) },
                     )
                 }
-                composable(Tab.STORAGE.route) { StorageScreen() }
+                composable(Tab.STORAGE.route) {
+                    StorageScreen(onOpenSnapshots = { nav.navigate(Routes.snapshots(it)) }, onSnapshotTask = { nav.navigate(Routes.snapTask(it)) })
+                }
+                pushed(Routes.SNAPSHOTS, "dataset") { a ->
+                    app.truenascompanion.ui.protection.SnapshotsScreen(a.getValue("dataset"), onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.SNAP_TASK, "id?") { a ->
+                    app.truenascompanion.ui.protection.SnapshotTaskEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
+                }
                 composable(Tab.APPS.route) {
                     app.truenascompanion.ui.virt.WorkloadsScreen(
                         onJobs = { nav.navigate(Routes.JOBS) },

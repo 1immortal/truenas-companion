@@ -47,6 +47,7 @@ data class DashboardData(
     val apps: AppsSummary? = null,
     val alerts: AlertsSummary? = null,
     val hottestDisk: Pair<String, Double>? = null,
+    val protection: app.truenascompanion.data.protection.ProtectionSummary? = null,
 )
 
 /** Rolling window of live samples for sparklines. */
@@ -134,6 +135,16 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                         repo.call { api -> api.diskTemperatures(api.diskNames()) }
                     }.getOrNull()
                 }
+                val wantProtection = layout.value.visibleWidgets.any { it.type == app.truenascompanion.data.model.WidgetType.PROTECTION }
+                val protection = if (!wantProtection) null else async {
+                    suspend fun <T> part(block: suspend (app.truenascompanion.data.api.ProtectionApi) -> T): T? =
+                        runCatching { repo.call { block(app.truenascompanion.data.api.ProtectionApi(it)) } }.getOrNull()
+                    val snaps = async { part { it.snapshotTasks() } }
+                    val scrubs = async { part { it.scrubTasks() } }
+                    val smart = async { part { it.smartSchedules() } }
+                    val backups = async { part { it.backupTasks() } }
+                    app.truenascompanion.data.protection.ProtectionInputs(snaps.await(), pools.await(), scrubs.await(), smart.await(), alerts.await(), backups.await())
+                }
                 val system = sys.await()
                 val appList = apps.await()
                 val alertList = alerts.await()?.filter { !it.dismissed }
@@ -164,6 +175,7 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                         )
                     },
                     hottestDisk = temps.await()?.maxByOrNull { it.value }?.toPair(),
+                    protection = protection?.await()?.let { app.truenascompanion.data.protection.ProtectionSummarizer.summarize(it, System.currentTimeMillis()) },
                 )
             }
         } catch (e: Throwable) {

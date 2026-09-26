@@ -73,6 +73,8 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun spareExpiry(id: String) = longPreferencesKey("session_spare_expiry_$id")
         val NOTIFICATIONS = stringPreferencesKey("notification_prefs")
         val LOCK = stringPreferencesKey("lock_settings")
+        val UPDATE_AUTO = booleanPreferencesKey("update_auto_check")
+        val UPDATE_NOTIFIED = stringPreferencesKey("update_notified_version")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
         fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
     }
@@ -94,6 +96,13 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
             ?: app.truenascompanion.data.security.LockSettings()
     }.distinctUntilChanged()
+
+    /** Daily background update check (default on). */
+    val autoUpdateCheck: Flow<Boolean> = store.data.map { it[Keys.UPDATE_AUTO] ?: true }.distinctUntilChanged()
+    suspend fun setAutoUpdateCheck(on: Boolean) { store.edit { it[Keys.UPDATE_AUTO] = on } }
+    /** The newest version we already posted an "update available" notification for. */
+    suspend fun updateNotifiedVersion(): String? = store.data.first()[Keys.UPDATE_NOTIFIED]
+    suspend fun setUpdateNotifiedVersion(v: String) { store.edit { it[Keys.UPDATE_NOTIFIED] = v } }
 
     suspend fun updateLockSettings(f: (app.truenascompanion.data.security.LockSettings) -> app.truenascompanion.data.security.LockSettings) {
         store.edit { prefs ->

@@ -16,6 +16,7 @@ enum class WidgetType(val title: String, val defaultSize: WidgetSize, val shortT
     POOLS("Storage pools", WidgetSize.FULL, "Pools"),
     APPS("Apps", WidgetSize.HALF),
     ALERTS("Alerts", WidgetSize.HALF),
+    PROTECTION("Data protection", WidgetSize.FULL, "Protection"),
 }
 
 @Serializable

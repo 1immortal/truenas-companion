@@ -13,6 +13,8 @@ import app.truenascompanion.notify.AlertNotifier
 import app.truenascompanion.notify.AlertScheduler
 import app.truenascompanion.notify.BackgroundConnector
 import app.truenascompanion.notify.SessionKeepAliveWorker
+import app.truenascompanion.data.update.UpdateCenter
+import app.truenascompanion.data.update.UpdateCheckWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +42,10 @@ class AppContainer(app: Application) {
     val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes, sessions = sessions)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
     val appLock = AppLock()
+    /** In-app update check state (GitHub Releases of BuildConfig.UPDATE_REPO). */
+    val updates = UpdateCenter()
+    /** One-shot request for the Storage tab to show a segment (e.g. Protection from the dashboard card). */
+    val storageTabRequest = MutableStateFlow<Int?>(null)
 }
 
 class TrueNasApp : Application() {
@@ -50,6 +56,10 @@ class TrueNasApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.notifier.createChannels()
+        UpdateCheckWorker.createChannel(this)
+        container.appScope.launch {
+            container.settings.autoUpdateCheck.collect { UpdateCheckWorker.sync(this@TrueNasApp, it) }
+        }
         container.appScope.launch { container.settings.lockSettings.collect { container.appLock.onSettingsLoaded(it) } }
         // Keep WorkManager / the instant-alerts service in sync with the settings for the life of the process.
         container.appScope.launch {

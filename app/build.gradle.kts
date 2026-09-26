@@ -15,8 +15,10 @@ android {
         applicationId = "app.truenascompanion"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.4.2"
+        versionCode = 9
+        versionName = "0.5.0"
+        // Public GitHub repository whose Releases the in-app update check reads (override: -PupdateRepo=owner/name).
+        buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: "1immortal/truenas-companion"}\"")
     }
 
     buildTypes {
@@ -38,6 +40,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

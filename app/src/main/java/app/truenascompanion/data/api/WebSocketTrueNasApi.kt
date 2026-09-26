@@ -97,6 +97,8 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
 
     private suspend fun call(method: String, vararg args: JsonElement): JsonElement = rpc.call(method, params(*args))
 
+    override suspend fun rpc(method: String, vararg args: JsonElement): JsonElement = call(method, *args)
+
     /** Calls a middleware "job" method and waits for it to finish via core.get_jobs polling. */
     private suspend fun callJob(method: String, vararg args: JsonElement, timeoutMs: Long = 180_000): JsonElement? {
         val first = call(method, *args)

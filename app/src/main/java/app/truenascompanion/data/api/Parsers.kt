@@ -170,6 +170,8 @@ object Parsers {
             scanPercent = scan?.double("percentage"),
             scanErrors = scan?.long("errors"),
             diskNames = disks.distinct().map { it.substringAfterLast('/') },
+            scanStartMillis = parseDate(scan?.get("start_time")),
+            scanEndMillis = parseDate(scan?.get("end_time")),
         )
     }
 
@@ -182,6 +184,7 @@ object Parsers {
         rotationRate = o.long("rotationrate")?.toInt(),
         pool = o.str("pool") ?: poolByDisk[o.str("name")],
         temperatureC = null,
+        identifier = o.str("identifier"),
     )
 
     /** disk.temperatures returns {"sda": 34} or, on some versions, {"sda": {"temperature": 34, ...}}. */

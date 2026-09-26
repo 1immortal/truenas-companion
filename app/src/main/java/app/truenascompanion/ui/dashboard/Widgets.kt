@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material.icons.rounded.Speed
@@ -88,6 +89,7 @@ fun WidgetType.icon(): ImageVector = when (this) {
     WidgetType.POOLS -> Icons.Rounded.Storage
     WidgetType.APPS -> Icons.Rounded.Apps
     WidgetType.ALERTS -> Icons.Rounded.NotificationsActive
+    WidgetType.PROTECTION -> Icons.Rounded.Shield
 }
 
 fun tempHealth(c: Double?): Health = when {
@@ -194,6 +196,7 @@ fun DashboardWidget(
             WidgetType.POOLS -> PoolsWidget(full, data)
             WidgetType.APPS -> AppsWidget(full, data)
             WidgetType.ALERTS -> AlertsWidget(full, data)
+            WidgetType.PROTECTION -> ProtectionWidget(full, data)
         }
     }
 }
@@ -468,4 +471,27 @@ private fun AlertsWidget(full: Boolean, d: DashboardData) {
     BigValue("${a.active}")
     StatusChip(a.worst, when (a.worst) { Health.CRITICAL -> "Critical"; Health.WARNING -> "Warnings"; else -> "Info" })
     if (full) a.latest?.let { Spacer(Modifier.height(8.dp)); Muted(it.text) }
+}
+
+@Composable
+private fun ProtectionWidget(full: Boolean, d: DashboardData) {
+    WidgetHeader(WidgetType.PROTECTION, full)
+    Spacer(Modifier.height(12.dp))
+    val p = d.protection
+    when {
+        p == null && d.loading -> { SkeletonBlock(); Spacer(Modifier.height(8.dp)); SkeletonBlock(widthFraction = 0.7f) }
+        p == null -> Muted("Unavailable")
+        full -> app.truenascompanion.ui.protection.ProtectionRows(p, compact = true)
+        else -> {
+            val worst = p.worst
+            BigValue(if (p.problems == 0) "OK" else "${p.problems}")
+            StatusChip(worst.health, when (worst) {
+                app.truenascompanion.data.protection.ProtectionStatus.FAILED -> "Failed"
+                app.truenascompanion.data.protection.ProtectionStatus.OVERDUE -> "Overdue"
+                app.truenascompanion.data.protection.ProtectionStatus.NONE -> "Not set up"
+                app.truenascompanion.data.protection.ProtectionStatus.RUNNING -> "Running"
+                app.truenascompanion.data.protection.ProtectionStatus.OK -> "All good"
+            })
+        }
+    }
 }

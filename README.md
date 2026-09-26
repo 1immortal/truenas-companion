@@ -15,8 +15,8 @@
 <table>
   <tr>
     <td><img src="docs/images/dashboard-dark.png" width="200" alt="Dashboard"></td>
+    <td><img src="docs/images/protection-dark.png" width="200" alt="Data protection"></td>
     <td><img src="docs/images/catalog-dark.png" width="200" alt="Apps catalog"></td>
-    <td><img src="docs/images/vms-dark.png" width="200" alt="Virtual machines"></td>
     <td><img src="docs/images/notif-mock-dark.png" width="200" alt="Phone alerts"></td>
   </tr>
 </table>
@@ -28,17 +28,19 @@
 - **Get alerts on your phone.** A notification when a pool degrades, a disk runs hot or space runs low, straight from your NAS with no cloud service in between.
 - **Manage your apps.** Browse the catalog, install, update, edit, roll back, read logs and see live resource use.
 - **Control VMs and containers.** Start, stop, restart, edit resources or create a simple VM.
+- **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
 - **Keep an eye on storage.** Pools, disks with temperatures, and datasets.
 - **Handle everyday chores.** Start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.
+- **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine.
 - **Looks good.** Material You design with light and dark themes.
 
 ## Get the app
 
 1. On your phone, open the [latest release](https://github.com/1immortal/truenas-companion/releases/latest) and download the `.apk` file.
 2. Open the downloaded file. Android asks you to allow **Install unknown apps** for your browser or file manager. Allow it, go back, then tap **Install**.
-3. New versions install over the old one and keep your settings.
+3. From then on the app lets you know about new versions (System › About › Check for updates) and installs them over the old one, keeping your settings.
 
 Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for live stats and password sign-in).
 
@@ -51,7 +53,7 @@ Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for 
 
 ## Privacy
 
-The app talks only to the servers you add. There are no ads, analytics, tracking or accounts. Your passwords, keys and sessions stay encrypted on your phone. The only other requests the app makes are for app icons, which come from TrueNAS's own catalog servers, with no personal data attached.
+The app talks only to the servers you add. There are no ads, analytics, tracking or accounts. Your passwords, keys and sessions stay encrypted on your phone. The only other requests the app makes are for app icons, which come from TrueNAS's own catalog servers, and a once-a-day check with GitHub for a newer app version (you can turn it off). Neither sends any personal data.
 
 ## More
 

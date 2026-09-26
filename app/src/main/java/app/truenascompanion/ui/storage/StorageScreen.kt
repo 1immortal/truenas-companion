@@ -25,14 +25,18 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,6 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import app.truenascompanion.TrueNasApp
+import app.truenascompanion.ui.protection.ProtectionTab
+import app.truenascompanion.ui.protection.ProtectionViewModel
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -111,17 +122,25 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageScreen() {
+fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?) -> Unit = {}) {
     val vm = appViewModel { StorageViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = listOf("Pools", "Disks", "Datasets")
+    val tabs = listOf("Pools", "Disks", "Datasets", "Protection")
+    val container = (LocalContext.current.applicationContext as TrueNasApp).container
+    val request by container.storageTabRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(request) { request?.let { tab = it; container.storageTabRequest.value = null } }
+    val snackbar = remember { SnackbarHostState() }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Storage") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Storage") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            PrimaryTabRow(selectedTabIndex = tab) {
-                tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+            PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
+                tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
+            }
+            if (tab == 3) {
+                ProtectionPane(snackbar, onSnapshotTask)
+                return@Column
             }
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
                 when (val s = state) {
@@ -130,10 +149,32 @@ fun StorageScreen() {
                     is UiState.Success -> when (tab) {
                         0 -> PoolsList(s.data.pools)
                         1 -> DisksList(s.data.disks)
-                        else -> DatasetsList(s.data.datasets)
+                        else -> DatasetsList(s.data.datasets, onOpenSnapshots)
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -> Unit) {
+    val vm = appViewModel { ProtectionViewModel(it) }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val refreshing by vm.refreshing.collectAsStateWithLifecycle()
+    LaunchedEffect(vm) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    // Coming back from the snapshot task editor (or the app): reload quietly.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(vm) {
+        var first = true
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { if (!first) vm.reload(); first = false }
+    }
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
+        when (val s = state) {
+            UiState.Loading -> SkeletonList(4, 110.dp)
+            is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
+            is UiState.Success -> ProtectionTab(s.data, vm, onAddTask = { onSnapshotTask(null) }, onEditTask = { onSnapshotTask(it) })
         }
     }
 }
@@ -229,16 +270,17 @@ private fun DisksList(disks: List<Disk>) {
 }
 
 @Composable
-private fun DatasetsList(all: List<Dataset>) {
+private fun DatasetsList(all: List<Dataset>, onOpen: (String) -> Unit) {
     var showSystem by rememberSaveable { mutableStateOf(false) }
     val list = if (showSystem) all else all.filterNot { it.isSystem }
     LazyColumn(contentPadding = listPadding, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
         item {
             FilterChip(selected = showSystem, onClick = { showSystem = !showSystem }, label = { Text("Show system datasets") })
+            Text("Tap a dataset to see and manage its snapshots.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (list.isEmpty()) item { EmptyState(Icons.Rounded.Folder, "No datasets", "Datasets you create in TrueNAS show up here.") }
         items(list, key = { it.id }) { d ->
-            ElevatedSection(contentPadding = 14.dp, modifier = Modifier.padding(start = (d.depth.coerceAtMost(4) * 12).dp)) {
+            ElevatedSection(contentPadding = 14.dp, onClick = { onOpen(d.id) }, modifier = Modifier.padding(start = (d.depth.coerceAtMost(4) * 12).dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (d.locked) Icons.Rounded.Lock else Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(10.dp))

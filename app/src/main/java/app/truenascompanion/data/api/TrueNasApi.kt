@@ -115,5 +115,8 @@ interface TrueNasApi : AutoCloseable {
     /** `app.stats` event source (all apps, every [intervalSeconds]). */
     fun appStats(intervalSeconds: Int = 3): Flow<List<AppStats>> = kotlinx.coroutines.flow.flow { throw unsupported() }
 
+    /** Raw JSON-RPC call for feature modules such as [ProtectionApi] (WebSocket API only). */
+    suspend fun rpc(method: String, vararg args: kotlinx.serialization.json.JsonElement): kotlinx.serialization.json.JsonElement = throw unsupported()
+
     override fun close()
 }

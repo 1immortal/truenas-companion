@@ -272,6 +272,8 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                 item {
                     ElevatedSection {
                         SettingRow(Icons.Rounded.Info, "TrueNAS Companion ${BuildConfigInfo.versionName(context)}", "Free & open source. No ads, no analytics, no tracking.")
+                        Spacer(Modifier.height(8.dp))
+                        UpdateSection()
                         server?.let { s ->
                             Spacer(Modifier.height(8.dp))
                             OutlinedButton(

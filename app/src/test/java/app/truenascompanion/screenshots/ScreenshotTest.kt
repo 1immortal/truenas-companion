@@ -104,6 +104,7 @@ class ScreenshotTest {
         apps = AppsSummary(total = 14, running = 12, updates = 3, problems = 0),
         alerts = AlertsSummary(active = 1, worst = Health.WARNING, latest = AlertItem("1", "WARNING", "Pool fast is 88% full.", null, null, false, false)),
         hottestDisk = "sda" to 38.0,
+        protection = app.truenascompanion.ProtectionSamples.healthySummary,
     )
 
     @Composable
