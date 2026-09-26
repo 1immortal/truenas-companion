@@ -292,7 +292,9 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "The session renews each time the app connects, so you're only asked again after this long without using the app, or after the NAS restarts.",
+                        "The session renews whenever the app or its alerts connect, plus a light background renewal about twice a day. " +
+                            "TrueNAS still asks for your password and 2FA code 30 days after you last entered them, after the NAS " +
+                            "or its middleware restarts, or if the phone is offline for longer than this.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

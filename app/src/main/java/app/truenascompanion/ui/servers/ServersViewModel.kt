@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
 import app.truenascompanion.data.api.Credentials
-import app.truenascompanion.data.api.IssuedToken
+import app.truenascompanion.data.api.SessionTokens
 import app.truenascompanion.data.api.LoginStep
 import app.truenascompanion.data.api.PendingOtp
 import app.truenascompanion.data.api.TrueNasException
@@ -104,7 +104,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
 
     private var pendingOtp: PendingOtp? = null
     /** Session token obtained by a successful password test; saved with the server so no second 2FA prompt is needed. */
-    private var testedToken: IssuedToken? = null
+    private var testedToken: SessionTokens? = null
     private var testedTokenFor: String? = null
 
     init {
@@ -247,7 +247,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         when (step) {
             is LoginStep.Success -> {
                 val info = try { step.api.systemInfo() } finally { step.api.close() }
-                testedToken = step.token
+                testedToken = step.tokens.takeUnless { it.isEmpty }
                 testedTokenFor = fp
                 pendingOtp = null
                 _state.update { it.copy(testing = false, otp = null, outcome = TestOutcome.Success(TestResult(step.api.flavor, info))) }
@@ -326,12 +326,12 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
                 }
                 val token = testedToken
                 if (token != null && testedTokenFor == fingerprint(s, url)) {
-                    c.settings.saveSessionToken(config.id, token)
+                    c.sessions.replace(config.id, token)
                 } else if (previous != null && (previous.url != config.url || previous.username != config.username || previous.authMethod != config.authMethod)) {
-                    c.settings.clearSessionToken(config.id)
+                    c.sessions.clear(config.id)
                 }
             } else {
-                c.settings.clearSessionToken(config.id)
+                c.sessions.clear(config.id)
                 c.settings.clearPassword(config.id)
             }
             c.settings.setActiveServer(config.id)

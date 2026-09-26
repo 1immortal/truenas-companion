@@ -54,13 +54,13 @@ No ads, no analytics, no tracking, no paid features. The app talks only to the s
 
 **Phone alerts (new in 0.3):** notifications for new TrueNAS alerts, with **no push service, no Firebase and no server of ours**. The phone checks your NAS directly.
 - **How it works:** a WorkManager job runs every **15, 30 or 60 minutes** (your choice) while the phone has a network connection. It signs in with the saved session token (or API key), reads `alert.list`, and compares it with the alert IDs it saw last time. You are notified only about **new, non-dismissed** alerts at or above your **minimum severity** (default *Warning*; the levels are Info, Notice, Warning, Error, Critical, Alert, Emergency). The first check after you turn alerts on only records what is already there, so you don't get a burst of old alerts.
-- Each check signs in with the session token and requests a fresh one, so **background checks also keep your session alive**. If the session does expire (or a 2FA code is needed), you get a single *Sign in to keep receiving alerts* notification that opens the sign-in dialog.
+- Each check signs in with the session token and immediately rotates it (see *Staying signed in*), so **background checks also keep your session alive**. If the session does expire (or a 2FA code is needed), you get a single *Sign in to keep receiving alerts* notification that opens the sign-in dialog.
 - **Instant alerts** (optional, off by default): a foreground service keeps a WebSocket open and subscribes to the `alert.list` event (`core.subscribe`), so alerts arrive within seconds. It reconnects with backoff (5 s up to 5 min, and sooner when the network comes back) and shows a silent ongoing notification with a *Turn off* button. It uses more battery than periodic checks.
 - **Notifications:** separate channels for *Critical & errors*, *Warnings*, *Info & notices* and *Cleared alerts*, so you can tune sound and vibration in Android settings. The title is the alert type, the text is the TrueNAS message, and the server name is shown as subtext. Several alerts are grouped together. Tapping one opens the Alerts tab for that server. **Dismiss** dismisses the alert on the NAS in the background, and **Open** opens the app.
 - Optional: *Notify when an alert clears*, and *Quiet hours* (only Critical and more severe alerts come through), plus a *Send test notification* button.
 - Turn it on in **System › Phone alerts**, or from the card on the Alerts tab. On Android 13+ the app explains why before asking for the notification permission. A hint links to Android's *allow background activity* setting if battery optimization is on; this is optional and never forced.
 - **Battery:** periodic checks are cheap. There is one short connection per interval, and Android batches them with other apps' work, so a 15-minute check may run a few minutes late, especially in Doze. Instant mode keeps one TLS WebSocket open with a 45 s ping, which costs noticeably more battery on mobile data. Use it if you need alerts within seconds. The app screens and periodic checks reuse that same connection instead of opening their own.
-- **Battery design (0.3.1):** the app's own connection closes 30 s after you leave the app. Live dashboard stats and job lists only stream while their screen is visible, and live stats stop completely if you hide every card that uses them. Dropped streams reconnect with backoff (2 s up to 60 s). Long TrueNAS jobs are polled every 1 s at first, then gradually less often, up to every 5 s. Periodic checks only renew the session token when less than half of its lifetime is left. They look up alert titles only when there is something new to notify.
+- **Battery design (0.3.1):** the app's own connection closes 30 s after you leave the app. Live dashboard stats and job lists only stream while their screen is visible, and live stats stop completely if you hide every card that uses them. Dropped streams reconnect with backoff (2 s up to 60 s). Long TrueNAS jobs are polled every 1 s at first, then gradually less often, up to every 5 s. (0.4.2: periodic checks rotate the session token on every sign-in again, because TrueNAS spends a token when the connection that used it closes. The cost is one extra RPC per check.) They look up alert titles only when there is something new to notify.
 
 **App lock (new in 0.4):** in **System › Security**, lock the app with your **fingerprint, face or screen lock** (AndroidX Biometric: class-2 biometrics or device PIN/pattern/password).
 - Relock right away, or after 1, 5 or 15 minutes in the background. The app always locks after a restart.
@@ -95,18 +95,31 @@ Recommended if your API key keeps getting rejected, for example behind a reverse
 2. Tap **Test sign-in**. If two-factor authentication is on for your account, a dialog asks for the **6-digit code** from your authenticator app. It submits automatically once all 6 digits are typed. If a code is wrong you can try again. After too many wrong codes TrueNAS ends the attempt, and you start over with your password.
 3. Tap **Save**. The session from the test is kept, so you don't need a second code.
 
-**Staying signed in.** After a successful password (+ code) sign-in, the app asks TrueNAS for a **session token**
+**Staying signed in.** After a successful password (+ code) sign-in, the app asks TrueNAS for two **session tokens**, a primary and a spare
 (`auth.generate_token` with `single_use=false`, `match_origin=false`, and a TTL of **1, 7 or 30 days** that you choose as *Stay signed in for*).
-The token is stored encrypted and used for later connections and app launches (`auth.login_ex` with `TOKEN_PLAIN`). **No password or 2FA code is needed while it is valid.**
-Every successful connection gets a fresh token, so the period is counted from when you **last** used the app (sliding expiry).
-When the token expires or TrueNAS rejects it, the app shows the sign-in dialog again:
+They are stored encrypted and used for later connections, app launches, alert checks and the instant-alerts service (`auth.login_ex` with `TOKEN_PLAIN`). **No password or 2FA code is needed while they are valid.**
+
+How the token chain works (0.4.2), based on the TrueNAS 25.10 middleware source:
+- When a connection that signed in with a token closes, TrueNAS **destroys that token** (`TokenSessionManagerCredentials.logout()` → `token_manager.destroy`). A token is therefore good for one connection only.
+- So after **every** token sign-in the app immediately mints a new primary token on that connection. New tokens belong to your original password + 2FA sign-in, not to the connection, so they survive it.
+- The spare is never used while the primary works. It is the fallback if the primary is rejected, and it is refreshed once it is past half of its lifetime.
+- The app, the periodic alert check, the instant-alerts service and the keep-alive job share **one token manager with one lock per server**, so they never race to use or rotate the same token.
+- Tokens are discarded only when TrueNAS **explicitly rejects** them (after one retry on a fresh connection). No network, timeouts, a dropped socket or a 5xx from the proxy while the phone wakes up keep every token.
+- A light **keep-alive job** (every ~12 h, only with network and when the battery isn't low) renews the tokens once the primary is past half of its lifetime. Most runs do no network I/O at all.
+
+When TrueNAS still asks for the password / 2FA code:
+- **30 days after the last password + 2FA sign-in.** TrueNAS caps a sign-in (and every token derived from it) at 30 days (`max_session_age` for AAL1). This cannot be extended from the app.
+- After the **NAS reboots or the middleware restarts** (tokens live only in middleware memory), or if someone ends the session in the TrueNAS web UI.
+- If the phone stays offline (or the app and its alerts don't run) for longer than the chosen period.
 - **Remember password off (default):** you enter your password and, if enabled, a 2FA code.
 - **Remember password on:** the password is stored encrypted on the device, so only the **2FA code** is asked (nothing at all if 2FA is off).
+
+The app never stores your 2FA secret and never generates codes.
 
 The protocol follows the official docs: `auth.login_ex` (`PASSWORD_PLAIN` → `OTP_REQUIRED` → `auth.login_ex_continue` with `OTP_TOKEN`),
 and handles the `SUCCESS`, `OTP_REQUIRED`, `AUTH_ERR`, `EXPIRED` (password expired: change it in the web UI) and `REDIRECT` responses.
 
-> Tokens are kept in the TrueNAS middleware. They are probably **lost when the NAS reboots or the middleware restarts** (not verified). In that case you simply get the sign-in prompt again.
+> Why no "create an API key for this device" option (API keys don't need 2FA)? TrueNAS revokes an API key the first time it arrives over an insecure transport. Behind a proxy that forwards to TrueNAS over plain http (for example the default Nginx Proxy Manager setup), that happens on the first remote connection. Session tokens have no such check.
 
 ### API key
 See [Create a TrueNAS API key](#create-a-truenas-api-key). Simple, with no prompts. **But TrueNAS revokes a key that ever arrives over plain HTTP.**
@@ -205,7 +218,7 @@ DataStore, AndroidX Biometric, [Coil](https://coil-kt.github.io/coil/) for catal
 ## Known limitations
 - **Not yet verified against a live TrueNAS server.** Payload formats were taken from the official API docs (v25.04–v27). The parsers are deliberately tolerant, but some fields may differ in practice, especially `reporting.realtime` on older releases, `disk.temperatures` output, and REST-mode actions.
 - Live stats (CPU, memory, network, CPU temperature) need the WebSocket API (25.04+). REST mode shows system info, storage, apps, alerts and services without live charts.
-- Password sign-in, 2FA, session tokens, app upgrades and the task list were built against the documented API (v25.10) and a fake test server. **They have not been verified on a live NAS.** In particular it is unverified whether a `TOKEN_PLAIN` token sign-in ever asks for 2FA again (the docs don't say it does), and whether tokens survive a NAS reboot.
+- Password sign-in, 2FA, session tokens, app upgrades and the task list were built against the documented API (v25.10) and a fake test server. **They have not been verified on a live NAS.** The token lifecycle in 0.4.2 is modelled on the 25.10.3 middleware source (tokens are spent when their connection closes; 30-day cap from the password + 2FA sign-in; tokens are held in memory), but it has not been checked on a live NAS.
 - Password sign-in, app upgrades and the task list need the WebSocket API (25.04+). They are not available in legacy REST mode.
 - App install/edit forms, logs, stats, rollback and delete (0.4) were built from the 25.10.3 middleware source and tested with sample schemas. **They have not been tried against real catalog apps on a live NAS.** Some field types (for example certificate or GPU pickers) are shown as "kept at default" and can be changed in JSON mode.
 - Auto-detect, local/remote switching and the app lock were tested with unit tests and a fake server only. Real-network behaviour (VPN apps, captive portals, OEM biometric prompts) is unverified.

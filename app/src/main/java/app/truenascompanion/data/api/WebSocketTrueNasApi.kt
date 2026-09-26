@@ -274,12 +274,21 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
     /**
      * `auth.generate_token(ttl, attrs, match_origin, single_use)`. We request a reusable (single_use=false) token that is
      * not bound to the client address (match_origin=false) because phones change networks and sit behind proxies.
-     * Returns null if the server refuses (e.g. STIG mode).
+     * Throws if the server refuses (e.g. STIG mode, or the original password + 2FA sign-in has expired).
      */
-    suspend fun generateToken(ttlSeconds: Long): String? = runCatching {
+    suspend fun mintToken(ttlSeconds: Long): String =
         call("auth.generate_token", JsonPrimitive(ttlSeconds), JsonObject(emptyMap()), JsonPrimitive(false), JsonPrimitive(false))
             .prim()?.takeIf { it.isString }?.content
-    }.getOrNull()
+            ?: throw TrueNasException.Unsupported("TrueNAS did not issue a session token")
+
+    /** [mintToken], or null if the server refuses. */
+    suspend fun generateToken(ttlSeconds: Long): String? = try {
+        mintToken(ttlSeconds)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
 
     // --- App upgrades & jobs ---
 

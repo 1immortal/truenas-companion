@@ -6,13 +6,19 @@ import android.content.Intent
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.truenascompanion.TrueNasApp
+import app.truenascompanion.data.model.AuthMethod
+import app.truenascompanion.data.model.ServerConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /** Periodic background check of `alert.list` for every server with notifications on. */
@@ -77,6 +83,47 @@ class BootReceiver : BroadcastReceiver() {
                 val container = (context.applicationContext as TrueNasApp).container
                 AlertScheduler.syncAsync(context.applicationContext, container) { pending.finish() }
             }
+        }
+    }
+}
+
+/**
+ * Session keep-alive: every ~12 h (with network, not on low battery) renews the saved session tokens of password
+ * servers that are due (primary past half of its lifetime, or no spare). Usually nothing is due and it does no
+ * network I/O at all; when due it is one short WebSocket sign-in and two `auth.generate_token` calls.
+ */
+class SessionKeepAliveWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val container = (applicationContext as TrueNasApp).container
+        for (server in container.settings.servers.first().filter { it.authMethod == AuthMethod.PASSWORD }) {
+            // No skip while a socket is open: a live connection does not extend the *saved* tokens.
+            try {
+                container.backgroundConnector.renewSession(container.routes.resolve(server))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Network trouble keeps the tokens (see SessionTokenManager); the next run tries again.
+                android.util.Log.i("SessionKeepAlive", "renewal for ${server.id} skipped: ${e.javaClass.simpleName}")
+            }
+        }
+        return Result.success()
+    }
+
+    companion object {
+        private const val NAME = "session-keepalive"
+
+        fun sync(context: Context, servers: List<ServerConfig>) {
+            val wm = try { WorkManager.getInstance(context) } catch (e: IllegalStateException) { return }
+            if (servers.none { it.authMethod == AuthMethod.PASSWORD }) {
+                wm.cancelUniqueWork(NAME)
+                return
+            }
+            val request = PeriodicWorkRequestBuilder<SessionKeepAliveWorker>(12, TimeUnit.HOURS, 2, TimeUnit.HOURS)
+                .setConstraints(
+                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).setRequiresBatteryNotLow(true).build()
+                )
+                .build()
+            wm.enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.KEEP, request)
         }
     }
 }

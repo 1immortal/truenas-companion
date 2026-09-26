@@ -9,7 +9,6 @@ import app.truenascompanion.data.model.DashboardLayout
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.model.WidgetType
 import app.truenascompanion.data.repository.TrueNasRepository
-import app.truenascompanion.notify.BackgroundConnector
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -63,14 +62,6 @@ class BatteryLogicTest {
     }
 
     // --- token refresh ---
-
-    @Test fun tokenRefreshOnlyPastHalfLife() {
-        val day = 86_400L; val now = 1_000_000_000L
-        assertFalse(BackgroundConnector.shouldRefreshToken(now + day * 1000, now, day))           // fresh
-        assertFalse(BackgroundConnector.shouldRefreshToken(now + day * 1000 / 2 + 1, now, day))   // just over half left
-        assertTrue(BackgroundConnector.shouldRefreshToken(now + day * 1000 / 2 - 1, now, day))    // under half left
-        assertTrue(BackgroundConnector.shouldRefreshToken(now - 1, now, day))                     // expired
-    }
 
     // --- shared connections ---
 

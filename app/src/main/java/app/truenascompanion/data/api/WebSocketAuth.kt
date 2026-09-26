@@ -24,8 +24,13 @@ sealed interface Credentials {
 }
 
 sealed interface LoginStep {
-    /** Signed in. [token] is a fresh reusable session token (null if the server refused to issue one). */
-    class Success(val api: WebSocketTrueNasApi, val token: IssuedToken?) : LoginStep
+    /**
+     * Signed in. [token] is a fresh reusable session token (null if the server refused to issue one or this was a
+     * token sign-in, which [SessionTokenManager] rotates itself); [spare] is a second, independent one.
+     */
+    class Success(val api: WebSocketTrueNasApi, val token: IssuedToken?, val spare: IssuedToken? = null) : LoginStep {
+        val tokens: SessionTokens get() = SessionTokens(token, spare)
+    }
 
     /** Password accepted, TrueNAS wants a 2FA code. The WebSocket stays open in [pending] until the code is submitted. */
     class OtpRequired(val pending: PendingOtp, val username: String) : LoginStep
@@ -73,15 +78,14 @@ class PendingOtp internal constructor(
 object WebSocketAuth {
 
     /**
-     * [refreshToken] = false skips `auth.generate_token` after a token sign-in (used by background checks while the
-     * saved token still has plenty of lifetime left: one RPC and one encrypted DataStore write less per check).
+     * Password sign-ins mint a primary and a spare session token. Token sign-ins do not mint anything: use
+     * [tokenConnection] through [SessionTokenManager], which rotates the (now spent) token.
      */
     suspend fun login(
         server: ServerConfig,
         credentials: Credentials,
         ttlSeconds: Long,
         keepalive: Keepalive = Keepalive.FOREGROUND,
-        refreshToken: Boolean = true,
     ): LoginStep {
         val (client, tm) = HttpClients.create(server, keepalive)
         val rpc = JsonRpcClient(client, UrlUtils.webSocketUrl(server.url), tm)
@@ -122,7 +126,7 @@ object WebSocketAuth {
                         rpc.call("auth.login_with_token", JsonArray(listOf(JsonPrimitive(credentials.token)))).prim()?.booleanOrNull == true
                     }
                     if (!ok) throw TrueNasException.TokenRejected()
-                    if (refreshToken) success(rpc, ttlSeconds) else LoginStep.Success(WebSocketTrueNasApi(rpc), null)
+                    LoginStep.Success(WebSocketTrueNasApi(rpc), null)
                 }
             }
         } catch (e: Throwable) {
@@ -131,12 +135,19 @@ object WebSocketAuth {
         }
     }
 
-    /** Wraps the authenticated connection and asks for a fresh reusable token (sliding expiry). */
+    /** Signs in with a saved session token, for [SessionTokenManager.connect]. Throws [TrueNasException.TokenRejected]. */
+    suspend fun tokenConnection(server: ServerConfig, token: String, keepalive: Keepalive): TokenConnection<WebSocketTrueNasApi> {
+        val api = (login(server, Credentials.Token(token), 0, keepalive) as LoginStep.Success).api
+        return TokenConnection(api, mint = { ttl -> api.mintToken(ttl) }, close = { api.close() })
+    }
+
+    /** Wraps the authenticated (password + 2FA) connection and mints a primary and a spare session token. */
     internal suspend fun success(rpc: JsonRpcClient, ttlSeconds: Long): LoginStep.Success {
         val api = WebSocketTrueNasApi(rpc)
-        val issuedAt = System.currentTimeMillis()
-        val token = api.generateToken(ttlSeconds)?.let { IssuedToken(it, issuedAt + ttlSeconds * 1000) }
-        return LoginStep.Success(api, token)
+        fun issued(t: String) = IssuedToken(t, System.currentTimeMillis() + ttlSeconds * 1000)
+        val token = api.generateToken(ttlSeconds)?.let(::issued)
+        val spare = if (token != null) api.generateToken(ttlSeconds)?.let(::issued) else null
+        return LoginStep.Success(api, token, spare)
     }
 
     internal fun failure(res: JsonElement): TrueNasException = when (res.responseType()) {

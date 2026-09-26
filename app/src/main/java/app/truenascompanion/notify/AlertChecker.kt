@@ -8,6 +8,7 @@ import app.truenascompanion.data.api.TrueNasConnector
 import app.truenascompanion.data.api.TrueNasException
 import app.truenascompanion.data.api.WebSocketAuth
 import app.truenascompanion.data.api.SharedConnections
+import app.truenascompanion.data.api.SessionTokenManager
 import app.truenascompanion.data.net.Keepalive
 import app.truenascompanion.data.model.AuthMethod
 import app.truenascompanion.data.model.ServerConfig
@@ -24,16 +25,16 @@ import java.util.concurrent.ConcurrentHashMap
 enum class CheckOutcome { OK, SIGN_IN_NEEDED, NETWORK_ERROR, FAILED }
 
 /**
- * Non-interactive connection for background work. Never shows UI: uses the saved session token (which is refreshed
- * with `auth.generate_token` on every successful login, so background checks also keep the session alive), then the
- * remembered password if the user opted in. Throws [TrueNasException.LoginRequired] when a human is needed (2FA code,
- * no credentials, rejected API key).
+ * Non-interactive connection for background work. Never shows UI: uses the saved session tokens through the shared
+ * [SessionTokenManager] (which rotates them on every sign-in, because TrueNAS destroys a token when the connection
+ * that used it closes), then the remembered password if the user opted in. Throws [TrueNasException.LoginRequired]
+ * when a human is needed (2FA code, no credentials, rejected API key). Network errors propagate and keep the tokens.
  */
-class BackgroundConnector(private val settings: SettingsStore) {
-    /**
-     * [keepalive]: [Keepalive.NONE] for one-shot checks, [Keepalive.LONG_LIVED] for the instant-alerts socket.
-     * The session token is only renewed when less than half of its lifetime is left (see [shouldRefreshToken]).
-     */
+class BackgroundConnector(
+    private val settings: SettingsStore,
+    private val sessions: SessionTokenManager = SessionTokenManager(settings.tokenStore),
+) {
+    /** [keepalive]: [Keepalive.NONE] for one-shot checks, [Keepalive.LONG_LIVED] for the instant-alerts socket. */
     suspend fun connect(server: ServerConfig, keepalive: Keepalive = Keepalive.NONE): TrueNasApi = withContext(Dispatchers.IO) {
         when (server.authMethod) {
             AuthMethod.API_KEY -> {
@@ -48,28 +49,30 @@ class BackgroundConnector(private val settings: SettingsStore) {
         }
     }
 
+    /**
+     * Keep-alive: renews the session tokens if a renewal is due (see [SessionTokenManager.renewalDue]) by signing in
+     * once and closing again. Returns false if nothing was due or no token is saved.
+     */
+    suspend fun renewSession(server: ServerConfig): Boolean = withContext(Dispatchers.IO) {
+        if (server.authMethod != AuthMethod.PASSWORD) return@withContext false
+        if (!sessions.renewalDue(server.id, server.sessionTtlSeconds())) return@withContext false
+        val api = sessions.connect(server.id, server.sessionTtlSeconds()) { token ->
+            WebSocketAuth.tokenConnection(server, token, Keepalive.NONE)
+        } ?: return@withContext false
+        api.close()
+        true
+    }
+
     private suspend fun connectPassword(server: ServerConfig, keepalive: Keepalive): TrueNasApi {
         val ttl = server.sessionTtlSeconds()
-        settings.sessionToken(server.id)?.let { saved ->
-            if (!saved.isExpired) {
-                try {
-                    val refresh = shouldRefreshToken(saved.expiresAt, System.currentTimeMillis(), ttl)
-                    val step = WebSocketAuth.login(server, Credentials.Token(saved.token), ttl, keepalive, refreshToken = refresh) as LoginStep.Success
-                    step.token?.let { settings.saveSessionToken(server.id, it) } // sliding expiry
-                    return step.api
-                } catch (e: TrueNasException.TokenRejected) {
-                    settings.clearSessionToken(server.id)
-                }
-            } else {
-                settings.clearSessionToken(server.id)
-            }
-        }
+        sessions.connect(server.id, ttl) { token -> WebSocketAuth.tokenConnection(server, token, keepalive) }
+            ?.let { return it }
         val remembered = settings.password(server.id)
         if (remembered != null && server.username.isNotBlank()) {
             try {
                 when (val step = WebSocketAuth.login(server, Credentials.Password(server.username, remembered), ttl, keepalive)) {
                     is LoginStep.Success -> {
-                        step.token?.let { settings.saveSessionToken(server.id, it) }
+                        if (step.token != null) sessions.replace(server.id, step.tokens)
                         return step.api
                     }
                     is LoginStep.OtpRequired -> {
@@ -82,16 +85,6 @@ class BackgroundConnector(private val settings: SettingsStore) {
             }
         }
         throw TrueNasException.LoginRequired()
-    }
-
-    companion object {
-        /**
-         * Background checks run every 15–60 min, so renewing the token on every check (an extra RPC plus an encrypted
-         * DataStore write) is wasted work. Renewing once less than half of its lifetime is left still keeps the session
-         * alive indefinitely while checks run, even for the shortest 1-day session.
-         */
-        fun shouldRefreshToken(expiresAt: Long, now: Long, ttlSeconds: Long): Boolean =
-            expiresAt - now < ttlSeconds * 1000 / 2
     }
 }
 

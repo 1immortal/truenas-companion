@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.truenascompanion.data.api.IssuedToken
+import app.truenascompanion.data.api.SessionTokens
+import app.truenascompanion.data.api.TokenStore
 import app.truenascompanion.data.model.DashboardLayout
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.security.SecretCipher
@@ -67,6 +69,8 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun password(id: String) = stringPreferencesKey("password_$id")
         fun token(id: String) = stringPreferencesKey("session_token_$id")
         fun tokenExpiry(id: String) = longPreferencesKey("session_token_expiry_$id")
+        fun spare(id: String) = stringPreferencesKey("session_spare_$id")
+        fun spareExpiry(id: String) = longPreferencesKey("session_spare_expiry_$id")
         val NOTIFICATIONS = stringPreferencesKey("notification_prefs")
         val LOCK = stringPreferencesKey("lock_settings")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
@@ -120,6 +124,8 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             prefs.remove(Keys.password(id))
             prefs.remove(Keys.token(id))
             prefs.remove(Keys.tokenExpiry(id))
+            prefs.remove(Keys.spare(id))
+            prefs.remove(Keys.spareExpiry(id))
             prefs.remove(Keys.seenAlerts(id))
             prefs.remove(Keys.signInNotified(id))
             val np = decodeNotifications(prefs)
@@ -154,25 +160,42 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         store.edit { it.remove(Keys.password(serverId)) }
     }
 
-    suspend fun saveSessionToken(serverId: String, token: IssuedToken) {
-        val enc = cipher.encrypt(token.token)
+    /** Saves the primary + spare session tokens in one atomic DataStore edit (null clears that slot). */
+    suspend fun saveSessionTokens(serverId: String, tokens: SessionTokens) {
+        val primary = tokens.primary?.let { cipher.encrypt(it.token) to it.expiresAt }
+        val spare = tokens.spare?.takeIf { it.token != tokens.primary?.token }?.let { cipher.encrypt(it.token) to it.expiresAt }
         store.edit {
-            it[Keys.token(serverId)] = enc
-            it[Keys.tokenExpiry(serverId)] = token.expiresAt
+            if (primary != null) { it[Keys.token(serverId)] = primary.first; it[Keys.tokenExpiry(serverId)] = primary.second }
+            else { it.remove(Keys.token(serverId)); it.remove(Keys.tokenExpiry(serverId)) }
+            if (spare != null) { it[Keys.spare(serverId)] = spare.first; it[Keys.spareExpiry(serverId)] = spare.second }
+            else { it.remove(Keys.spare(serverId)); it.remove(Keys.spareExpiry(serverId)) }
         }
     }
 
-    suspend fun sessionToken(serverId: String): IssuedToken? {
+    suspend fun sessionTokens(serverId: String): SessionTokens {
         val prefs = store.data.first()
-        val token = prefs[Keys.token(serverId)]?.let { cipher.decrypt(it) } ?: return null
-        return IssuedToken(token, prefs[Keys.tokenExpiry(serverId)] ?: 0L)
+        fun read(key: Preferences.Key<String>, expiry: Preferences.Key<Long>) =
+            prefs[key]?.let { enc -> runCatching { cipher.decrypt(enc) }.getOrNull() }?.let { IssuedToken(it, prefs[expiry] ?: 0L) }
+        return SessionTokens(read(Keys.token(serverId), Keys.tokenExpiry(serverId)), read(Keys.spare(serverId), Keys.spareExpiry(serverId)))
     }
 
-    suspend fun clearSessionToken(serverId: String) {
-        store.edit {
-            it.remove(Keys.token(serverId))
-            it.remove(Keys.tokenExpiry(serverId))
+    /** Compare-and-remove: drops a slot only if it still holds one of [tokens] (a newer token saved meanwhile stays). */
+    suspend fun removeSessionTokens(serverId: String, tokens: Set<String>) {
+        store.edit { prefs ->
+            fun matches(key: Preferences.Key<String>) =
+                prefs[key]?.let { enc -> runCatching { cipher.decrypt(enc) }.getOrNull() in tokens } == true
+            if (matches(Keys.token(serverId))) { prefs.remove(Keys.token(serverId)); prefs.remove(Keys.tokenExpiry(serverId)) }
+            if (matches(Keys.spare(serverId))) { prefs.remove(Keys.spare(serverId)); prefs.remove(Keys.spareExpiry(serverId)) }
         }
+    }
+
+    suspend fun clearSessionToken(serverId: String) = saveSessionTokens(serverId, SessionTokens())
+
+    /** [TokenStore] view for [SessionTokenManager]. */
+    val tokenStore: TokenStore = object : TokenStore {
+        override suspend fun load(serverId: String) = sessionTokens(serverId)
+        override suspend fun save(serverId: String, tokens: SessionTokens) = saveSessionTokens(serverId, tokens)
+        override suspend fun remove(serverId: String, tokens: Set<String>) = removeSessionTokens(serverId, tokens)
     }
 
     fun dashboardLayout(serverId: String): Flow<DashboardLayout> = store.data.map { prefs ->

@@ -4,6 +4,7 @@ import app.truenascompanion.data.net.RouteResolver
 import app.truenascompanion.data.security.AppLock
 import android.app.Application
 import app.truenascompanion.data.api.SharedConnections
+import app.truenascompanion.data.api.SessionTokenManager
 import app.truenascompanion.data.repository.TrueNasRepository
 import app.truenascompanion.data.security.SecretCipher
 import app.truenascompanion.data.store.SettingsStore
@@ -11,6 +12,7 @@ import app.truenascompanion.notify.AlertChecker
 import app.truenascompanion.notify.AlertNotifier
 import app.truenascompanion.notify.AlertScheduler
 import app.truenascompanion.notify.BackgroundConnector
+import app.truenascompanion.notify.SessionKeepAliveWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,11 +31,13 @@ class AppContainer(app: Application) {
     val notifier = AlertNotifier(app)
     /** One signed-in socket per server, shared by the UI, the periodic check and instant alerts where possible. */
     val sharedConnections = SharedConnections()
-    val backgroundConnector = BackgroundConnector(settings)
+    /** One owner of the session-token chain for the whole process (UI, workers, instant-alerts service). */
+    val sessions = SessionTokenManager(settings.tokenStore)
+    val backgroundConnector = BackgroundConnector(settings, sessions)
     /** Local vs remote address per network, shared by the UI, periodic checks and instant alerts. */
     val routes = RouteResolver(app)
     val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections, routes)
-    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes)
+    val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes, sessions = sessions)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
     val appLock = AppLock()
 }
@@ -51,7 +55,10 @@ class TrueNasApp : Application() {
         container.appScope.launch {
             combine(container.settings.notificationPrefs, container.settings.servers) { p, s -> p to s }
                 .distinctUntilChanged()
-                .collect { (prefs, servers) -> AlertScheduler.sync(this@TrueNasApp, prefs, servers) }
+                .collect { (prefs, servers) ->
+                    AlertScheduler.sync(this@TrueNasApp, prefs, servers)
+                    SessionKeepAliveWorker.sync(this@TrueNasApp, servers)
+                }
         }
     }
 }

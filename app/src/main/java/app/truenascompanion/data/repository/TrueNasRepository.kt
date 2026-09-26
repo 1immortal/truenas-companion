@@ -9,6 +9,7 @@ import app.truenascompanion.data.api.TrueNasException
 import app.truenascompanion.data.api.WebSocketAuth
 import app.truenascompanion.data.api.SharedConnections
 import app.truenascompanion.data.api.userMessage
+import app.truenascompanion.data.net.Keepalive
 import app.truenascompanion.data.model.ApiFlavor
 import app.truenascompanion.data.model.AuthMethod
 import app.truenascompanion.data.model.RealtimeStats
@@ -87,6 +88,8 @@ class TrueNasRepository(
     private val shared: SharedConnections = SharedConnections(),
     /** Local vs remote address per network (see [RouteResolver]). */
     private val resolver: app.truenascompanion.data.net.RouteResolver = app.truenascompanion.data.net.RouteResolver(null),
+    /** Shared with background work so token use and rotation never race (see [SessionTokenManager]). */
+    private val sessions: app.truenascompanion.data.api.SessionTokenManager = app.truenascompanion.data.api.SessionTokenManager(settings.tokenStore),
 ) {
 
     val activeServer: StateFlow<ServerConfig?> = combine(settings.servers, settings.activeServerId) { servers, id ->
@@ -220,26 +223,16 @@ class TrueNasRepository(
         if (_prompt.value?.server?.id == server.id) throw TrueNasException.LoginRequired()
         val ttl = server.sessionTtlSeconds()
 
-        settings.sessionToken(server.id)?.let { saved ->
-            if (saved.isExpired) {
-                settings.clearSessionToken(server.id)
-            } else {
-                try {
-                    val step = WebSocketAuth.login(server, Credentials.Token(saved.token), ttl) as LoginStep.Success
-                    step.token?.let { settings.saveSessionToken(server.id, it) } // sliding expiry
-                    return step.api
-                } catch (e: TrueNasException.TokenRejected) {
-                    settings.clearSessionToken(server.id) // expired, server rebooted, or revoked -> fall through
-                }
-            }
-        }
+        // Saved token (rotated on every use; spare as fallback). Network errors propagate and keep the tokens.
+        sessions.connect(server.id, ttl) { token -> WebSocketAuth.tokenConnection(server, token, Keepalive.FOREGROUND) }
+            ?.let { return it }
 
         val remembered = settings.password(server.id)
         if (remembered != null && server.username.isNotBlank()) {
             try {
                 when (val step = WebSocketAuth.login(server, Credentials.Password(server.username, remembered), ttl)) {
                     is LoginStep.Success -> {
-                        step.token?.let { settings.saveSessionToken(server.id, it) }
+                        if (step.token != null) sessions.replace(server.id, step.tokens)
                         return step.api
                     }
                     is LoginStep.OtpRequired -> {
@@ -332,7 +325,7 @@ class TrueNasRepository(
 
     /** [password] is null when it came from storage (nothing to change); otherwise it is saved or forgotten per [remember]. */
     private suspend fun finish(server: ServerConfig, step: LoginStep.Success, password: String?, remember: Boolean) {
-        step.token?.let { settings.saveSessionToken(server.id, it) }
+        if (step.token != null) sessions.replace(server.id, step.tokens)
         if (password != null) {
             if (remember) settings.savePassword(server.id, password) else settings.clearPassword(server.id)
         }
