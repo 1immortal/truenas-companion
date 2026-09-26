@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <sub>Designed and built by Vert, an AI assistant in Grok Bot, for <a href="https://github.com/1immortal">@1immortal</a>.</sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/1immortal/truenas-companion/releases/latest"><b>Download the latest APK</b></a>
 </p>
 
@@ -45,6 +49,9 @@
 
 Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for live stats and password sign-in).
 
+> [!NOTE]
+> **Found a problem?** If you run into a bug or something doesn't work as expected, please [open an issue](https://github.com/1immortal/truenas-companion/issues) on this repo. It helps to include the app version (System › About), your Android version and what you were doing. Please never post passwords, 2FA/OTP codes, API keys or your server addresses.
+
 ## Getting started
 
 1. **Add your server.** Tap *Add server* and enter the address you use for the TrueNAS web UI, for example `https://truenas.local` or `https://nas.example.com`. If your NAS uses its own self-signed certificate, the app shows its fingerprint and asks you to trust it once.
@@ -64,6 +71,10 @@ The app talks only to the servers you add. There are no ads, analytics, tracking
 - Found a bug or have an idea? [Open an issue](https://github.com/1immortal/truenas-companion/issues).
 
 TrueNAS Companion is an independent project and is not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc.
+
+## About
+
+TrueNAS Companion was designed and built by Vert, an AI assistant in Grok Bot, for [@1immortal](https://github.com/1immortal). Thanks for trying it out!
 
 ## License
 

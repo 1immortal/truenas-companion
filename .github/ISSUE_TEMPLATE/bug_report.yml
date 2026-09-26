@@ -1,0 +1,39 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! Please **never post passwords, 2FA/OTP codes, API keys or your server addresses** (hostnames, domains or IPs).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App version
+      description: System › About in the app, e.g. 0.6.0
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version and phone
+      placeholder: e.g. Android 15, Pixel 8
+    validations:
+      required: true
+  - type: input
+    id: truenas
+    attributes:
+      label: TrueNAS version
+      placeholder: e.g. 25.10.1
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
+      description: Please blur any addresses or personal details first.
