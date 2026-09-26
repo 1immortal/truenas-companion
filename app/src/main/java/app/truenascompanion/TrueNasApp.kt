@@ -1,6 +1,7 @@
 package app.truenascompanion
 
 import app.truenascompanion.data.net.RouteResolver
+import app.truenascompanion.data.vpn.TunnelManager
 import app.truenascompanion.data.security.AppLock
 import android.app.Application
 import app.truenascompanion.data.api.SharedConnections
@@ -38,6 +39,8 @@ class AppContainer(app: Application) {
     val backgroundConnector = BackgroundConnector(settings, sessions)
     /** Local vs remote address per network, shared by the UI, periodic checks and instant alerts. */
     val routes = RouteResolver(app)
+    /** The built-in WireGuard tunnel (0.6), shared by the app, background checks and instant alerts. */
+    val tunnels = TunnelManager(app) { s -> settings.wireGuard(s.id) }.also { routes.tunnels = it }
     val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections, routes)
     val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes, sessions = sessions)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)

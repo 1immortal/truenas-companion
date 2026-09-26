@@ -24,6 +24,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Dns
@@ -164,7 +166,7 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)?) {
+fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)?, onVpn: ((String) -> Unit)? = null) {
     val vm = appViewModel(key = "edit-$serverId") { ServerEditViewModel(it, serverId) }
     val s by vm.state.collectAsStateWithLifecycle()
     var showKey by rememberSaveable { mutableStateOf(false) }
@@ -315,6 +317,8 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                 onForgetCert = vm::forgetLocalCertificate,
             )
 
+            if (serverId != null && onVpn != null) VpnEntryCard(onClick = { onVpn(serverId) })
+
             TextButton(onClick = { advanced = !advanced }) {
                 Text("Advanced options")
                 Icon(if (advanced) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
@@ -407,6 +411,25 @@ private fun TestOutcomeCard(s: ServerEditState) {
             }
             is TestOutcome.Failure -> InfoBanner(o.message, health = Health.CRITICAL)
             null -> Unit
+        }
+    }
+}
+
+/** Link from the server form to the VPN screen (saved servers only: the tunnel config is stored per server). */
+@Composable
+fun VpnEntryCard(onClick: () -> Unit) {
+    app.truenascompanion.ui.components.ElevatedSection(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.VpnKey, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("VPN & remote access", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Built-in WireGuard, Tailscale, or set up a VPN on your NAS.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.Rounded.ChevronRight, null)
         }
     }
 }

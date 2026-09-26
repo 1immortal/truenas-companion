@@ -32,6 +32,7 @@
 - **Keep an eye on storage.** Pools, disks with temperatures, and datasets.
 - **Handle everyday chores.** Start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else.
+- **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.
 - **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine.
 - **Looks good.** Material You design with light and dark themes.
@@ -50,10 +51,11 @@ Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for 
 2. **Sign in.** Use your TrueNAS username and password, and enter your two-factor code if you have 2FA on. The app then stays signed in for the period you choose (1, 7 or 30 days).
 3. **Optional: add a local address.** If you reach your NAS through a reverse proxy or domain from outside, add its home address too (the app can find it for you). At home the app connects directly for extra speed.
 4. **Optional: turn on phone alerts** in the app's settings, and pick which alerts matter to you.
+5. **Optional: set up a VPN.** In the server's settings tap *VPN › Set up VPN* while you're at home. The app installs WireGuard (or Tailscale) on your NAS and sets up your phone. For WireGuard you add one setting on your router yourself: forward UDP port 51820 to your NAS. [Details](docs/TECHNICAL.md#features-in-detail).
 
 ## Privacy
 
-The app talks only to the servers you add. There are no ads, analytics, tracking or accounts. Your passwords, keys and sessions stay encrypted on your phone. The only other requests the app makes are for app icons, which come from TrueNAS's own catalog servers, and a once-a-day check with GitHub for a newer app version (you can turn it off). Neither sends any personal data.
+The app talks only to the servers you add. There are no ads, analytics, tracking or accounts. Your passwords, keys and sessions stay encrypted on your phone. The only other requests the app makes are for app icons, which come from TrueNAS's own catalog servers, and a once-a-day check with GitHub for a newer app version (you can turn it off). Neither sends any personal data. The built-in VPN connects only to your own NAS and carries only the app's traffic to it.
 
 ## More
 

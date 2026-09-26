@@ -26,6 +26,17 @@ data class ServerConfig(
     /** Pinned self-signed certificate for [localUrl] (the LAN IP usually has a different certificate). */
     val localPinnedCertSha256: String? = null,
     val routeMode: RouteMode = RouteMode.AUTO,
+    /**
+     * Optional Tailscale address of the NAS (`https://100.x.y.z` or a MagicDNS name). Used when the Tailscale app's VPN
+     * is connected on the phone and the address answers.
+     */
+    val tailscaleUrl: String? = null,
+    /** Pinned certificate for [tailscaleUrl] (usually the same self-signed certificate as the local address). */
+    val tailscalePinnedCertSha256: String? = null,
+    /** Built-in WireGuard tunnel use. The tunnel config itself is stored encrypted, separately (see SettingsStore). */
+    val vpnMode: VpnMode = VpnMode.OFF,
+    /** A WireGuard config is saved for this server (flag only; the config is a secret). */
+    val wireGuardConfigured: Boolean = false,
     /** Which address this (resolved) copy connects to. Never stored: see [forRoute]. */
     @kotlinx.serialization.Transient val activeRoute: Route = Route.REMOTE,
 ) {
@@ -41,13 +52,44 @@ data class ServerConfig(
      */
     val localUsable: Boolean get() = hasLocal && (isLocalHttps || authMethod == AuthMethod.PASSWORD)
 
+    val hasTailscale: Boolean get() = !tailscaleUrl.isNullOrBlank()
+    /** Same rule as [localUsable]: never send an API key over plain http. */
+    val tailscaleUsable: Boolean get() = hasTailscale && (tailscaleUrl!!.startsWith("https://", true) || authMethod == AuthMethod.PASSWORD)
+
+    /**
+     * The NAS's LAN IP from [localUrl] when it is an IP literal: the built-in tunnel only routes this one address
+     * (see WgConf.forApp), and connects to [localUrl] through it so the local certificate pin and same-NAS check apply.
+     */
+    val lanIp: String? get() = localUrl?.let { app.truenascompanion.util.UrlUtils.ipLiteralHost(it) }
+
+    /** The built-in WireGuard tunnel may be used: a config is saved, it isn't switched off, and the local address is an IP. */
+    val wireGuardUsable: Boolean get() = wireGuardConfigured && vpnMode != VpnMode.OFF && localUsable && lanIp != null
+
+    /** More than one way to reach the NAS is configured, so the route chip is worth showing. */
+    val hasAlternativeRoutes: Boolean get() = hasLocal || hasTailscale || wireGuardConfigured
+
     /** A copy that connects to the given address (same NAS, same credentials and session token). */
-    fun forRoute(route: Route): ServerConfig =
-        if (route == Route.LOCAL && localUsable) copy(url = localUrl!!, pinnedCertSha256 = localPinnedCertSha256, activeRoute = Route.LOCAL)
-        else copy(activeRoute = Route.REMOTE)
+    fun forRoute(route: Route): ServerConfig = when {
+        route == Route.LOCAL && localUsable -> copy(url = localUrl!!, pinnedCertSha256 = localPinnedCertSha256, activeRoute = Route.LOCAL)
+        // Through the tunnel the app talks to the LAN address, so the local pin and the same-NAS check still apply.
+        route == Route.VPN && localUsable -> copy(url = localUrl!!, pinnedCertSha256 = localPinnedCertSha256, activeRoute = Route.VPN)
+        route == Route.TAILSCALE && tailscaleUsable ->
+            copy(url = tailscaleUrl!!, pinnedCertSha256 = tailscalePinnedCertSha256 ?: localPinnedCertSha256, activeRoute = Route.TAILSCALE)
+        else -> copy(activeRoute = Route.REMOTE)
+    }
 }
 
-enum class Route(val label: String) { LOCAL("Local"), REMOTE("Remote") }
+/** How the app reaches the NAS right now (shown as a chip). */
+enum class Route(val label: String) { LOCAL("Local"), TAILSCALE("Tailscale"), VPN("VPN"), REMOTE("Remote") }
+
+/** Built-in WireGuard tunnel per server. */
+enum class VpnMode(val label: String) {
+    OFF("Off"),
+    /** Only when neither the local address nor Tailscale reaches the NAS; down 30 s after the app leaves the screen. */
+    AUTO("Auto"),
+    /** Up whenever the app is open (and for instant alerts), used before every other address. */
+    ALWAYS("Always on"),
+}
 
 enum class RouteMode(val label: String) {
     AUTO("Auto"),

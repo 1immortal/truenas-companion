@@ -87,6 +87,10 @@ private object Routes {
     const val LOGS = "app/{name}/logs?container={container}"
     const val SNAPSHOTS = "snapshots/{dataset}"
     const val SNAP_TASK = "snapshot_task?id={id}"
+    const val VPN = "vpn/{id}"
+    const val VPN_SETUP = "vpn_setup/{id}"
+    fun vpn(id: String) = "vpn/${enc(id)}"
+    fun vpnSetup(id: String) = "vpn_setup/${enc(id)}"
     fun snapshots(dataset: String) = "snapshots/${enc(dataset)}"
     fun snapTask(id: Int?) = if (id == null) "snapshot_task" else "snapshot_task?id=$id"
     private fun enc(v: String) = android.net.Uri.encode(v)
@@ -189,6 +193,12 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                         onCreateVm = { nav.navigate(Routes.VM_NEW) },
                     )
                 }
+                pushed(Routes.VPN, "id") { a ->
+                    app.truenascompanion.ui.vpn.VpnScreen(a.getValue("id"), onBack = { nav.popBackStack() }, onSetup = { nav.navigate(Routes.vpnSetup(a.getValue("id"))) })
+                }
+                pushed(Routes.VPN_SETUP, "id") { a ->
+                    app.truenascompanion.ui.vpn.VpnSetupScreen(a.getValue("id"), onBack = { nav.popBackStack() })
+                }
                 pushed(Routes.VM, "id") { a ->
                     app.truenascompanion.ui.virt.VmDetailScreen(a.getValue("id").toInt(), onBack = { nav.popBackStack() })
                 }
@@ -249,6 +259,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                             else nav.backToDashboard()
                         },
                         onBack = if (canGoBack) ({ nav.popBackStack() }) else null,
+                        onVpn = { sid -> nav.navigate(Routes.vpn(sid)) },
                     )
                 }
             }

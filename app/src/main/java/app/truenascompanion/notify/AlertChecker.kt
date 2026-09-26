@@ -14,6 +14,7 @@ import app.truenascompanion.data.model.AuthMethod
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.repository.sessionTtlSeconds
 import app.truenascompanion.data.store.SettingsStore
+import app.truenascompanion.data.vpn.TunnelHolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -111,10 +112,12 @@ class AlertChecker(
         locks.getOrPut(server.id) { Mutex() }.withLock {
             // Reuse an open socket (instant alerts or the app on screen) before signing in on a new one.
             // Local or remote address, whichever is right on the current network (cached per network).
-            val target = if (api != null) server else resolver.resolve(server)
-            val borrowed = api ?: shared.borrow(target)
+            val decided = if (api != null) server else resolver.resolve(server)
+            val borrowed = api ?: shared.borrow(decided)
+            // Not borrowing: open our own connection, bringing the WireGuard tunnel up briefly if that's the route.
+            var target = decided
             val conn = try {
-                borrowed ?: connector.connect(target)
+                borrowed ?: connectVia(server) { target = it }
             } catch (e: TrueNasException.LoginRequired) {
                 onSignInNeeded(server)
                 return@withLock CheckOutcome.SIGN_IN_NEEDED
@@ -130,7 +133,10 @@ class AlertChecker(
                 Log.i(TAG, "check ${server.name}: ${e.message}")
                 if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
             } finally {
-                if (borrowed == null) conn.close()
+                if (borrowed == null) {
+                    conn.close()
+                    resolver.release(target, TunnelHolder.CHECK)
+                }
             }
         }
     }
@@ -182,10 +188,10 @@ class AlertChecker(
     /** Notification action: dismiss on the NAS without opening the app. */
     suspend fun dismiss(serverId: String, uuid: String): CheckOutcome = withContext(Dispatchers.IO) {
         val server = settings.servers.first().firstOrNull { it.id == serverId } ?: return@withContext CheckOutcome.FAILED
-        val target = resolver.resolve(server)
-        val borrowed = shared.borrow(target)
+        val borrowed = shared.borrow(resolver.resolve(server))
+        var target: ServerConfig? = null
         val api = try {
-            borrowed ?: connector.connect(target)
+            borrowed ?: connectVia(server) { target = it }
         } catch (e: TrueNasException.LoginRequired) {
             onSignInNeeded(server)
             return@withContext CheckOutcome.SIGN_IN_NEEDED
@@ -205,7 +211,35 @@ class AlertChecker(
         } catch (e: Throwable) {
             if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
         } finally {
-            if (borrowed == null) api.close()
+            if (borrowed == null) {
+                api.close()
+                resolver.release(target, TunnelHolder.CHECK)
+            }
+        }
+    }
+
+    /**
+     * Connects through the right route for a background check. The tunnel (if that's the route) is held with
+     * [TunnelHolder.CHECK] and must be released by the caller with the target passed to [onTarget]. An unreachable
+     * local/Tailscale/tunnel route is skipped once, like in the app.
+     */
+    private suspend fun connectVia(server: ServerConfig, onTarget: (ServerConfig) -> Unit): TrueNasApi {
+        var target = resolver.acquire(server, TunnelHolder.CHECK)
+        var attempts = 0
+        while (true) {
+            onTarget(target)
+            try {
+                return connector.connect(target)
+            } catch (e: Throwable) {
+                resolver.release(target, TunnelHolder.CHECK)
+                onTarget(server.forRoute(app.truenascompanion.data.model.Route.REMOTE))
+                val retry = (e is TrueNasException.Unreachable || e is TrueNasException.Timeout) &&
+                    target.activeRoute != app.truenascompanion.data.model.Route.REMOTE &&
+                    server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO && ++attempts <= 3
+                if (!retry) throw e
+                resolver.fail(server.id, target.activeRoute)
+                target = resolver.acquire(server, TunnelHolder.CHECK)
+            }
         }
     }
 

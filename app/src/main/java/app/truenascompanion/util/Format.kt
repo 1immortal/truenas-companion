@@ -85,6 +85,21 @@ object UrlUtils {
         return "$scheme://$hostPort"
     }
 
+    /** Host part of a URL (no scheme, port or path), e.g. `https://nas.example.org:8443/ui` -> `nas.example.org`. */
+    fun hostOf(url: String): String? {
+        val hostPort = (normalize(url) ?: return null).substringAfter("://")
+        return if (hostPort.startsWith("[")) hostPort.substringAfter('[').substringBefore(']')
+        else hostPort.substringBefore(':').ifBlank { null }
+    }
+
+    /** The host when it is an IPv4 literal (the tunnel routes exactly this address), else null. */
+    fun ipLiteralHost(url: String): String? = hostOf(url)?.takeIf { isIpv4(it) }
+
+    fun isIpv4(s: String): Boolean {
+        val parts = s.split('.')
+        return parts.size == 4 && parts.all { p -> p.isNotEmpty() && p.length <= 3 && p.all(Char::isDigit) && p.toInt() in 0..255 }
+    }
+
     fun webSocketUrl(base: String): String {
         val wsScheme = if (base.startsWith("https://", true)) "wss" else "ws"
         return "$wsScheme://${base.substringAfter("://")}/api/current"

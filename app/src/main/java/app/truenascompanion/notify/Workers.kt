@@ -1,5 +1,6 @@
 package app.truenascompanion.notify
 
+import app.truenascompanion.data.repository.sessionTtlSeconds
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -97,13 +98,21 @@ class SessionKeepAliveWorker(context: Context, params: WorkerParameters) : Corou
         val container = (applicationContext as TrueNasApp).container
         for (server in container.settings.servers.first().filter { it.authMethod == AuthMethod.PASSWORD }) {
             // No skip while a socket is open: a live connection does not extend the *saved* tokens.
+            // Usually nothing is due: then no network and no tunnel at all.
+            if (!container.sessions.renewalDue(server.id, server.sessionTtlSeconds())) continue
+            var target: ServerConfig? = null
             try {
-                container.backgroundConnector.renewSession(container.routes.resolve(server))
+                target = container.routes.acquire(server, app.truenascompanion.data.vpn.TunnelHolder.CHECK)
+                container.backgroundConnector.renewSession(target)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // Network trouble keeps the tokens (see SessionTokenManager); the next run tries again.
                 android.util.Log.i("SessionKeepAlive", "renewal for ${server.id} skipped: ${e.javaClass.simpleName}")
+            } finally {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    container.routes.release(target, app.truenascompanion.data.vpn.TunnelHolder.CHECK)
+                }
             }
         }
         return Result.success()

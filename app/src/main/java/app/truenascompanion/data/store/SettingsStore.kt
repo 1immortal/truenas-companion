@@ -77,6 +77,9 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         val UPDATE_NOTIFIED = stringPreferencesKey("update_notified_version")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
         fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
+        fun wireGuard(id: String) = stringPreferencesKey("wireguard_conf_$id")
+        fun vpnWorked(id: String) = booleanPreferencesKey("vpn_worked_$id")
+        fun vpnTipDismissed(id: String) = booleanPreferencesKey("vpn_tip_dismissed_$id")
     }
 
     val servers: Flow<List<ServerConfig>> = store.data.map { prefs ->
@@ -96,6 +99,49 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
             ?: app.truenascompanion.data.security.LockSettings()
     }.distinctUntilChanged()
+
+    // --- VPN (0.6) ---
+
+    /** Saves a server's WireGuard config (contains its private key: encrypted like the API key) and flags the server. */
+    suspend fun saveWireGuard(serverId: String, conf: String, mode: app.truenascompanion.data.model.VpnMode) {
+        val enc = cipher.encrypt(conf)
+        store.edit { prefs ->
+            prefs[Keys.wireGuard(serverId)] = enc
+            val list = decodeServers(prefs).map { if (it.id == serverId) it.copy(wireGuardConfigured = true, vpnMode = mode) else it }
+            prefs[Keys.SERVERS] = json.encodeToString(list)
+        }
+    }
+
+    suspend fun wireGuard(serverId: String): String? =
+        store.data.first()[Keys.wireGuard(serverId)]?.let { runCatching { cipher.decrypt(it) }.getOrNull() }
+
+    suspend fun clearWireGuard(serverId: String) {
+        store.edit { prefs ->
+            prefs.remove(Keys.wireGuard(serverId))
+            val list = decodeServers(prefs).map { if (it.id == serverId) it.copy(wireGuardConfigured = false, vpnMode = app.truenascompanion.data.model.VpnMode.OFF) else it }
+            prefs[Keys.SERVERS] = json.encodeToString(list)
+        }
+    }
+
+    /** Updates just the VPN-related fields of a saved server (the rest stays as it is). */
+    suspend fun updateServer(serverId: String, transform: (ServerConfig) -> ServerConfig) {
+        store.edit { prefs ->
+            val list = decodeServers(prefs).map { if (it.id == serverId) transform(it) else it }
+            prefs[Keys.SERVERS] = json.encodeToString(list)
+        }
+    }
+
+    /** Remembers that a VPN route (built-in tunnel or Tailscale) connected once: unlocks the security tip. */
+    suspend fun markVpnWorked(serverId: String) {
+        if (store.data.first()[Keys.vpnWorked(serverId)] == true) return
+        store.edit { it[Keys.vpnWorked(serverId)] = true }
+    }
+
+    fun vpnTip(serverId: String): Flow<Boolean> = store.data.map {
+        it[Keys.vpnWorked(serverId)] == true && it[Keys.vpnTipDismissed(serverId)] != true
+    }.distinctUntilChanged()
+
+    suspend fun dismissVpnTip(serverId: String) { store.edit { it[Keys.vpnTipDismissed(serverId)] = true } }
 
     /** Daily background update check (default on). */
     val autoUpdateCheck: Flow<Boolean> = store.data.map { it[Keys.UPDATE_AUTO] ?: true }.distinctUntilChanged()
@@ -137,6 +183,9 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             prefs.remove(Keys.spareExpiry(id))
             prefs.remove(Keys.seenAlerts(id))
             prefs.remove(Keys.signInNotified(id))
+            prefs.remove(Keys.wireGuard(id))
+            prefs.remove(Keys.vpnWorked(id))
+            prefs.remove(Keys.vpnTipDismissed(id))
             val np = decodeNotifications(prefs)
             if (id in np.enabledServers) prefs[Keys.NOTIFICATIONS] = json.encodeToString(np.copy(enabledServers = np.enabledServers - id))
             if (prefs[Keys.ACTIVE] == id) {

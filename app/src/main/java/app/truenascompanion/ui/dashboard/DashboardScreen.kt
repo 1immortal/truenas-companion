@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.VpnKeyOff
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Dns
@@ -145,6 +147,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
             } else if (editing) {
                 EditGrid(layout.widgets, vm)
             } else {
+                VpnFallbackNotice(server, route)
                 PullToRefreshBox(isRefreshing = data.refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
                     when {
                         data.error != null && data.system == null -> ScrollableErrorState(data.error!!, data.loginRequired) { vm.refresh() }
@@ -324,6 +327,32 @@ private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * One line when the built-in tunnel should have been used but couldn't (another VPN connected, no VPN permission,
+ * Always-on VPN of another app, no handshake), so the app fell back to the remote address. Dismissable.
+ */
+@Composable
+private fun VpnFallbackNotice(server: app.truenascompanion.data.model.ServerConfig?, route: app.truenascompanion.data.model.Route?) {
+    val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext as app.truenascompanion.TrueNasApp).container
+    val status by container.tunnels.status.collectAsStateWithLifecycle()
+    val failure = status.lastFailure
+    var dismissed by remember(failure, server?.id) { mutableStateOf(false) }
+    if (server == null || !server.wireGuardUsable || dismissed || failure == null || status.failedServerId != server.id) return
+    if (route != null && route != app.truenascompanion.data.model.Route.REMOTE) return
+    androidx.compose.material3.Surface(
+        onClick = { dismissed = true },
+        color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.VpnKeyOff, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(failure.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Icon(Icons.Rounded.Close, "Dismiss", modifier = Modifier.size(16.dp))
         }
     }
 }

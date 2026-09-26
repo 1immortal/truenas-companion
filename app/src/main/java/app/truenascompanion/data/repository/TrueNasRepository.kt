@@ -17,6 +17,7 @@ import app.truenascompanion.data.model.JobInfo
 import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.model.SystemInfo
 import app.truenascompanion.data.store.SettingsStore
+import app.truenascompanion.data.vpn.TunnelHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -128,7 +129,7 @@ class TrueNasRepository(
     private var backgroundJob: kotlinx.coroutines.Job? = null
 
     /** Must hold [mutex]. Closes our own connection, or just forgets a borrowed one. */
-    private fun releaseApi() {
+    private suspend fun releaseApi() {
         val a = api ?: return
         val s = apiFor
         if (!borrowed) {
@@ -139,6 +140,19 @@ class TrueNasRepository(
         apiFor = null
         apiSource = null
         borrowed = false
+        // Our connection went through the built-in tunnel: let it go down (unless instant alerts still hold it).
+        tunnelTarget?.let { resolver.release(it, TunnelHolder.APP) }
+        tunnelTarget = null
+    }
+
+    /** The resolved config we acquired the tunnel for (VPN route), released with the connection. */
+    private var tunnelTarget: ServerConfig? = null
+    /** Tunnel kept up while the sign-in dialog is open for a VPN-route server; handed over on success. */
+    @Volatile private var promptTunnel: ServerConfig? = null
+
+    private suspend fun dropPromptTunnel() {
+        promptTunnel?.let { resolver.release(it, TunnelHolder.APP) }
+        promptTunnel = null
     }
 
     private var pendingOtp: PendingOtp? = null
@@ -158,7 +172,7 @@ class TrueNasRepository(
         // Open screens reconnect through the new address via their reconnect loops; nothing polls.
         resolver.networkChanges.onEach {
             val raw = activeServer.value ?: return@onEach
-            if (!raw.hasLocal || apiFor == null) return@onEach
+            if (!raw.hasAlternativeRoutes || apiFor == null) return@onEach
             val target = resolver.resolve(raw)
             mutex.withLock { if (apiFor != null && apiSource == raw && apiFor != target) releaseApi() }
         }.launchIn(scope)
@@ -185,18 +199,33 @@ class TrueNasRepository(
                 AuthMethod.PASSWORD -> connectWithSession(target)
             }
             try {
-                var target = server
-                val newApi = try {
-                    open(target)
-                } catch (e: TrueNasException) {
-                    // The local address answered the probe but not the connection (e.g. just left Wi-Fi): in Auto mode
-                    // fall back to the remote address right away instead of failing.
-                    val unreachable = e is TrueNasException.Unreachable || e is TrueNasException.Timeout
-                    if (!unreachable || target.activeRoute != app.truenascompanion.data.model.Route.LOCAL ||
-                        raw.routeMode != app.truenascompanion.data.model.RouteMode.AUTO) throw e
-                    resolver.invalidate(raw.id)
-                    target = raw.forRoute(app.truenascompanion.data.model.Route.REMOTE)
-                    open(target)
+                // Brings the WireGuard tunnel up when that's the route (falls back to the next route if it can't).
+                var target = resolver.acquire(raw, TunnelHolder.APP)
+                var newApi: TrueNasApi? = null
+                var attempts = 0
+                while (newApi == null) {
+                    try {
+                        newApi = open(target)
+                    } catch (e: TrueNasException) {
+                        if (e is TrueNasException.LoginRequired && target.activeRoute == app.truenascompanion.data.model.Route.VPN) {
+                            // The sign-in dialog will talk to the NAS through the tunnel: keep it up for the prompt.
+                            if (promptTunnel != null && promptTunnel != target) resolver.release(promptTunnel, TunnelHolder.APP)
+                            promptTunnel = target
+                            throw e
+                        }
+                        // The local address / Tailscale / tunnel answered the decision but not the connection (e.g. just
+                        // left Wi-Fi): in Auto mode move on to the next route right away instead of failing.
+                        resolver.release(target, TunnelHolder.APP)
+                        val unreachable = e is TrueNasException.Unreachable || e is TrueNasException.Timeout
+                        if (!unreachable || target.activeRoute == app.truenascompanion.data.model.Route.REMOTE ||
+                            raw.routeMode != app.truenascompanion.data.model.RouteMode.AUTO || ++attempts > 3) throw e
+                        resolver.fail(raw.id, target.activeRoute)
+                        target = resolver.acquire(raw, TunnelHolder.APP)
+                    }
+                }
+                if (target.activeRoute == app.truenascompanion.data.model.Route.VPN) tunnelTarget = target
+                if (target.activeRoute == app.truenascompanion.data.model.Route.VPN || target.activeRoute == app.truenascompanion.data.model.Route.TAILSCALE) {
+                    runCatching { settings.markVpnWorked(raw.id) }
                 }
                 install(target, newApi)
                 shared.publish(target, newApi, SharedConnections.OWNER_APP)
@@ -213,7 +242,7 @@ class TrueNasRepository(
         api = newApi
         apiFor = server
         apiSource = activeServer.value?.takeIf { it.id == server.id }
-        _route.value = server.activeRoute.takeIf { apiSource?.hasLocal == true }
+        _route.value = server.activeRoute.takeIf { apiSource?.hasAlternativeRoutes == true }
         borrowed = false
         _state.value = ConnectionState.Connected(newApi.flavor, info)
     }
@@ -313,6 +342,7 @@ class TrueNasRepository(
     }
 
     fun cancelPrompt() {
+        scope.launch { dropPromptTunnel() }
         pendingOtp?.cancel()
         pendingOtp = null
         pendingPassword = null
@@ -332,8 +362,10 @@ class TrueNasRepository(
         mutex.withLock {
             releaseApi()
             install(server, step.api)
+            if (promptTunnel != null && promptTunnel == server) { tunnelTarget = server; promptTunnel = null }
             shared.publish(server, step.api, SharedConnections.OWNER_APP)
         }
+        dropPromptTunnel()
         pendingOtp = null
         pendingPassword = null
         pendingRemember = null
@@ -406,6 +438,7 @@ class TrueNasRepository(
             delay(BACKGROUND_GRACE_MS)
             while (activeCalls.get() > 0) delay(BACKGROUND_GRACE_MS) // e.g. an image pull job is still being awaited
             mutex.withLock { releaseApi() }
+            if (_prompt.value == null) dropPromptTunnel()
         }
     }
 

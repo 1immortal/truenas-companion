@@ -128,12 +128,24 @@ class InstantAlertService : Service() {
         while (currentCoroutineContext().isActive) {
             var api: TrueNasApi? = null
             var target = server
+            var tunnelTarget: ServerConfig? = null
             try {
                 setStatus(server, "connecting…")
-                target = container.routes.resolve(server)
+                // With the WireGuard route this brings the tunnel up and keeps it up while instant alerts run (a
+                // handshake every 2 minutes plus the socket's keepalive; see docs/TECHNICAL.md for the battery cost).
+                target = container.routes.acquire(server, app.truenascompanion.data.vpn.TunnelHolder.INSTANT)
+                tunnelTarget = target
                 // 45 s keepalive (instead of the app's 30 s): the fewest radio wake-ups that still stay under the 60 s
                 // idle timeout of a default nginx / Nginx Proxy Manager setup.
-                api = container.backgroundConnector.connect(target, Keepalive.LONG_LIVED)
+                api = try {
+                    container.backgroundConnector.connect(target, Keepalive.LONG_LIVED)
+                } catch (e: TrueNasException) {
+                    // Local / Tailscale / tunnel unreachable after all: skip it on this network, retry with the next route.
+                    if ((e is TrueNasException.Unreachable || e is TrueNasException.Timeout) &&
+                        target.activeRoute != app.truenascompanion.data.model.Route.REMOTE &&
+                        server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO) container.routes.fail(server.id, target.activeRoute)
+                    throw e
+                }
                 // Let the app UI and the periodic check reuse this socket instead of opening their own.
                 container.sharedConnections.publish(target, api, SharedConnections.OWNER_SERVICE)
                 checker.onConnected(server)
@@ -145,7 +157,7 @@ class InstantAlertService : Service() {
                     // Switch cleanly between the local and remote address when the network changes (event-driven).
                     val routeWatch = launch {
                         container.routes.networkChanges.collect {
-                            if (server.hasLocal && container.routes.resolve(server) != target) throw RouteChanged()
+                            if (server.hasAlternativeRoutes && container.routes.resolve(server) != target) throw RouteChanged()
                         }
                     }
                     try {
@@ -180,6 +192,12 @@ class InstantAlertService : Service() {
                 Log.i(TAG, "${server.name}: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
                 api?.let { container.sharedConnections.withdraw(server.id, it); it.close() }
+                tunnelTarget?.let { t ->
+                    tunnelTarget = null
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        container.routes.release(t, app.truenascompanion.data.vpn.TunnelHolder.INSTANT)
+                    }
+                }
             }
             attempt++
             val backoff = (MIN_BACKOFF_MS shl (attempt - 1).coerceAtMost(6)).coerceAtMost(MAX_BACKOFF_MS)

@@ -42,6 +42,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudOff
@@ -446,19 +448,23 @@ fun InfoBanner(text: String, modifier: Modifier = Modifier, health: Health = Hea
     }
 }
 
-/** Small "Local" / "Remote" chip showing which address the app is using. */
+/** Small "Local" / "Tailscale" / "VPN" / "Remote" chip showing how the app reaches the NAS. */
 @Composable
 fun RouteChip(route: app.truenascompanion.data.model.Route, modifier: Modifier = Modifier) {
     val brand = app.truenascompanion.ui.theme.LocalBrandColors.current
-    val tint = if (route == app.truenascompanion.data.model.Route.LOCAL) (if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary)
+    val tint = if (route != app.truenascompanion.data.model.Route.REMOTE) (if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary)
         else MaterialTheme.colorScheme.onSurfaceVariant
     androidx.compose.material3.Surface(
         color = tint.copy(alpha = 0.14f), shape = RoundedCornerShape(50), modifier = modifier,
     ) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                if (route == app.truenascompanion.data.model.Route.LOCAL) Icons.Rounded.Home
-                else Icons.Rounded.Public,
+                when (route) {
+                    app.truenascompanion.data.model.Route.LOCAL -> Icons.Rounded.Home
+                    app.truenascompanion.data.model.Route.TAILSCALE -> Icons.Rounded.Hub
+                    app.truenascompanion.data.model.Route.VPN -> Icons.Rounded.VpnKey
+                    app.truenascompanion.data.model.Route.REMOTE -> Icons.Rounded.Public
+                },
                 null, tint = tint, modifier = Modifier.size(13.dp),
             )
             Spacer(Modifier.width(4.dp))

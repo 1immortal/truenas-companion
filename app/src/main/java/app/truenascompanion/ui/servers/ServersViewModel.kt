@@ -316,8 +316,15 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         val s = _state.value
         val url = s.normalizedUrl ?: run { _state.update { it.copy(urlError = "Enter a valid address") }; return }
         viewModelScope.launch {
-            val config = buildConfig(s, url)
-            val previous = c.settings.servers.first().firstOrNull { it.id == config.id }
+            val built = buildConfig(s, url)
+            val previous = c.settings.servers.first().firstOrNull { it.id == built.id }
+            // VPN settings live on their own screen: keep them as they are.
+            val config = previous?.let {
+                built.copy(
+                    tailscaleUrl = it.tailscaleUrl, tailscalePinnedCertSha256 = it.tailscalePinnedCertSha256,
+                    vpnMode = it.vpnMode, wireGuardConfigured = it.wireGuardConfigured,
+                )
+            } ?: built
             c.settings.saveServer(config, if (s.authMethod == AuthMethod.API_KEY) s.apiKey.trim().ifBlank { null } else null)
             if (s.authMethod == AuthMethod.PASSWORD) {
                 when {

@@ -14,6 +14,14 @@
         tools:ignore="BatteryLife" />
     <!-- In-app updates (0.5): hands a downloaded, verified release APK to the system installer. The user confirms there. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- VPN (0.6): only requested when you tap "Scan QR code" to import a WireGuard config. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- VPN (0.6): to detect and open the Tailscale app (it is never embedded). -->
+    <queries>
+        <package android:name="com.tailscale.ipn" />
+    </queries>
 
     <application
         android:name=".TrueNasApp"
