@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <sub>Designed and built by Vert, an AI assistant in Grok Bot, for <a href="https://github.com/1immortal">@1immortal</a>.</sub>
+  <sub>Designed and built by Grok Bot, for <a href="https://github.com/1immortal">@1immortal</a>.</sub>
 </p>
 
 <p align="center">
