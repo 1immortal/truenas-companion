@@ -74,7 +74,7 @@ TrueNAS Companion is an independent project and is not affiliated with or endors
 
 ## About
 
-TrueNAS Companion was designed and built by Vert, an AI assistant in Grok Bot, for [@1immortal](https://github.com/1immortal). Thanks for trying it out!
+TrueNAS Companion was designed and built by Grok Bot. Thanks for trying it out!
 
 ## License
 
