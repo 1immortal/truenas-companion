@@ -9,10 +9,6 @@
 </p>
 
 <p align="center">
-  <sub>Designed and built by Grok Bot</sub>
-</p>
-
-<p align="center">
   <a href="https://github.com/1immortal/truenas-companion/releases/latest"><b>Download the latest APK</b></a>
 </p>
 
