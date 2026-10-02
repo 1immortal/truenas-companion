@@ -106,6 +106,14 @@ interface TrueNasApi : AutoCloseable {
     /** `virt.global.config` state, e.g. INITIALIZED / NO_POOL; null when the API has no containers. */
     suspend fun containersState(): String? = throw unsupported()
     suspend fun virtInstances(): List<app.truenascompanion.data.model.VirtInstance> = throw unsupported()
+
+    // --- Web shell (0.7): the terminal itself runs over a separate /websocket/shell connection. ---
+    /** One-time token for `/websocket/shell` (`auth.generate_token` with ttl 300 s, match_origin, single use, like the web UI). */
+    suspend fun shellToken(): String = throw unsupported()
+    /** `core.resize_shell` for the session id from the shell's "connected" message. */
+    suspend fun resizeShell(id: String, cols: Int, rows: Int): Unit = throw unsupported()
+    /** Running containers of an app that accept a shell (`app.container_console_choices`): id -> service name. */
+    suspend fun appShellContainers(appName: String): Map<String, String> = throw unsupported()
     suspend fun startVirtStart(id: String): Long = throw unsupported()
     suspend fun startVirtStop(id: String, force: Boolean): Long = throw unsupported()
     suspend fun startVirtRestart(id: String): Long = throw unsupported()

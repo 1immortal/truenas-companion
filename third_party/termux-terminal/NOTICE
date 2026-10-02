@@ -1,0 +1,15 @@
+TrueNAS Companion includes a modified copy of the Termux terminal-emulator and terminal-view libraries.
+
+Source: https://github.com/termux/termux-app (tag v0.118.0), directories terminal-emulator/ and terminal-view/
+Originally based on Jack Palevich's Android Terminal Emulator (https://github.com/jackpal/Android-Terminal-Emulator).
+License: Apache License, Version 2.0 (see LICENSE in this folder). The rest of the termux-app repository is GPLv3 and
+is NOT included here.
+
+Copyright (c) the Termux developers and contributors.
+Copyright (c) Jack Palevich and the Android Terminal Emulator contributors.
+
+Modifications by TrueNAS Companion (2026):
+- TerminalSession no longer starts a local process through JNI/pty. It is attached to a remote byte stream
+  (the TrueNAS web shell WebSocket): input goes to a Transport, output is passed in with feed(), and size changes
+  are forwarded to Transport.resize(). JNI.java and the native code were removed.
+- Both libraries are built as one Gradle module.

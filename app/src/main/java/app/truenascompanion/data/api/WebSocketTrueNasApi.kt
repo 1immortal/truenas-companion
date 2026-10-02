@@ -499,6 +499,19 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
 
     override suspend fun containersState(): String? = call("virt.global.config").obj()?.str("state")
 
+    override suspend fun shellToken(): String =
+        (call("auth.generate_token", JsonPrimitive(300), JsonObject(emptyMap()), JsonPrimitive(true), JsonPrimitive(true)) as? JsonPrimitive)
+            ?.contentOrNull?.takeIf { it.isNotBlank() } ?: throw TrueNasException.Unsupported("The NAS did not return a shell token.")
+
+    override suspend fun resizeShell(id: String, cols: Int, rows: Int) {
+        call("core.resize_shell", p(id), p(cols), p(rows))
+    }
+
+    override suspend fun appShellContainers(appName: String): Map<String, String> =
+        call("app.container_console_choices", p(appName)).obj()?.mapValues { (id, v) ->
+            (v.obj()?.get("service_name") as? JsonPrimitive)?.contentOrNull ?: id.take(12)
+        } ?: emptyMap()
+
     override suspend fun virtInstances(): List<app.truenascompanion.data.model.VirtInstance> =
         call("virt.instance.query").arr()?.mapNotNull { it.obj()?.let(Parsers::virtInstance) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 

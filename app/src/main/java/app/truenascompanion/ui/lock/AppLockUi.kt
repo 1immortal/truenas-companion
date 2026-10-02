@@ -145,16 +145,25 @@ fun interface DangerGuard {
 
 val LocalDangerGuard = staticCompositionLocalOf { DangerGuard { _, action -> action() } }
 
+/** Asks for the fingerprint whenever the app lock is on (opening a shell), not only with "Confirm dangerous actions". */
+val LocalLockGuard = staticCompositionLocalOf { DangerGuard { _, action -> action() } }
+
+@Composable
+fun rememberLockGuard(): DangerGuard = rememberGuard { it.enabled }
+
 /** Wires [DangerGuard] to BiometricPrompt using the current lock settings. */
 @Composable
-fun rememberDangerGuard(): DangerGuard {
+fun rememberDangerGuard(): DangerGuard = rememberGuard { it.guardsDangerousActions }
+
+@Composable
+private fun rememberGuard(required: (app.truenascompanion.data.security.LockSettings) -> Boolean): DangerGuard {
     val context = LocalContext.current
     val container = (context.applicationContext as TrueNasApp).container
     return remember(container) {
         DangerGuard { reason, action ->
             val s = container.appLock.settings.value
             val activity = context.findFragmentActivity()
-            if (s?.guardsDangerousActions != true || activity == null || Biometrics.availability(context) != Biometrics.Availability.READY) {
+            if (s == null || !required(s) || activity == null || Biometrics.availability(context) != Biometrics.Availability.READY) {
                 action()
             } else {
                 container.appLock.beginAuthentication()

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -283,18 +284,22 @@ fun WorkloadSwitcher(selected: Workload, onSelect: (Workload) -> Unit, modifier:
 fun WorkloadsScreen(
     onJobs: () -> Unit, onCatalog: () -> Unit, onOpenApp: (String) -> Unit,
     onOpenVm: (Int) -> Unit, onCreateVm: () -> Unit,
+    onShell: (app.truenascompanion.data.shell.ShellTarget) -> Unit = {},
 ) {
     var workload by rememberSaveable { mutableStateOf(Workload.APPS) }
     val header: @Composable () -> Unit = { WorkloadSwitcher(workload, { workload = it }) }
     when (workload) {
         Workload.APPS -> AppsScreen(onJobs = onJobs, onCatalog = onCatalog, onOpenApp = onOpenApp, header = header)
-        else -> VirtScreen(workload, header, onJobs, onOpenVm, onCreateVm)
+        else -> VirtScreen(workload, header, onJobs, onOpenVm, onCreateVm, onShell)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VirtScreen(workload: Workload, header: @Composable () -> Unit, onJobs: () -> Unit, onOpenVm: (Int) -> Unit, onCreateVm: () -> Unit) {
+private fun VirtScreen(
+    workload: Workload, header: @Composable () -> Unit, onJobs: () -> Unit, onOpenVm: (Int) -> Unit, onCreateVm: () -> Unit,
+    onShell: (app.truenascompanion.data.shell.ShellTarget) -> Unit,
+) {
     val vm = appViewModel { VirtViewModel(it) }
     val vms by vm.vms.collectAsStateWithLifecycle()
     val containers by vm.containers.collectAsStateWithLifecycle()
@@ -305,6 +310,8 @@ private fun VirtScreen(workload: Workload, header: @Composable () -> Unit, onJob
     val snackbar = remember { SnackbarHostState() }
     var confirmVm by remember { mutableStateOf<Pair<VmInfo, VmAction>?>(null) }
     var confirmCt by remember { mutableStateOf<Pair<VirtInstance, InstanceAction?>?>(null) }
+    var shellFor by remember { mutableStateOf<VirtInstance?>(null) }
+    val lockGuard = app.truenascompanion.ui.lock.LocalLockGuard.current
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
 
     Scaffold(
@@ -327,7 +334,7 @@ private fun VirtScreen(workload: Workload, header: @Composable () -> Unit, onJob
                 if (workload == Workload.VMS) VmList(vms, busy, onRetry = { vm.refresh(workload) }, onOpen = { onOpenVm(it.id) }, onCreate = onCreateVm,
                     onAction = { v, a -> if (a == VmAction.START) vm.act(v, a) else confirmVm = v to a })
                 else ContainerList(containers, busy, onRetry = { vm.refresh(workload) },
-                    onAction = { i, a -> if (a == InstanceAction.START) vm.act(i, a) else confirmCt = i to a }, onDelete = { confirmCt = it to null })
+                    onAction = { i, a -> if (a == InstanceAction.START) vm.act(i, a) else confirmCt = i to a }, onDelete = { confirmCt = it to null }, onShell = { shellFor = it })
             }
         }
     }
@@ -343,6 +350,16 @@ private fun VirtScreen(workload: Workload, header: @Composable () -> Unit, onJob
             confirmLabel = a.label, destructive = a == VmAction.POWER_OFF, requireAuth = a == VmAction.POWER_OFF,
             icon = if (a == VmAction.POWER_OFF) Icons.Rounded.PowerSettingsNew else null,
             onConfirm = { vm.act(v, a); confirmVm = null }, onDismiss = { confirmVm = null },
+        )
+    }
+    shellFor?.let { i ->
+        app.truenascompanion.ui.shell.ShellStartDialog(
+            title = "Shell in ${i.name}", containers = emptyList(), defaultLabel = "Default shell",
+            onOpen = { _, cmd ->
+                shellFor = null
+                lockGuard.guard("Open a shell in ${i.name}") { onShell(app.truenascompanion.data.shell.ShellTarget.Instance(i.id, cmd)) }
+            },
+            onDismiss = { shellFor = null },
         )
     }
     confirmCt?.let { (i, a) ->
@@ -410,7 +427,10 @@ fun VmCard(vm: VmInfo, busy: String?, onOpen: () -> Unit, onAction: (VmAction) -
 }
 
 @Composable
-fun ContainerList(ui: ContainersUi, busy: Map<String, String>, onRetry: () -> Unit, onAction: (VirtInstance, InstanceAction) -> Unit, onDelete: (VirtInstance) -> Unit) {
+fun ContainerList(
+    ui: ContainersUi, busy: Map<String, String>, onRetry: () -> Unit, onAction: (VirtInstance, InstanceAction) -> Unit, onDelete: (VirtInstance) -> Unit,
+    onShell: (VirtInstance) -> Unit = {},
+) {
     when (val s = ui.list) {
         UiState.Loading -> SkeletonList(4, 96.dp)
         is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired, onRetry)
@@ -421,14 +441,14 @@ fun ContainerList(ui: ContainersUi, busy: Map<String, String>, onRetry: () -> Un
                 Text("${s.data.size} containers · ${s.data.count { it.status == InstanceStatus.RUNNING }} running", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
             }
-            items(s.data, key = { it.id }) { i -> ContainerCard(i, busy["ct:${i.id}"], onAction = { onAction(i, it) }, onDelete = { onDelete(i) }) }
+            items(s.data, key = { it.id }) { i -> ContainerCard(i, busy["ct:${i.id}"], onAction = { onAction(i, it) }, onDelete = { onDelete(i) }, onShell = { onShell(i) }) }
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ContainerCard(inst: VirtInstance, busy: String?, onAction: (InstanceAction) -> Unit, onDelete: () -> Unit, startExpanded: Boolean = false) {
+fun ContainerCard(inst: VirtInstance, busy: String?, onAction: (InstanceAction) -> Unit, onDelete: () -> Unit, startExpanded: Boolean = false, onShell: () -> Unit = {}) {
     var expanded by rememberSaveable(inst.id) { mutableStateOf(startExpanded) }
     ElevatedSection(onClick = { expanded = !expanded }, contentPadding = 14.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -448,7 +468,7 @@ fun ContainerCard(inst: VirtInstance, busy: String?, onAction: (InstanceAction) 
                 Detail("Autostart", if (inst.autostart) "On" else "Off")
                 inst.storagePool?.let { Detail("Pool", it) }
                 if (inst.addresses.isNotEmpty()) Detail("Addresses", inst.addresses.joinToString("\n"))
-                Text("A shell is available in the TrueNAS web UI.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (inst.type.equals("VM", ignoreCase = true)) Text("Incus VMs use a console, open it in the TrueNAS web UI.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.padding(top = 10.dp))
@@ -456,6 +476,7 @@ fun ContainerCard(inst: VirtInstance, busy: String?, onAction: (InstanceAction) 
             when (inst.status) {
                 InstanceStatus.RUNNING -> {
                     PrimaryAction(Icons.Rounded.Stop, "Stop") { onAction(InstanceAction.STOP) }
+                    if (!inst.type.equals("VM", ignoreCase = true)) SecondaryAction(Icons.Rounded.Terminal, "Shell", onShell)
                     Spacer(Modifier.weight(1f))
                     Overflow(listOf("Restart" to { onAction(InstanceAction.RESTART) }))
                 }

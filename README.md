@@ -27,6 +27,7 @@
 - **See how your NAS is doing at a glance.** Live CPU, memory, network and temperatures, plus pool health and free space, on a dashboard you can rearrange.
 - **Get alerts on your phone.** A notification when a pool degrades, a disk runs hot or space runs low, straight from your NAS with no cloud service in between.
 - **Manage your apps.** Browse the catalog, install, update, edit, roll back, read logs and see live resource use.
+- **Open a terminal.** A shell on the NAS, in an app's container, or in an Incus container, like the TrueNAS web UI. With the app lock on it asks for your fingerprint first, and the session closes when you leave.
 - **Control VMs and containers.** Start, stop, restart, edit resources or create a simple VM.
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
 - **Keep an eye on storage.** Pools, disks with temperatures, and datasets.

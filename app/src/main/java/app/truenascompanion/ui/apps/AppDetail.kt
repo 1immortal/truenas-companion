@@ -27,6 +27,11 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Terminal
+import app.truenascompanion.data.shell.WebShellProtocol
+import app.truenascompanion.ui.lock.LocalLockGuard
+import app.truenascompanion.ui.shell.ShellContainer
+import app.truenascompanion.ui.shell.ShellStartDialog
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.MoreVert
@@ -145,7 +150,10 @@ class AppDetailViewModel(private val c: AppContainer, val name: String) : ViewMo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppDetailScreen(name: String, onBack: () -> Unit, onEdit: () -> Unit, onLogs: (String?) -> Unit, onFinished: (String) -> Unit) {
+fun AppDetailScreen(
+    name: String, onBack: () -> Unit, onEdit: () -> Unit, onLogs: (String?) -> Unit, onFinished: (String) -> Unit,
+    onShell: (containerId: String, containerName: String, command: String) -> Unit = { _, _, _ -> },
+) {
     val vm = appViewModel(key = "app-$name") { AppDetailViewModel(it, name) }
     val state by vm.state.collectAsStateWithLifecycle()
     val stats by vm.stats.collectAsStateWithLifecycle()
@@ -154,6 +162,8 @@ fun AppDetailScreen(name: String, onBack: () -> Unit, onEdit: () -> Unit, onLogs
     val snackbar = remember { SnackbarHostState() }
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var shellPicker by remember { mutableStateOf(false) }
+    val lockGuard = LocalLockGuard.current
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(finished) { finished?.let(onFinished) }
     val app = (state as? UiState.Success)?.data
@@ -187,11 +197,24 @@ fun AppDetailScreen(name: String, onBack: () -> Unit, onEdit: () -> Unit, onLogs
                     AppDetailContent(
                         app = s.data, stats = stats,
                         onOpenPortal = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, PortalUrls.rewrite(url, vm.portalBase).toUri())) } },
-                        onEdit = onEdit, onLogs = onLogs,
+                        onEdit = onEdit, onLogs = onLogs, onShell = { shellPicker = true },
                     )
                 }
             }
         }
+    }
+    if (shellPicker && app != null) {
+        val running = app.shellContainers()
+        ShellStartDialog(
+            title = "Shell in ${app.name}",
+            containers = running,
+            onOpen = { id, cmd ->
+                shellPicker = false
+                val ctr = running.firstOrNull { it.id == id } ?: return@ShellStartDialog
+                lockGuard.guard("Open a shell in ${app.name}") { onShell(ctr.id, ctr.name, cmd ?: WebShellProtocol.DEFAULT_COMMAND) }
+            },
+            onDismiss = { shellPicker = false },
+        )
     }
     if (confirmDelete && app != null) DeleteAppDialog(app.name, onDelete = { vols -> confirmDelete = false; vm.delete(vols) }, onDismiss = { confirmDelete = false })
     versions?.let { v -> RollbackDialog(name, app?.version, v, onRollback = vm::rollback, onDismiss = vm::dismissRollback) }
@@ -200,7 +223,7 @@ fun AppDetailScreen(name: String, onBack: () -> Unit, onEdit: () -> Unit, onLogs
 /** Stateless detail body (also rendered by the screenshot tests). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AppDetailContent(app: AppInfo, stats: AppStats?, onOpenPortal: (String) -> Unit, onEdit: () -> Unit, onLogs: (String?) -> Unit) {
+fun AppDetailContent(app: AppInfo, stats: AppStats?, onOpenPortal: (String) -> Unit, onEdit: () -> Unit, onLogs: (String?) -> Unit, onShell: () -> Unit = {}) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -222,11 +245,14 @@ fun AppDetailContent(app: AppInfo, stats: AppStats?, onOpenPortal: (String) -> U
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f).heightIn(min = 44.dp)) {
-                        Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Edit", maxLines = 1)
+                    OutlinedButton(onClick = onEdit, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Edit", maxLines = 1)
                     }
-                    OutlinedButton(onClick = { onLogs(null) }, enabled = app.containerDetails.isNotEmpty(), modifier = Modifier.weight(1f).heightIn(min = 44.dp)) {
-                        Icon(Icons.AutoMirrored.Rounded.Notes, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Logs", maxLines = 1)
+                    OutlinedButton(onClick = { onLogs(null) }, enabled = app.containerDetails.isNotEmpty(), contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        Icon(Icons.AutoMirrored.Rounded.Notes, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Logs", maxLines = 1)
+                    }
+                    OutlinedButton(onClick = onShell, enabled = app.shellContainers().isNotEmpty(), contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        Icon(Icons.Rounded.Terminal, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Shell", maxLines = 1)
                     }
                 }
             }
@@ -344,3 +370,8 @@ fun RollbackDialog(name: String, current: String?, versions: List<String>, onRol
     )
 }
 
+
+/** Running containers of the app, for the shell picker (a shell needs a running container). */
+fun AppInfo.shellContainers(): List<ShellContainer> =
+    containerDetails.filter { it.state == null || it.state.equals("running", true) }
+        .map { ShellContainer(it.id, it.service, it.image) }

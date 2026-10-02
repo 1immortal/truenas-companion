@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Palette
@@ -155,7 +156,7 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
+fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}, onShell: () -> Unit = {}) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -166,6 +167,8 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
     val snackbar = remember { SnackbarHostState() }
     var confirm by remember { mutableStateOf<String?>(null) }
     var confirmStop by remember { mutableStateOf<ServiceInfo?>(null) }
+    var confirmShell by remember { mutableStateOf(false) }
+    val lockGuard = app.truenascompanion.ui.lock.LocalLockGuard.current
     val context = LocalContext.current
     val uiScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
@@ -209,6 +212,8 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
                         }
                     }
                 }
+
+                item { ShellEntry(enabled = connection is ConnectionState.Connected) { confirmShell = true } }
 
                 item { SectionTitle("Services") }
                 when (val s = services) {
@@ -290,6 +295,14 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}) {
         }
     }
 
+    if (confirmShell) ConfirmDialog(
+        title = "Open a shell on ${server?.name ?: "the NAS"}?",
+        text = "You get a terminal on the NAS with your account's rights (like System › Shell in the web UI). Commands can change or delete anything. " +
+            "The shell closes when you leave it or the app stays in the background for 30 s, and running commands stop with it.",
+        confirmLabel = "Open shell", icon = Icons.Rounded.Terminal, requireAuth = false,
+        onConfirm = { confirmShell = false; lockGuard.guard("Open a shell on the NAS", onShell) }, onDismiss = { confirmShell = false },
+    )
+
     confirmStop?.let { svc ->
         ConfirmDialog(
             title = "Stop ${svc.displayName}?",
@@ -361,6 +374,23 @@ fun PowerButtons(enabled: Boolean, onReboot: () -> Unit, onShutdown: () -> Unit)
             border = androidx.compose.foundation.BorderStroke(1.dp, if (enabled) danger.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant)) {
             Icon(Icons.Rounded.PowerSettingsNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
             Text("Shut down", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** "Shell" row: a root terminal on the NAS, like System › Shell in the web UI. */
+@Composable
+fun ShellEntry(enabled: Boolean, onClick: () -> Unit) {
+    ElevatedSection(onClick = if (enabled) onClick else null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(Icons.Rounded.Terminal)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Shell", style = MaterialTheme.typography.titleMedium)
+                Text(if (enabled) "Terminal on the NAS, like System › Shell in the web UI" else "Connect to the NAS to open a shell",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

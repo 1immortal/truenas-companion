@@ -430,7 +430,23 @@ class TrueNasRepository(
      * the phone's radio busy; once the app has been in the background for [BACKGROUND_GRACE_MS] and nothing is in
      * flight, it is closed. The next screen that needs data reconnects (with the saved session) transparently.
      */
+    private val _foreground = MutableStateFlow(true)
+    /** App visible (for the web shell, which follows the same 30 s background rule). */
+    val foreground: StateFlow<Boolean> = _foreground.asStateFlow()
+
+    /**
+     * The signed-in API and the resolved address it uses (local / Tailscale / VPN / remote, with that route's pinned
+     * certificate). The web shell opens its own socket to the same address, so the one-time token (which is bound to
+     * the caller's address) and the certificate pin match the API connection.
+     */
+    suspend fun shellEndpoint(): Pair<TrueNasApi, ServerConfig> {
+        val a = api()
+        val target = mutex.withLock { apiFor?.takeIf { api === a } } ?: throw TrueNasException.NotConnected()
+        return a to target
+    }
+
     fun setForeground(foreground: Boolean) {
+        _foreground.value = foreground
         backgroundJob?.cancel()
         backgroundJob = null
         if (foreground) return
