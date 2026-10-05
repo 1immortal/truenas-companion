@@ -508,3 +508,35 @@ data class VmCreateRequest(
 )
 
 data class FsEntry(val name: String, val path: String, val isDirectory: Boolean)
+
+/** TrueNAS system update status (`update.status`, 25.10). */
+data class NasUpdateStatus(
+    val code: String,
+    val currentTrain: String?,
+    val currentProfile: String?,
+    val newVersion: String?,
+    val releaseNotes: String?,
+    val releaseNotesUrl: String?,
+    val changelog: String?,
+    val errorReason: String?,
+    val downloadPercent: Float?,
+    val downloadDescription: String?,
+) {
+    val updateAvailable: Boolean get() = code.equals("NORMAL", true) && !newVersion.isNullOrBlank()
+    val upToDate: Boolean get() = code.equals("NORMAL", true) && newVersion.isNullOrBlank()
+    val rebootRequired: Boolean get() = code.equals("REBOOT_REQUIRED", true)
+}
+
+/** Boot environment (`boot.environment.query`). */
+data class BootEnvironment(
+    val id: String,
+    val dataset: String,
+    val active: Boolean,
+    val activated: Boolean,
+    val createdMillis: Long?,
+    val usedBytes: Long?,
+    val used: String?,
+    val keep: Boolean,
+    val canActivate: Boolean,
+)
+

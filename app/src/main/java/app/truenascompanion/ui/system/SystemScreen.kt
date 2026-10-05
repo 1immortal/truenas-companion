@@ -215,6 +215,12 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}, onShell: () -> 
 
                 item { ShellEntry(enabled = connection is ConnectionState.Connected) { confirmShell = true } }
 
+                item { SectionTitle("TrueNAS update") }
+                item { NasUpdateSection() }
+
+                item { SectionTitle("Boot environments") }
+                item { BootEnvSection() }
+
                 item { SectionTitle("Services") }
                 when (val s = services) {
                     UiState.Loading -> items(3) { SkeletonCard(height = 64.dp) }

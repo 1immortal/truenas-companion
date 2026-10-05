@@ -22,6 +22,10 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 
 **Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage, compression, comments and encryption/lock state (system datasets are hidden by default).
 
+**System updates and boot environments (new in 0.9):** System › TrueNAS update / Boot environments.
+- **Updates:** `update.status` (25.10; `update.check_available` was removed). Shows current train/profile, available version, release notes / changelog from the manifest, and download progress when present. **Download & update** starts the `update.run` job with `{reboot: true}` (same as the web UI) and follows job progress. Confirm + fingerprint when *Confirm dangerous actions* is on.
+- **Boot environments:** `boot.environment.query` list with active / next-boot / keep. Activate (`boot.environment.activate` `{id}`), clone (`{id,target}`), keep/unkeep (`{id,value}`), delete (`destroy` `{id}`). Activate and delete ask for confirmation + fingerprint when guarded.
+
 **Datasets and shares (new in 0.8):** Storage › Datasets / Shares.
 - **Datasets / ZVOLs:** tree list with used/available, compression and ratio. Create a child dataset or ZVOL (`pool.dataset.create` with `type` FILESYSTEM or VOLUME, optional `share_type`, `compression`, `volsize`/`sparse`). Rename (`pool.dataset.rename`) and delete (`pool.dataset.delete` with recursive/force). Delete and rename ask for confirmation, and for your fingerprint when *Confirm dangerous actions* is on.
 - **SMB shares** (`sharing.smb.query` / `create` / `update` / `delete`): name, path under `/mnt`, purpose (`DEFAULT_SHARE`, `MULTIPROTOCOL_SHARE`, `TIMEMACHINE_SHARE`, …), enabled, comment, read-only, browsable. Linked to a dataset path.
