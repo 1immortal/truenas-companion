@@ -33,7 +33,7 @@
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
 - **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
 - **Handle everyday chores.** Check for TrueNAS updates and apply them, manage boot environments, start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
-- **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else.
+- **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a blurred overlay offers **Quit** or **Check connection settings** (after a short connecting wait).
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.
 - **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine.

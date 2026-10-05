@@ -486,6 +486,17 @@ class TrueNasRepository(
         _state.value = if (activeServer.value == null) ConnectionState.NoServer else ConnectionState.Idle
     }
 
+    /**
+     * Clears a failed/idle socket and bumps [reloadKey] so open screens reconnect.
+     * Used by the connection-failure overlay’s “Try again” action.
+     */
+    fun retryConnection() {
+        scope.launch {
+            disconnect()
+            sessionEpoch.value++
+        }
+    }
+
     /** One-off API-key connection used by the setup screen; never touches the active connection. */
     suspend fun test(server: ServerConfig, apiKey: String): TestResult = withContext(Dispatchers.IO) {
         val a = TrueNasConnector.connect(server, apiKey)

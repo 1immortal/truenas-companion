@@ -168,6 +168,12 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
         },
     ) { padding ->
         app.truenascompanion.ui.auth.AuthPromptHost()
+        app.truenascompanion.ui.connection.ConnectionOverlayHost(
+            container = container,
+            hasSavedServers = list.isNotEmpty(),
+            currentRoute = route,
+            onCheckConfig = { id -> nav.navigate(Routes.edit(id)) },
+        ) {
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             NavHost(
                 navController = nav,
@@ -301,6 +307,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     )
                 }
             }
+        }
         }
     }
 }
