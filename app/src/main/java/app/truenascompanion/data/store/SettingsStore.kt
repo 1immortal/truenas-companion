@@ -94,6 +94,7 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         val CONNECTION_GIVE_UP_MS = longPreferencesKey("connection_give_up_ms")
         val UPDATE_AUTO = booleanPreferencesKey("update_auto_check")
         val UPDATE_NOTIFIED = stringPreferencesKey("update_notified_version")
+        val UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
         fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
         fun wireGuard(id: String) = stringPreferencesKey("wireguard_conf_$id")
@@ -179,6 +180,21 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
     /** The newest version we already posted an "update available" notification for. */
     suspend fun updateNotifiedVersion(): String? = store.data.first()[Keys.UPDATE_NOTIFIED]
     suspend fun setUpdateNotifiedVersion(v: String) { store.edit { it[Keys.UPDATE_NOTIFIED] = v } }
+
+    /**
+     * Which GitHub APK channel the updater tracks (Release vs Debug).
+     * Default follows the build type when unset. Mixing channels usually needs uninstall first.
+     */
+    val updateChannel: Flow<app.truenascompanion.data.update.UpdateChannel> = store.data.map { prefs ->
+        app.truenascompanion.data.update.UpdateChannel.fromStorage(prefs[Keys.UPDATE_CHANNEL])
+    }.distinctUntilChanged()
+
+    suspend fun setUpdateChannel(channel: app.truenascompanion.data.update.UpdateChannel) {
+        store.edit { it[Keys.UPDATE_CHANNEL] = channel.name }
+    }
+
+    suspend fun updateChannelOnce(): app.truenascompanion.data.update.UpdateChannel =
+        app.truenascompanion.data.update.UpdateChannel.fromStorage(store.data.first()[Keys.UPDATE_CHANNEL])
 
     suspend fun updateLockSettings(f: (app.truenascompanion.data.security.LockSettings) -> app.truenascompanion.data.security.LockSettings) {
         store.edit { prefs ->

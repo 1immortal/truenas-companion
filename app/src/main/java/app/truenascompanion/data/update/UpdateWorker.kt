@@ -33,7 +33,8 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         val container = (applicationContext as TrueNasApp).container
         val current = BuildConfigInfo.versionName(applicationContext)
-        val result = UpdateChecker(BuildConfig.UPDATE_REPO).check(current)
+        val channel = container.settings.updateChannelOnce()
+        val result = UpdateChecker(BuildConfig.UPDATE_REPO).check(current, channel)
         if (result is UpdateResult.Available) {
             container.updates.publish(result)
             val v = result.release.version

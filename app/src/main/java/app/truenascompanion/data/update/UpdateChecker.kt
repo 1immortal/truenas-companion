@@ -25,6 +25,8 @@ data class ReleaseInfo(
     val sha256: String?,
     /** URL of a `<apk>.sha256` asset, used when [sha256] is missing. */
     val checksumUrl: String?,
+    /** Channel this asset was selected for. */
+    val channel: UpdateChannel = UpdateChannel.RELEASE,
 )
 
 sealed interface UpdateResult {
@@ -37,44 +39,51 @@ sealed interface UpdateResult {
 /**
  * Reads the latest release of a **public** GitHub repository ([repo] = "owner/name") without any token.
  * Never embeds credentials: a private repository simply answers 404 and the app says updates can't be checked.
+ *
+ * Picks the APK asset for [UpdateChannel] — unified names
+ * `truenas-companion-release.apk` / `truenas-companion-debug.apk` (preferred), with a fallback to the
+ * older versioned filenames for releases published before 1.0.3.
  */
 class UpdateChecker(
     private val repo: String,
     private val client: OkHttpClient = defaultClient,
     private val apiBase: String = "https://api.github.com",
 ) {
-    suspend fun check(currentVersion: String): UpdateResult = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("$apiBase/repos/$repo/releases/latest")
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .header("User-Agent", "TrueNAS-Companion-Android")
-            .build()
-        try {
-            client.newCall(request).execute().use { res ->
-                val body = res.body.string()
-                when {
-                    res.code == 404 -> UpdateResult.Unavailable(
-                        "Updates can't be checked: no public releases were found at github.com/$repo (the repository may be private)."
-                    )
-                    res.code == 403 || res.code == 429 -> UpdateResult.Unavailable(
-                        if (res.header("x-ratelimit-remaining") == "0" || body.contains("rate limit", true))
-                            "GitHub's hourly limit for update checks from this network was reached. Try again later."
-                        else "GitHub refused the update check (HTTP ${res.code})."
-                    )
-                    !res.isSuccessful -> UpdateResult.Unavailable("Update check failed (HTTP ${res.code}).")
-                    else -> {
-                        val release = parseRelease(body)
-                            ?: return@use UpdateResult.Unavailable("The latest release has no APK to install.")
-                        if (compareVersions(release.version, currentVersion) > 0) UpdateResult.Available(release)
-                        else UpdateResult.UpToDate(release.version)
+    suspend fun check(currentVersion: String, channel: UpdateChannel = UpdateChannel.defaultForBuild()): UpdateResult =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$apiBase/repos/$repo/releases/latest")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .header("User-Agent", "TrueNAS-Companion-Android")
+                .build()
+            try {
+                client.newCall(request).execute().use { res ->
+                    val body = res.body.string()
+                    when {
+                        res.code == 404 -> UpdateResult.Unavailable(
+                            "Updates can't be checked: no public releases were found at github.com/$repo (the repository may be private)."
+                        )
+                        res.code == 403 || res.code == 429 -> UpdateResult.Unavailable(
+                            if (res.header("x-ratelimit-remaining") == "0" || body.contains("rate limit", true))
+                                "GitHub's hourly limit for update checks from this network was reached. Try again later."
+                            else "GitHub refused the update check (HTTP ${res.code})."
+                        )
+                        !res.isSuccessful -> UpdateResult.Unavailable("Update check failed (HTTP ${res.code}).")
+                        else -> {
+                            val release = parseRelease(body, channel)
+                                ?: return@use UpdateResult.Unavailable(
+                                    "The latest release has no ${channel.label} APK (${channel.apkAssetName})."
+                                )
+                            if (compareVersions(release.version, currentVersion) > 0) UpdateResult.Available(release)
+                            else UpdateResult.UpToDate(release.version)
+                        }
                     }
                 }
+            } catch (e: IOException) {
+                UpdateResult.Unavailable("Couldn't reach GitHub. Check your connection and try again.")
             }
-        } catch (e: IOException) {
-            UpdateResult.Unavailable("Couldn't reach GitHub. Check your connection and try again.")
         }
-    }
 
     companion object {
         val defaultClient: OkHttpClient by lazy {
@@ -85,15 +94,15 @@ class UpdateChecker(
 
         private fun JsonObject.s(k: String) = (this[k] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
 
-        /** Parses `GET /repos/{repo}/releases/latest`. Null if it isn't a usable release (draft, no APK). */
-        fun parseRelease(body: String): ReleaseInfo? {
+        /** Parses `GET /repos/{repo}/releases/latest`. Null if it isn't a usable release (draft, no matching APK). */
+        fun parseRelease(body: String, channel: UpdateChannel = UpdateChannel.defaultForBuild()): ReleaseInfo? {
             val o = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
             if (o["draft"]?.jsonPrimitive?.contentOrNull == "true") return null
             val tag = o.s("tag_name") ?: return null
             val assets = (o["assets"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-            val apk = assets.firstOrNull { it.s("name")?.endsWith(".apk", true) == true } ?: return null
+            val apk = pickApkAsset(assets, channel) ?: return null
             val apkName = apk.s("name")!!
-            val checksum = assets.firstOrNull { it.s("name") == "$apkName.sha256" }
+            val checksum = assets.firstOrNull { it.s("name") == UpdateAssets.checksumName(apkName) }
             return ReleaseInfo(
                 version = normalizeVersion(tag),
                 title = o.s("name")?.takeIf { it.isNotBlank() } ?: tag,
@@ -105,7 +114,33 @@ class UpdateChecker(
                 sha256 = apk.s("digest")?.takeIf { it.startsWith("sha256:", true) }?.substringAfter(':')?.lowercase()
                     ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) },
                 checksumUrl = checksum?.s("browser_download_url"),
+                channel = channel,
             )
+        }
+
+        /**
+         * Prefer unified names (`truenas-companion-release.apk` / `…-debug.apk`).
+         * Fall back to deprecated versioned names from pre-1.0.3 releases.
+         */
+        fun pickApkAsset(assets: List<JsonObject>, channel: UpdateChannel): JsonObject? {
+            val preferred = channel.apkAssetName
+            assets.firstOrNull { it.s("name") == preferred }?.let { return it }
+            // Deprecated: truenas-companion-v1.0.2.apk / truenas-companion-v1.0.2-debug.apk
+            return when (channel) {
+                UpdateChannel.RELEASE -> assets.firstOrNull { obj ->
+                    val n = obj.s("name") ?: return@firstOrNull false
+                    n.endsWith(".apk", ignoreCase = true) &&
+                        !n.endsWith(".apk.sha256", ignoreCase = true) &&
+                        n.startsWith("truenas-companion", ignoreCase = true) &&
+                        !n.contains("-debug", ignoreCase = true)
+                }
+                UpdateChannel.DEBUG -> assets.firstOrNull { obj ->
+                    val n = obj.s("name") ?: return@firstOrNull false
+                    n.endsWith(".apk", ignoreCase = true) &&
+                        n.contains("-debug", ignoreCase = true) &&
+                        !n.endsWith(".sha256", ignoreCase = true)
+                }
+            }
         }
 
         /** "v0.5.0" / "0.5.0-debug" -> "0.5.0". */

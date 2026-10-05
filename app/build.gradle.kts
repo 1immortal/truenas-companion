@@ -16,8 +16,8 @@ android {
         applicationId = "app.truenascompanion"
         minSdk = 26
         targetSdk = 37
-        versionCode = 16
-        versionName = "1.0.2"
+        versionCode = 17
+        versionName = "1.0.3"
         // Public GitHub repository whose Releases the in-app update check reads (override: -PupdateRepo=owner/name).
         // 64/32-bit ARM phones plus x86_64 emulators (the WireGuard Go library is ~3.5 MB per ABI).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -36,6 +36,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -141,7 +145,7 @@ fun LocalAddressSection(
                     Text("Trusted local certificate", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     TextButton(onClick = onForgetCert) { Text("Forget") }
                 }
-                Text(s.localPinnedCert, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                MaskedCertificateFingerprint(s.localPinnedCert)
             }
         }
     }
@@ -210,6 +214,31 @@ fun DetectedAddressDialog(found: LocalDetector.Found, authMethod: AuthMethod, on
         confirmButton = { GlowButton(onClick = onUse) { Text("Use this address", maxLines = 1) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+
+/** Hex fingerprint shown obscured by default; tap Show to reveal. Forget stays on the parent row. */
+@Composable
+fun MaskedCertificateFingerprint(fingerprint: String, modifier: Modifier = Modifier) {
+    var revealed by remember(fingerprint) { mutableStateOf(false) }
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (revealed) fingerprint else maskCertificateFingerprint(fingerprint),
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { revealed = !revealed }) {
+            Text(if (revealed) "Hide" else "Show", maxLines = 1)
+        }
+    }
+}
+
+/** Fully obscure a SHA-256 hex string (keep length cue, no real digits). */
+fun maskCertificateFingerprint(fingerprint: String): String {
+    val n = fingerprint.length.coerceIn(8, 64)
+    return "•".repeat(n)
 }
 
 /** Fingerprint confirmation for a self-signed certificate (server address or local address). */

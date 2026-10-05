@@ -1,7 +1,5 @@
 package app.truenascompanion.data.update
 
-import app.truenascompanion.BuildConfig
-
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
@@ -21,13 +19,14 @@ import java.security.MessageDigest
 
 class UpdateVerificationException(message: String) : Exception(message)
 
-/** Downloads a release APK, verifies it (SHA-256, package, signer, version) and hands it to the system installer. */
+/** Downloads a release APK, verifies it (SHA-256, package, channel signer, version) and hands it to the system installer. */
 class UpdateInstaller(private val context: Context, private val client: OkHttpClient = UpdateChecker.defaultClient) {
 
     private val dir get() = File(context.cacheDir, "updates").apply { mkdirs() }
 
     /** Downloads to the cache and verifies it. [onProgress] gets 0..1 (or -1 when the size is unknown). */
     suspend fun download(release: ReleaseInfo, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+        val channel = release.channel
         val expected = release.sha256 ?: release.checksumUrl?.let { fetchChecksum(it) }
             ?: throw UpdateVerificationException("This release has no SHA-256 checksum, so the download can't be verified. Download it from the release page instead.")
         dir.listFiles()?.forEach { it.delete() } // only ever keep one download
@@ -58,7 +57,7 @@ class UpdateInstaller(private val context: Context, private val client: OkHttpCl
             target.delete()
             throw UpdateVerificationException("The download doesn't match its SHA-256 checksum and was deleted.")
         }
-        verifyPackage(target)
+        verifyPackage(target, channel)
         target
     }
 
@@ -67,16 +66,19 @@ class UpdateInstaller(private val context: Context, private val client: OkHttpCl
             if (!res.isSuccessful) null else res.body.string().trim().split(Regex("\\s+")).firstOrNull()?.lowercase()?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
         }
 
-    /** Same package, newer version, same signing certificate as the installed app. */
+    /** Same package, newer version, signing certificate matching the selected update channel (and the installed app). */
     @Suppress("DEPRECATION")
-    private fun verifyPackage(apk: File) {
+    private fun verifyPackage(apk: File, channel: UpdateChannel) {
         val pm = context.packageManager
         val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
         val archive = pm.getPackageArchiveInfo(apk.path, flags) ?: throw UpdateVerificationException("The download isn't a valid Android app.")
         val installed = pm.getPackageInfo(context.packageName, flags)
         if (archive.packageName != context.packageName) {
             apk.delete()
-            throw UpdateVerificationException("The download is for a different app (${archive.packageName}).")
+            throw UpdateVerificationException(
+                "The download is for a different app (${archive.packageName}). " +
+                    "Release and Debug builds use different package names — switching update channels usually requires uninstalling first."
+            )
         }
         if (versionCode(archive) <= versionCode(installed)) {
             apk.delete()
@@ -88,22 +90,20 @@ class UpdateInstaller(private val context: Context, private val client: OkHttpCl
             apk.delete()
             throw UpdateVerificationException("The download has no signing certificate.")
         }
-        // Prefer the known release (and debug) fingerprints; also allow same-as-installed for continuity.
-        val trusted = setOf(
-            BuildConfig.RELEASE_SIGNER_SHA256.lowercase(),
-            BuildConfig.DEBUG_SIGNER_SHA256.lowercase(),
-        )
-        val apkTrusted = apkSigners.any { it in trusted }
-        if (!apkTrusted) {
+        val expected = channel.expectedSignerSha256
+        if (expected !in apkSigners) {
             apk.delete()
-            throw UpdateVerificationException("The download isn't signed with a known TrueNAS Companion key.")
+            throw UpdateVerificationException(
+                "The download isn't signed with the expected ${channel.label} key. " +
+                    "Check System › About › Update channel, or download the matching APK from the release page."
+            )
         }
         if (apkSigners != installedSigners) {
             apk.delete()
             throw UpdateVerificationException(
                 "This update is signed with a different key than the app you have installed. " +
-                    "From 1.0.0 the release APK uses a new signing key — uninstall the old (debug-signed) app once, " +
-                    "then install this APK. Your servers and settings are wiped by Android when you uninstall; add the server again afterwards."
+                    "Mixing Release and Debug channels (or upgrading from a 0.x debug build) requires uninstalling first, " +
+                    "then installing the APK for your chosen channel. Your servers and settings are wiped by Android when you uninstall."
             )
         }
     }

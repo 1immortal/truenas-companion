@@ -349,7 +349,7 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                                 Text("Trusted self-signed certificate", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                                 TextButton(onClick = vm::forgetPinnedCertificate) { Text("Forget") }
                             }
-                            Text(s.pinnedCert ?: "", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                            MaskedCertificateFingerprint(s.pinnedCert ?: "")
                         }
                     } else if (s.authMethod == AuthMethod.PASSWORD) {
                         Text("No advanced options for password sign-in.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

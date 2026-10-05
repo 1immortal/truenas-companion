@@ -32,7 +32,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -158,12 +162,13 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val showBar = Tab.entries.any { it.route == route }
+    var overlayActive by remember { mutableStateOf(false) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (showBar) {
-                AppNavBar(route) { nav.switchTab(it) }
+                AppNavBar(route, enabled = !overlayActive) { nav.switchTab(it) }
             }
         },
     ) { padding ->
@@ -173,6 +178,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
             hasSavedServers = list.isNotEmpty(),
             currentRoute = route,
             onCheckConfig = { id -> nav.navigate(Routes.edit(id)) },
+            onActiveChange = { overlayActive = it },
         ) {
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             NavHost(
@@ -345,27 +351,37 @@ private fun NavHostController.backToDashboard() {
     if (!popBackStack(Tab.DASHBOARD.route, inclusive = false)) switchTab(Tab.DASHBOARD.route)
 }
 
-/** Bottom navigation with single-line labels and a glowing selected icon. */
+/** Bottom navigation with single-line labels and a glowing selected icon.
+ *  When [enabled] is false (connection overlay up), tabs look grayed out and ignore taps. */
 @Composable
-internal fun AppNavBar(route: String?, onTab: (String) -> Unit) {
+internal fun AppNavBar(route: String?, enabled: Boolean = true, onTab: (String) -> Unit) {
     val brand = app.truenascompanion.ui.theme.LocalBrandColors.current
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+    val scheme = MaterialTheme.colorScheme
+    NavigationBar(
+        containerColor = scheme.surfaceContainer,
+        modifier = Modifier.then(
+            if (!enabled) Modifier.graphicsLayer { alpha = 0.45f } else Modifier
+        ),
+    ) {
         Tab.entries.forEach { tab ->
             val selected = route == tab.route
             NavigationBarItem(
                 selected = selected,
-                onClick = { onTab(tab.route) },
+                enabled = enabled,
+                onClick = { if (enabled) onTab(tab.route) },
                 icon = {
                     Icon(
                         if (selected) tab.selected else tab.unselected, null,
-                        modifier = if (selected) Modifier.glow(brand.glow, 8.dp, androidx.compose.foundation.shape.CircleShape, alpha = if (brand.dark) 0.7f else 0.35f) else Modifier,
+                        modifier = if (selected && enabled) Modifier.glow(brand.glow, 8.dp, androidx.compose.foundation.shape.CircleShape, alpha = if (brand.dark) 0.7f else 0.35f) else Modifier,
                     )
                 },
                 label = { Text(tab.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, style = MaterialTheme.typography.labelMedium) },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary,
-                    selectedTextColor = if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = if (brand.dark) 0.22f else 0.12f),
+                    selectedIconColor = if (brand.dark) brand.accent else scheme.primary,
+                    selectedTextColor = if (brand.dark) brand.accent else scheme.primary,
+                    indicatorColor = scheme.primary.copy(alpha = if (brand.dark) 0.22f else 0.12f),
+                    disabledIconColor = scheme.onSurface.copy(alpha = 0.38f),
+                    disabledTextColor = scheme.onSurface.copy(alpha = 0.38f),
                 ),
             )
         }

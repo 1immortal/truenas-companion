@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -194,4 +195,27 @@ class ConnectionOverlayBlockingTest {
         assertEquals(1, quit)
         assertEquals(1, retry)
     }
+}
+
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], qualifiers = "w360dp-h800dp-xxhdpi", application = android.app.Application::class)
+class AppNavBarDisabledTest {
+    @get:Rule val rule = createComposeRule()
+
+    @Test fun disabledBarIgnoresTabClicks() {
+        var taps = 0
+        rule.setContent {
+            TrueNasTheme(themeMode = ThemeMode.DARK, dynamicColor = false) {
+                app.truenascompanion.ui.AppNavBar(route = "dashboard", enabled = false) { taps++ }
+            }
+        }
+        rule.onRoot().performTouchInput {
+            // Tap roughly where Storage / Apps icons sit
+            click(Offset(centerX, centerY))
+        }
+        rule.waitForIdle()
+        assertEquals("disabled nav bar must not switch tabs", 0, taps)
+    }
+
 }

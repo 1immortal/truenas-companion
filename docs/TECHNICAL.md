@@ -26,7 +26,9 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - **Home-screen widget:** pool health + open alert count (+ route chip) for the active server. Refreshed by WorkManager every 30 minutes with a network constraint, using the same session token / VPN acquire path as phone alerts.
 - **All servers:** System › All servers probes each saved NAS in parallel (background connector) and shows online status, pool summary and alert counts; tap to switch and open the dashboard.
 
-**Release signing (1.0):** release APKs are signed with a dedicated keystore kept only on the build machine (`/home/box/secure/…`, never in git). The in-app updater accepts the release and debug certificate SHA-256 fingerprints; a different key than the installed app requires a one-time uninstall/reinstall.
+**Connection overlay (1.0.1–1.0.3):** when a saved server can’t be reached, a full-screen modal (blur + barrier + underlay pointer block from 1.0.2) covers the content. From **1.0.3** the bottom navigation tabs stay visible but are **grayed out and not clickable** while the overlay is up, so you cannot switch tabs or open System through the nav bar. Use **Check connection settings** / **Quit** / **Try again** on the overlay itself.
+
+**Release signing (1.0):** release APKs are signed with a dedicated keystore kept only on the build machine (`/home/box/secure/…`, never in git). From **1.0.3** the updater’s **Update channel** (System › About) selects which APK asset and which expected signer fingerprint to use (Release vs Debug). Mixing channels or a different key than the installed app requires a one-time uninstall/reinstall.
 
 **System updates and boot environments (new in 0.9):** System › TrueNAS update / Boot environments.
 - **Updates:** `update.status` (25.10; `update.check_available` was removed). Shows current train/profile, available version, release notes / changelog from the manifest, and download progress when present. **Download & update** starts the `update.run` job with `{reboot: true}` (same as the web UI) and follows job progress. Confirm + fingerprint when *Confirm dangerous actions* is on.
@@ -91,10 +93,14 @@ So the app does what's possible and says so in the UI:
 - **Run a SMART test now** creates a temporary, disabled cron job with the same command, runs it once with `cronjob.run(id, skip_disabled=false)` and deletes it again. Leftovers (for example if the app was killed half-way) are removed the next time the tab loads.
 - **Results:** there is no API for test results or progress on 25.10, so the app can't show them. If a test fails, TrueNAS raises an alert, which the Protection summary shows as *SMART problem reported* and phone alerts deliver as a notification. On TrueNAS 25.04 and older, SMART tests are still managed by the old `smart.test.*` API, which the app doesn't use: schedules made there don't show up in the app, so manage them in the web UI (the Protection summary still reports SMART alerts).
 
-**In-app updates (new in 0.5):** **System › About** shows the version, a **Check for updates** button and a *Check for updates daily* switch (on by default).
+**In-app updates (new in 0.5; channels in 1.0.3):** **System › About** shows the version, a **Check for updates** button, an **Update channel** control (Release / Debug), and a *Check for updates daily* switch (on by default).
 - The check is one anonymous request to the public GitHub API: `GET https://api.github.com/repos/1immortal/truenas-companion/releases/latest`, with no token and no personal data. The repository is baked in at build time (`-PupdateRepo=owner/name` changes it for forks). A 404 (no public release or private repository) and GitHub's hourly rate limit for anonymous requests (60 per IP) are reported calmly as "can't check right now".
-- **Daily check:** a WorkManager job every 24 h (only with a network connection and when the battery isn't low; first run an hour after install). It posts one low-importance notification per new version on the *App updates* channel. Tapping it opens System.
-- **Download & install:** the APK is downloaded to the app's cache and its **SHA-256 is checked** against the digest GitHub publishes for the release asset (or the `.sha256` file attached to the release as a fallback). A release without a checksum is refused. Then the app checks that the APK has the **same package name, a higher version code and the same signing certificate** as the installed app, and hands it to Android's package installer, where you confirm. The first time, Android asks you to allow *Install unknown apps* for TrueNAS Companion (the app explains this and opens the setting). The APK is shared with the installer through a `FileProvider`, and nothing is installed silently.
+- **Update channel (1.0.3):** picks which APK asset to fetch and which signer fingerprint must match.
+  - **Release** (default on release builds) → `truenas-companion-release.apk` + release key (`BuildConfig.RELEASE_SIGNER_SHA256`).
+  - **Debug** (default on debug builds) → `truenas-companion-debug.apk` + debug key (`BuildConfig.DEBUG_SIGNER_SHA256`).
+  - Asset names are **unified across every tag** (not versioned). Pre-1.0.3 versioned names (`truenas-companion-vX.Y.Z*.apk`) are still accepted as a fallback while older releases remain latest. Mixing channels usually requires uninstall (different package id and/or signing key).
+- **Daily check:** a WorkManager job every 24 h (only with a network connection and when the battery isn't low; first run an hour after install). It posts one low-importance notification per new version on the *App updates* channel. Tapping it opens System. The worker uses the saved update channel.
+- **Download & install:** the APK is downloaded to the app's cache and its **SHA-256 is checked** against the digest GitHub publishes for the release asset (or the `.sha256` file attached to the release as a fallback). A release without a checksum is refused. Then the app checks that the APK has the **same package name, a higher version code, the channel’s expected signing certificate, and the same signing certificate as the installed app**, and hands it to Android's package installer, where you confirm. The first time, Android asks you to allow *Install unknown apps* for TrueNAS Companion (the app explains this and opens the setting). The APK is shared with the installer through a `FileProvider`, and nothing is installed silently.
 - **Battery:** one small HTTPS request a day, batched by WorkManager. Turn the switch off to stop it completely.
 
 **Alerts:** severity-colored list, relative time, **dismiss**, and an option to show dismissed alerts.
@@ -108,6 +114,8 @@ So the app does what's possible and says so in the UI:
 - Turn it on in **System › Phone alerts**, or from the card on the Alerts tab. On Android 13+ the app explains why before asking for the notification permission. A hint links to Android's *allow background activity* setting if battery optimization is on; this is optional and never forced.
 - **Battery:** periodic checks are cheap. There is one short connection per interval, and Android batches them with other apps' work, so a 15-minute check may run a few minutes late, especially in Doze. Instant mode keeps one TLS WebSocket open with a 45 s ping, which costs noticeably more battery on mobile data. Use it if you need alerts within seconds. The app screens and periodic checks reuse that same connection instead of opening their own.
 - **Battery design (0.3.1):** the app's own connection closes 30 s after you leave the app. Live dashboard stats and job lists only stream while their screen is visible, and live stats stop completely if you hide every card that uses them. Dropped streams reconnect with backoff (2 s up to 60 s). Long TrueNAS jobs are polled every 1 s at first, then gradually less often, up to every 5 s. (0.4.2: periodic checks rotate the session token on every sign-in again, because TrueNAS spends a token when the connection that used it closes. The cost is one extra RPC per check.) They look up alert titles only when there is something new to notify.
+
+**Pinned certificates (1.0.3):** after you trust a self-signed certificate, connection settings show the SHA-256 fingerprint **masked by default** (tap **Show** to reveal). **Forget** still clears the pin for the remote or local address.
 
 **App lock (new in 0.4):** in **System › Security**, lock the app with your **fingerprint, face or screen lock** (AndroidX Biometric: class-2 biometrics or device PIN/pattern/password).
 - Relock right away, or after 1, 5 or 15 minutes in the background. The app always locks after a restart.
@@ -243,11 +251,11 @@ The method names come from the official docs at <https://api.truenas.com/>.
 ## Installing APKs: details
 
 - **In the app (0.5+):** System › About › Check for updates downloads, verifies and installs new releases (see *In-app updates*).
-- **Releases:** download `truenas-companion-vX.Y.Z-debug.apk` from the latest GitHub Release. Release APKs are all signed with the same key, so a new release **installs as an update** over the previous one and keeps your servers and settings. **Or:**
+- **Releases:** download `truenas-companion-release.apk` or `truenas-companion-debug.apk` from the latest GitHub Release (same names on every tag; older versioned filenames are deprecated). Release APKs are all signed with the same key, so a new release **installs as an update** over the previous one and keeps your servers and settings. **Or:**
 - **Actions:** open the latest successful *Android CI* run and download the `truenas-companion-debug-apk` artifact (a zip containing the APK).
 
 To install it, open the APK on your phone. Android asks you to allow **Install unknown apps** for your browser or file manager. Allow it, then tap Install.
-With a computer you can run `adb install -r truenas-companion-vX.Y.Z-debug.apk` instead.
+With a computer you can run `adb install -r truenas-companion-debug.apk` (or the release APK) instead.
 
 > CI artifacts are signed with the CI runner's own debug key, which is different from the release key. Android refuses to install one over the other ("App not installed"). Stick to one source, or uninstall first.
 

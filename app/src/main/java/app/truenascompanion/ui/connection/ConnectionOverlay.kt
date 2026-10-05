@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -209,6 +210,7 @@ fun ConnectionOverlayHost(
     hasSavedServers: Boolean,
     currentRoute: String?,
     onCheckConfig: (serverId: String) -> Unit,
+    onActiveChange: (Boolean) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val connection by container.repository.state.collectAsStateWithLifecycle()
@@ -284,6 +286,10 @@ fun ConnectionOverlayHost(
         graceMs = giveUpMs,
     )
     val obscure = ui !is ConnectionOverlayUi.None
+    LaunchedEffect(obscure) { onActiveChange(obscure) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { onActiveChange(false) }
+    }
 
     Box(Modifier.fillMaxSize()) {
         Box(

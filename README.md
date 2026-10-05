@@ -33,22 +33,24 @@
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
 - **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
 - **Handle everyday chores.** Check for TrueNAS updates and apply them, manage boot environments, start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
-- **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a modal blurred overlay blocks the UI underneath and offers **Quit**, **Check connection settings**, or **Try again**. System › Connection sets how long to keep retrying (10 s / 30 s / 1 min / 2 min) before that overlay.
+- **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a modal blurred overlay blocks the UI underneath (including the bottom tabs, which are grayed out and not clickable) and offers **Quit**, **Check connection settings**, or **Try again**. System › Connection sets how long to keep retrying (10 s / 30 s / 1 min / 2 min) before that overlay.
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.
-- **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine.
+- **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine. In **System › About** you can pick the **Release** or **Debug** update channel (default matches the build you installed). Mixing channels usually requires uninstalling first.
 - **Looks good.** Material You design with light and dark themes.
 
 ## Get the app
 
-1. On your phone, open the [latest release](https://github.com/1immortal/truenas-companion/releases/latest) and download the `.apk` file.
+1. On your phone, open the [latest release](https://github.com/1immortal/truenas-companion/releases/latest) and download **`truenas-companion-release.apk`** (recommended) or **`truenas-companion-debug.apk`** for developers. Asset names are the same on every release.
 2. Open the downloaded file. Android asks you to allow **Install unknown apps** for your browser or file manager. Allow it, go back, then tap **Install**.
 3. From then on the app lets you know about new versions (System › About › Check for updates) and installs them over the old one, keeping your settings.
 
 Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for live stats and password sign-in).
 
 > [!IMPORTANT]
-> **Signing key change in 1.0.0.** Release APKs from 1.0.0 onwards are signed with a new key. If you installed 0.x (debug-signed) builds, Android will not let the in-app updater replace them — uninstall once, then install the 1.0.0 APK. Add your server again afterwards. From then on, updates install normally.
+> **Signing key change in 1.0.0.** Release APKs from 1.0.0 onwards are signed with a new key. If you installed 0.x (debug-signed) builds, Android will not let the in-app updater replace them — uninstall once, then install the release APK. Add your server again afterwards. From then on, updates install normally.
+>
+> **Update channels (1.0.3).** Releases publish stable asset names: `truenas-companion-release.apk` and `truenas-companion-debug.apk` (plus matching `.sha256` files). Older versioned filenames (`truenas-companion-vX.Y.Z*.apk`) are deprecated. Release and Debug use different package ids and signing keys — switching channels usually requires uninstalling the other build first. The in-app updater’s **System › About › Update channel** setting must match the APK you want.
 
 
 > [!NOTE]
@@ -56,7 +58,7 @@ Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for 
 
 ## Getting started
 
-1. **Add your server.** Tap *Add server* and enter the address you use for the TrueNAS web UI, for example `https://truenas.local` or `https://nas.example.com`. If your NAS uses its own self-signed certificate, the app shows its fingerprint and asks you to trust it once.
+1. **Add your server.** Tap *Add server* and enter the address you use for the TrueNAS web UI, for example `https://truenas.local` or `https://nas.example.com`. If your NAS uses its own self-signed certificate, the app shows its fingerprint and asks you to trust it once. After that, the saved pin is **masked** in connection settings (tap **Show** to reveal); **Forget** still clears it.
 2. **Sign in.** Use your TrueNAS username and password, and enter your two-factor code if you have 2FA on. The app then stays signed in for the period you choose (1, 7 or 30 days).
 3. **Optional: add a local address.** If you reach your NAS through a reverse proxy or domain from outside, add its home address too (the app can find it for you). At home the app connects directly for extra speed.
 4. **Optional: turn on phone alerts** in the app's settings, and pick which alerts matter to you.

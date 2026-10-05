@@ -42,6 +42,10 @@ import app.truenascompanion.BuildConfigInfo
 import app.truenascompanion.data.update.ReleaseInfo
 import app.truenascompanion.data.update.UpdateCheckWorker
 import app.truenascompanion.data.update.UpdateChecker
+import app.truenascompanion.data.update.UpdateChannel
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
 import app.truenascompanion.data.update.UpdateInstaller
 import app.truenascompanion.data.update.UpdateResult
 import app.truenascompanion.data.update.UpdateVerificationException
@@ -72,6 +76,9 @@ class UpdateViewModel(private val c: AppContainer, private val app: Application)
     private val _download = MutableStateFlow<DownloadState>(DownloadState.Idle)
     val download: StateFlow<DownloadState> = _download.asStateFlow()
     val autoCheck: StateFlow<Boolean> = c.settings.autoUpdateCheck.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val channel: StateFlow<UpdateChannel> = c.settings.updateChannel.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), UpdateChannel.defaultForBuild(),
+    )
     private val installer = UpdateInstaller(app)
     val currentVersion: String = BuildConfigInfo.versionName(app)
 
@@ -79,7 +86,7 @@ class UpdateViewModel(private val c: AppContainer, private val app: Application)
         if (_checking.value) return
         _checking.value = true
         viewModelScope.launch {
-            c.updates.check(currentVersion)
+            c.updates.check(currentVersion, channel.value)
             _checking.value = false
         }
     }
@@ -87,6 +94,16 @@ class UpdateViewModel(private val c: AppContainer, private val app: Application)
     fun setAutoCheck(on: Boolean) = viewModelScope.launch {
         c.settings.setAutoUpdateCheck(on)
         UpdateCheckWorker.sync(app, on)
+    }
+
+    fun setChannel(ch: UpdateChannel) = viewModelScope.launch {
+        if (ch == channel.value) return@launch
+        c.settings.setUpdateChannel(ch)
+        // Re-check against the new channel's APK asset / signer.
+        _checking.value = true
+        c.updates.check(currentVersion, ch)
+        _checking.value = false
+        resetDownload()
     }
 
     fun download(release: ReleaseInfo) {
@@ -118,6 +135,7 @@ fun UpdateSection() {
     val result by vm.result.collectAsStateWithLifecycle()
     val checking by vm.checking.collectAsStateWithLifecycle()
     val auto by vm.autoCheck.collectAsStateWithLifecycle()
+    val channel by vm.channel.collectAsStateWithLifecycle()
     val download by vm.download.collectAsStateWithLifecycle()
     var showDialog by remember { mutableStateOf(false) }
 
@@ -134,6 +152,7 @@ fun UpdateSection() {
                 Text("Check for updates", maxLines = 1)
             }
         }
+        UpdateChannelRow(channel = channel, onSelect = vm::setChannel)
         SettingRow(Icons.Rounded.SystemUpdate, "Check for updates daily", "Asks GitHub once a day and notifies you about new versions. Nothing else is sent.") {
             Switch(checked = auto, onCheckedChange = { vm.setAutoCheck(it) })
         }
@@ -149,6 +168,29 @@ fun UpdateSection() {
             onOpenPage = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, available.release.pageUrl.toUri())) } },
             onDismiss = { showDialog = false; vm.resetDownload() },
         )
+    }
+}
+
+
+@Composable
+fun UpdateChannelRow(channel: UpdateChannel, onSelect: (UpdateChannel) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Update channel", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Release is the signed production APK. Debug is for developers (different package id and signing key). " +
+                "Switching channels usually requires uninstalling the other build first — Android will not replace an app with a different signature or package name.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            UpdateChannel.entries.forEachIndexed { index, ch ->
+                SegmentedButton(
+                    selected = channel == ch,
+                    onClick = { onSelect(ch) },
+                    shape = SegmentedButtonDefaults.itemShape(index, UpdateChannel.entries.size),
+                ) { Text(ch.label, maxLines = 1) }
+            }
+        }
     }
 }
 

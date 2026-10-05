@@ -15,5 +15,6 @@ class UpdateCenter(private val checker: UpdateChecker = UpdateChecker(BuildConfi
 
     fun publish(result: UpdateResult) { _latest.value = result }
 
-    suspend fun check(currentVersion: String): UpdateResult = checker.check(currentVersion).also { _latest.value = it }
+    suspend fun check(currentVersion: String, channel: UpdateChannel = UpdateChannel.defaultForBuild()): UpdateResult =
+        checker.check(currentVersion, channel).also { _latest.value = it }
 }
