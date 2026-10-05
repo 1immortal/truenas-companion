@@ -9,6 +9,8 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Info
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -46,6 +49,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -71,6 +75,7 @@ import app.truenascompanion.data.model.Health
 import app.truenascompanion.data.model.ServiceInfo
 import app.truenascompanion.data.repository.ConnectionState
 import app.truenascompanion.data.store.AppearanceSettings
+import app.truenascompanion.data.store.ConnectionTimeoutPrefs
 import app.truenascompanion.data.store.ThemeMode
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.ConfirmDialog
@@ -95,6 +100,7 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
     val server = c.repository.activeServer
     val connection = c.repository.state
     val appearance = c.settings.appearance.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppearanceSettings())
+    val connectionGiveUpMs = c.settings.connectionGiveUpMs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionTimeoutPrefs.DEFAULT_MS)
 
     private val _services = MutableStateFlow<UiState<List<ServiceInfo>>>(UiState.Loading)
     val services = _services.asStateFlow()
@@ -152,9 +158,10 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
 
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { c.settings.setThemeMode(mode) }
     fun setDynamic(on: Boolean) = viewModelScope.launch { c.settings.setDynamicColor(on) }
+    fun setConnectionGiveUp(ms: Long) = viewModelScope.launch { c.settings.setConnectionGiveUpMs(ms) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SystemScreen(onServers: () -> Unit, onOverview: () -> Unit = {}, onJobs: () -> Unit = {}, onShell: () -> Unit = {}) {
     val vm = appViewModel { SystemViewModel(it) }
@@ -164,6 +171,7 @@ fun SystemScreen(onServers: () -> Unit, onOverview: () -> Unit = {}, onJobs: () 
     val busy by vm.busy.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val appearance by vm.appearance.collectAsStateWithLifecycle()
+    val giveUpMs by vm.connectionGiveUpMs.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var confirm by remember { mutableStateOf<String?>(null) }
     var confirmStop by remember { mutableStateOf<ServiceInfo?>(null) }
@@ -260,6 +268,14 @@ fun SystemScreen(onServers: () -> Unit, onOverview: () -> Unit = {}, onJobs: () 
                             onReboot = { confirm = "reboot" }, onShutdown = { confirm = "shutdown" },
                         )
                     }
+                }
+
+                item { SectionTitle("Connection") }
+                item {
+                    ConnectionTimeoutSection(
+                        giveUpMs = giveUpMs,
+                        onSelect = vm::setConnectionGiveUp,
+                    )
                 }
 
                 item { SectionTitle("Security") }
@@ -360,6 +376,31 @@ private fun ServiceRow(s: ServiceInfo, busy: Boolean, onToggle: () -> Unit) {
         }
         if (busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
         else Switch(checked = s.running, onCheckedChange = { onToggle() })
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ConnectionTimeoutSection(giveUpMs: Long, onSelect: (Long) -> Unit) {
+    ElevatedSection {
+        SettingRow(
+            Icons.Rounded.Schedule,
+            "Give up after",
+            "How long to keep trying (and auto-retrying) before the connection-failure overlay. Default matches a single connect attempt (10 s).",
+        )
+        Spacer(Modifier.height(10.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ConnectionTimeoutPrefs.PRESETS_MS.forEach { ms ->
+                FilterChip(
+                    selected = giveUpMs == ms,
+                    onClick = { onSelect(ms) },
+                    label = { Text(ConnectionTimeoutPrefs.label(ms), maxLines = 1) },
+                )
+            }
+        }
     }
 }
 

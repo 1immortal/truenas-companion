@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -30,6 +31,23 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 data class AppearanceSettings(val themeMode: ThemeMode = ThemeMode.SYSTEM, val dynamicColor: Boolean = false)
+
+/**
+ * How long to keep trying (and auto-retrying) before the connection-failure overlay.
+ * Presets match System › Connection. Default equals one OkHttp connectTimeout.
+ */
+object ConnectionTimeoutPrefs {
+    const val DEFAULT_MS = 10_000L
+    val PRESETS_MS = listOf(10_000L, 30_000L, 60_000L, 120_000L)
+    fun label(ms: Long): String = when (ms) {
+        10_000L -> "10 s"
+        30_000L -> "30 s"
+        60_000L -> "1 min"
+        120_000L -> "2 min"
+        else -> "${ms / 1000} s"
+    }
+}
+
 
 /** Phone notifications for TrueNAS alerts. Global options; [enabledServers] turns them on per server. */
 @Serializable
@@ -73,6 +91,7 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun spareExpiry(id: String) = longPreferencesKey("session_spare_expiry_$id")
         val NOTIFICATIONS = stringPreferencesKey("notification_prefs")
         val LOCK = stringPreferencesKey("lock_settings")
+        val CONNECTION_GIVE_UP_MS = longPreferencesKey("connection_give_up_ms")
         val UPDATE_AUTO = booleanPreferencesKey("update_auto_check")
         val UPDATE_NOTIFIED = stringPreferencesKey("update_notified_version")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
@@ -94,6 +113,17 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             dynamicColor = prefs[Keys.DYNAMIC] ?: false,
         )
     }.distinctUntilChanged()
+
+    /** How long to keep connecting / auto-retrying before the failure overlay (System › Connection). */
+    val connectionGiveUpMs: Flow<Long> = store.data.map { prefs ->
+        val v = prefs[Keys.CONNECTION_GIVE_UP_MS] ?: ConnectionTimeoutPrefs.DEFAULT_MS
+        if (v in ConnectionTimeoutPrefs.PRESETS_MS) v else ConnectionTimeoutPrefs.DEFAULT_MS
+    }.distinctUntilChanged()
+
+    suspend fun setConnectionGiveUpMs(ms: Long) {
+        val clamped = if (ms in ConnectionTimeoutPrefs.PRESETS_MS) ms else ConnectionTimeoutPrefs.DEFAULT_MS
+        store.edit { it[Keys.CONNECTION_GIVE_UP_MS] = clamped }
+    }
 
     val lockSettings: Flow<app.truenascompanion.data.security.LockSettings> = store.data.map { prefs ->
         prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
