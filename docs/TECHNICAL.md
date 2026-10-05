@@ -22,6 +22,12 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 
 **Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage, compression, comments and encryption/lock state (system datasets are hidden by default).
 
+**Widgets and multi-server (new in 1.0):**
+- **Home-screen widget:** pool health + open alert count (+ route chip) for the active server. Refreshed by WorkManager every 30 minutes with a network constraint, using the same session token / VPN acquire path as phone alerts.
+- **All servers:** System › All servers probes each saved NAS in parallel (background connector) and shows online status, pool summary and alert counts; tap to switch and open the dashboard.
+
+**Release signing (1.0):** release APKs are signed with a dedicated keystore kept only on the build machine (`/home/box/secure/…`, never in git). The in-app updater accepts the release and debug certificate SHA-256 fingerprints; a different key than the installed app requires a one-time uninstall/reinstall.
+
 **System updates and boot environments (new in 0.9):** System › TrueNAS update / Boot environments.
 - **Updates:** `update.status` (25.10; `update.check_available` was removed). Shows current train/profile, available version, release notes / changelog from the manifest, and download progress when present. **Download & update** starts the `update.run` job with `{reboot: true}` (same as the web UI) and follows job progress. Confirm + fingerprint when *Confirm dangerous actions* is on.
 - **Boot environments:** `boot.environment.query` list with active / next-boot / keep. Activate (`boot.environment.activate` `{id}`), clone (`{id,target}`), keep/unkeep (`{id,value}`), delete (`destroy` `{id}`). Activate and delete ask for confirmation + fingerprint when guarded.

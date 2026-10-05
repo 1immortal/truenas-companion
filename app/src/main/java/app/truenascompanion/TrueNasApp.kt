@@ -16,6 +16,7 @@ import app.truenascompanion.notify.BackgroundConnector
 import app.truenascompanion.notify.SessionKeepAliveWorker
 import app.truenascompanion.data.update.UpdateCenter
 import app.truenascompanion.data.update.UpdateCheckWorker
+import app.truenascompanion.widget.WidgetRefreshWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +60,8 @@ class TrueNasApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.notifier.createChannels()
+        WidgetRefreshWorker.sync(this)
+        WidgetRefreshWorker.refreshNow(this)
         UpdateCheckWorker.createChannel(this)
         container.appScope.launch {
             container.settings.autoUpdateCheck.collect { UpdateCheckWorker.sync(this@TrueNasApp, it) }

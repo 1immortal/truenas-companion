@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">TrueNAS Companion</string>
+    <string name="widget_nas_status_description">Pool health and open alerts for your active TrueNAS server</string>
+    <string name="widget_loading">TrueNAS Companion</string>
+    <string name="widget_nas_status_label">NAS status</string>
 </resources>
+

@@ -74,6 +74,7 @@ private enum class Tab(val route: String, val label: String, val selected: Image
 
 private object Routes {
     const val SERVERS = "servers"
+    const val OVERVIEW = "servers_overview"
     const val JOBS = "jobs"
     const val EDIT = "server_edit?id={id}"
     fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
@@ -254,7 +255,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     LogsScreen(a.getValue("name"), a["container"], onBack = { nav.popBackStack() })
                 }
                 composable(Tab.ALERTS.route) { AlertsScreen() }
-                composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onJobs = { nav.navigate(Routes.JOBS) },
+                composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onOverview = { nav.navigate(Routes.OVERVIEW) }, onJobs = { nav.navigate(Routes.JOBS) },
                     onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) }) }
                 composable(Routes.JOBS) { JobsScreen(onBack = { nav.popBackStack() }) }
                 composable(
@@ -269,6 +270,18 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                         onBack = if (list.isNotEmpty()) ({ nav.popBackStack() }) else null,
                     )
                 }
+                
+                composable(
+                    Routes.OVERVIEW,
+                    enterTransition = { slideInHorizontally { it } + fadeIn() },
+                    popExitTransition = { slideOutHorizontally { it } + fadeOut() },
+                ) {
+                    app.truenascompanion.ui.servers.MultiServerOverviewScreen(
+                        onBack = { nav.popBackStack() },
+                        onOpenServer = { nav.backToDashboard() },
+                    )
+                }
+
                 composable(
                     Routes.EDIT,
                     arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null }),

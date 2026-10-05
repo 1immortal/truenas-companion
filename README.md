@@ -24,7 +24,8 @@
 
 ## What you can do
 
-- **See how your NAS is doing at a glance.** Live CPU, memory, network and temperatures, plus pool health and free space, on a dashboard you can rearrange.
+- **See how your NAS is doing at a glance.** Live CPU, memory, network and temperatures, plus pool health and free space, on a dashboard you can rearrange. A **home-screen widget** shows pool health and open alerts.
+- **Watch several servers.** System › All servers lists every saved NAS with status and alert counts; tap one to open it.
 - **Get alerts on your phone.** A notification when a pool degrades, a disk runs hot or space runs low, straight from your NAS with no cloud service in between.
 - **Manage your apps.** Browse the catalog, install, update, edit, roll back, read logs and see live resource use.
 - **Open a terminal.** A shell on the NAS, in an app's container, or in an Incus container, like the TrueNAS web UI. With the app lock on it asks for your fingerprint first, and the session closes when you leave.
@@ -45,6 +46,10 @@
 3. From then on the app lets you know about new versions (System › About › Check for updates) and installs them over the old one, keeping your settings.
 
 Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for live stats and password sign-in).
+
+> [!IMPORTANT]
+> **Signing key change in 1.0.0.** Release APKs from 1.0.0 onwards are signed with a new key. If you installed 0.x (debug-signed) builds, Android will not let the in-app updater replace them — uninstall once, then install the 1.0.0 APK. Add your server again afterwards. From then on, updates install normally.
+
 
 > [!NOTE]
 > **Found a problem?** If you run into a bug or something doesn't work as expected, please [open an issue](https://github.com/1immortal/truenas-companion/issues) on this repo. It helps to include the app version (System › About), your Android version and what you were doing. Please never post passwords, 2FA/OTP codes, API keys or your server addresses.

@@ -1,5 +1,7 @@
 package app.truenascompanion.data.update
 
+import app.truenascompanion.BuildConfig
+
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
@@ -80,9 +82,29 @@ class UpdateInstaller(private val context: Context, private val client: OkHttpCl
             apk.delete()
             throw UpdateVerificationException("The download isn't newer than the installed version.")
         }
-        if (signers(archive).isEmpty() || signers(archive) != signers(installed)) {
+        val apkSigners = signers(archive)
+        val installedSigners = signers(installed)
+        if (apkSigners.isEmpty()) {
             apk.delete()
-            throw UpdateVerificationException("The download is signed with a different key than this app, so Android wouldn't install it as an update.")
+            throw UpdateVerificationException("The download has no signing certificate.")
+        }
+        // Prefer the known release (and debug) fingerprints; also allow same-as-installed for continuity.
+        val trusted = setOf(
+            BuildConfig.RELEASE_SIGNER_SHA256.lowercase(),
+            BuildConfig.DEBUG_SIGNER_SHA256.lowercase(),
+        )
+        val apkTrusted = apkSigners.any { it in trusted }
+        if (!apkTrusted) {
+            apk.delete()
+            throw UpdateVerificationException("The download isn't signed with a known TrueNAS Companion key.")
+        }
+        if (apkSigners != installedSigners) {
+            apk.delete()
+            throw UpdateVerificationException(
+                "This update is signed with a different key than the app you have installed. " +
+                    "From 1.0.0 the release APK uses a new signing key — uninstall the old (debug-signed) app once, " +
+                    "then install this APK. Your servers and settings are wiped by Android when you uninstall; add the server again afterwards."
+            )
         }
     }
 

@@ -56,3 +56,8 @@ It writes the vector drawables to `app/src/main/res/drawable/ic_launcher_*.xml` 
 
 
 The README icon is `docs/images/icon.png` (rendered from the same spec).
+
+
+## Release signing
+
+Release builds look for `/home/box/secure/keystore.properties` (or pass `-PkeystoreProperties=/path/to/keystore.properties`) with `storeFile`, `storePassword`, `keyAlias`, `keyPassword`. The keystore itself must never be committed. Without that file, `assembleRelease` is unsigned; `assembleDebug` always uses the Android debug key (`applicationId` suffix `.debug`).

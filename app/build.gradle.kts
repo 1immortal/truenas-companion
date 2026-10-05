@@ -1,3 +1,4 @@
+import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -15,20 +16,46 @@ android {
         applicationId = "app.truenascompanion"
         minSdk = 26
         targetSdk = 37
-        versionCode = 13
-        versionName = "0.9.0"
+        versionCode = 14
+        versionName = "1.0.0"
         // Public GitHub repository whose Releases the in-app update check reads (override: -PupdateRepo=owner/name).
         // 64/32-bit ARM phones plus x86_64 emulators (the WireGuard Go library is ~3.5 MB per ABI).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        buildConfigField("String", "RELEASE_SIGNER_SHA256", "\"92fb06a9b958c4a08f0db43e1e4b9b2c6ee0a9cdf4a91ffd2421a11277f5e608\"")
+        // Debug signer (Android default debug.keystore) — still accepted so 0.x debug builds can update among themselves.
+        buildConfigField("String", "DEBUG_SIGNER_SHA256", "\"b613e16e8922015ac9cb2ddb0e3cddcb262f40a2c721b840ec7c976638c6db3c\"")
         buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: "1immortal/truenas-companion"}\"")
     }
 
+
+    // Release signing: reads /home/box/secure/keystore.properties (or -PkeystoreProperties=…) when present.
+    // Never commit the keystore or passwords. Debug builds keep the standard Android debug key.
+    val keystorePropsFile = (findProperty("keystoreProperties") as String?)
+        ?.let { file(it) }
+        ?: file("/home/box/secure/keystore.properties")
+    val keystoreProps: Properties? = if (keystorePropsFile.isFile) {
+        Properties().also { props ->
+            keystorePropsFile.inputStream().use { props.load(it) }
+        }
+    } else null
+
+    signingConfigs {
+        if (keystoreProps != null) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile")!!)
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (keystoreProps != null) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -75,6 +102,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.reorderable)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.coil.compose)

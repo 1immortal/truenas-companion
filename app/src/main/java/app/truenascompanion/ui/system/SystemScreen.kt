@@ -156,7 +156,7 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}, onShell: () -> Unit = {}) {
+fun SystemScreen(onServers: () -> Unit, onOverview: () -> Unit = {}, onJobs: () -> Unit = {}, onShell: () -> Unit = {}) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -194,6 +194,20 @@ fun SystemScreen(onServers: () -> Unit, onJobs: () -> Unit = {}, onShell: () -> 
                                 }
                             }
                             Text("Switch", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                item {
+                    ElevatedSection(onClick = onOverview) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconBadge(Icons.Rounded.Dns)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("All servers", style = MaterialTheme.typography.titleMedium)
+                                Text("Status and alerts for every saved NAS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
                         }
                     }
