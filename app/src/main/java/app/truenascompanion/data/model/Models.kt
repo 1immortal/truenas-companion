@@ -212,9 +212,16 @@ data class Dataset(
     val encrypted: Boolean,
     val locked: Boolean,
     val mountpoint: String?,
+    val compression: String? = null,
+    val compressratio: String? = null,
+    val comments: String? = null,
+    val recordsize: String? = null,
+    val volsize: Long? = null,
+    val readonly: String? = null,
 ) {
     val depth: Int get() = id.count { it == '/' }
     val shortName: String get() = id.substringAfterLast('/')
+    val isVolume: Boolean get() = type.equals("VOLUME", true)
     val isSystem: Boolean
         get() = id.contains("/.system") || id.contains("/ix-applications") || id.contains("/.ix-") ||
             id.contains("/ix-apps") || shortName.startsWith(".")
@@ -225,6 +232,67 @@ data class Dataset(
             return if (total > 0) (u.toDouble() / total).toFloat() else 0f
         }
 }
+
+/** SMB share (`sharing.smb.query`), 25.10 purpose enum. */
+data class SmbShare(
+    val id: Int,
+    val name: String,
+    val path: String,
+    val purpose: String,
+    val enabled: Boolean,
+    val comment: String,
+    val readonly: Boolean,
+    val browsable: Boolean,
+    val locked: Boolean?,
+) {
+    val datasetId: String? get() = path.removePrefix("/mnt/").takeIf { path.startsWith("/mnt/") && it.isNotEmpty() }
+}
+
+/** NFS share (`sharing.nfs.query`). */
+data class NfsShare(
+    val id: Int,
+    val path: String,
+    val comment: String,
+    val enabled: Boolean,
+    val readonly: Boolean,
+    val networks: List<String>,
+    val hosts: List<String>,
+    val locked: Boolean?,
+) {
+    val datasetId: String? get() = path.removePrefix("/mnt/").takeIf { path.startsWith("/mnt/") && it.isNotEmpty() }
+}
+
+/** Input for creating a dataset or ZVOL (`pool.dataset.create`). */
+data class DatasetCreateRequest(
+    val name: String,
+    val type: String = "FILESYSTEM",
+    val shareType: String = "GENERIC",
+    val compression: String? = null,
+    val comments: String? = null,
+    val volsize: Long? = null,
+    val sparse: Boolean = false,
+)
+
+/** Input for an SMB share create/update. */
+data class SmbShareInput(
+    val name: String,
+    val path: String,
+    val purpose: String = "DEFAULT_SHARE",
+    val enabled: Boolean = true,
+    val comment: String = "",
+    val readonly: Boolean = false,
+    val browsable: Boolean = true,
+)
+
+/** Input for an NFS share create/update. */
+data class NfsShareInput(
+    val path: String,
+    val comment: String = "",
+    val enabled: Boolean = true,
+    val readonly: Boolean = false,
+    val networks: List<String> = emptyList(),
+    val hosts: List<String> = emptyList(),
+)
 
 enum class AppState { RUNNING, STOPPED, DEPLOYING, STOPPING, CRASHED, UNKNOWN }
 

@@ -181,7 +181,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                                 WidgetType.POOLS, WidgetType.TEMPERATURE -> nav.switchTab(Tab.STORAGE.route)
                                 WidgetType.APPS -> nav.switchTab(Tab.APPS.route)
                                 WidgetType.ALERTS -> nav.switchTab(Tab.ALERTS.route)
-                                WidgetType.PROTECTION -> { container.storageTabRequest.value = 3; nav.switchTab(Tab.STORAGE.route) }
+                                WidgetType.PROTECTION -> { container.storageTabRequest.value = 4; nav.switchTab(Tab.STORAGE.route) }
                                 else -> Unit
                             }
                         },

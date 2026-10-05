@@ -58,6 +58,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
 import app.truenascompanion.data.api.userMessage
+import app.truenascompanion.data.model.SmbShareInput
+import app.truenascompanion.data.model.NfsShareInput
+import app.truenascompanion.data.model.DatasetCreateRequest
+import app.truenascompanion.data.api.StorageApi
 import app.truenascompanion.data.model.Dataset
 import app.truenascompanion.data.model.Disk
 import app.truenascompanion.data.model.Health
@@ -86,13 +90,22 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
-data class StorageData(val pools: List<Pool>, val disks: List<Disk>, val datasets: List<Dataset>)
+data class StorageData(
+    val pools: List<Pool>,
+    val disks: List<Disk>,
+    val datasets: List<Dataset>,
+    val shares: SharesData = SharesData(emptyList(), emptyList()),
+)
 
 class StorageViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow<UiState<StorageData>>(UiState.Loading)
     val state: StateFlow<UiState<StorageData>> = _state.asStateFlow()
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+    private val _busy = MutableStateFlow<Set<String>>(emptySet())
+    val busy: StateFlow<Set<String>> = _busy.asStateFlow()
+    private val _messages = MutableStateFlow<String?>(null)
+    val messages: StateFlow<String?> = _messages.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -101,6 +114,7 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun refresh() = viewModelScope.launch { _refreshing.value = true; load(); _refreshing.value = false }
+    fun consumeMessage() { _messages.value = null }
 
     private suspend fun load() {
         try {
@@ -108,16 +122,50 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
                 val pools = async { c.repository.call { it.pools() } }
                 val disks = async { c.repository.call { it.disks() } }
                 val datasets = async { runCatching { c.repository.call { it.datasets() } }.getOrDefault(emptyList()) }
+                val smb = async { runCatching { c.repository.call { StorageApi(it).smbShares() } }.getOrDefault(emptyList()) }
+                val nfs = async { runCatching { c.repository.call { StorageApi(it).nfsShares() } }.getOrDefault(emptyList()) }
                 val diskList = disks.await()
                 val temps = runCatching { c.repository.call { it.diskTemperatures(diskList.map { d -> d.name }) } }.getOrDefault(emptyMap())
                 _state.value = UiState.Success(
-                    StorageData(pools.await(), diskList.map { it.copy(temperatureC = temps[it.name]) }, datasets.await())
+                    StorageData(
+                        pools.await(),
+                        diskList.map { it.copy(temperatureC = temps[it.name]) },
+                        datasets.await(),
+                        SharesData(smb.await(), nfs.await()),
+                    )
                 )
             }
         } catch (e: Throwable) {
             if (_state.value !is UiState.Success) _state.value = UiState.Error(e.userMessage(), e)
         }
     }
+
+    private fun action(key: String, success: String, block: suspend (StorageApi) -> Unit) {
+        if (key in _busy.value) return
+        viewModelScope.launch {
+            _busy.value = _busy.value + key
+            try {
+                c.repository.call { block(StorageApi(it)) }
+                _messages.value = success
+                load()
+            } catch (e: Throwable) {
+                _messages.value = e.userMessage()
+            } finally {
+                _busy.value = _busy.value - key
+            }
+        }
+    }
+
+    fun createDataset(req: DatasetCreateRequest) = action("ds:${req.name}", "Dataset created") { it.createDataset(req) }
+    fun renameDataset(id: String, newName: String) = action("ds:$id", "Dataset renamed") { it.renameDataset(id, newName) }
+    fun deleteDataset(id: String, recursive: Boolean, force: Boolean) =
+        action("ds:$id", "Dataset deleted") { it.deleteDataset(id, recursive, force) }
+    fun createSmb(input: SmbShareInput) = action("smb:new", "SMB share created") { it.createSmbShare(input) }
+    fun updateSmb(id: Int, input: SmbShareInput) = action("smb:$id", "SMB share saved") { it.updateSmbShare(id, input) }
+    fun deleteSmb(id: Int) = action("smb:$id", "SMB share deleted") { it.deleteSmbShare(id) }
+    fun createNfs(input: NfsShareInput) = action("nfs:new", "NFS share created") { it.createNfsShare(input) }
+    fun updateNfs(id: Int, input: NfsShareInput) = action("nfs:$id", "NFS share saved") { it.updateNfsShare(id, input) }
+    fun deleteNfs(id: Int) = action("nfs:$id", "NFS share deleted") { it.deleteNfsShare(id) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,19 +174,22 @@ fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?)
     val vm = appViewModel { StorageViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val message by vm.messages.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = listOf("Pools", "Disks", "Datasets", "Protection")
+    val tabs = listOf("Pools", "Disks", "Datasets", "Shares", "Protection")
     val container = (LocalContext.current.applicationContext as TrueNasApp).container
     val request by container.storageTabRequest.collectAsStateWithLifecycle()
     LaunchedEffect(request) { request?.let { tab = it; container.storageTabRequest.value = null } }
     val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.consumeMessage() } }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Storage") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
                 tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
             }
-            if (tab == 3) {
+            if (tab == 4) {
                 ProtectionPane(snackbar, onSnapshotTask)
                 return@Column
             }
@@ -149,7 +200,26 @@ fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?)
                     is UiState.Success -> when (tab) {
                         0 -> PoolsList(s.data.pools)
                         1 -> DisksList(s.data.disks)
-                        else -> DatasetsList(s.data.datasets, onOpenSnapshots)
+                        2 -> DatasetsPane(
+                            datasets = s.data.datasets,
+                            pools = s.data.pools,
+                            busy = busy,
+                            onOpenSnapshots = onOpenSnapshots,
+                            onCreate = vm::createDataset,
+                            onRename = vm::renameDataset,
+                            onDelete = vm::deleteDataset,
+                        )
+                        else -> SharesPane(
+                            data = s.data.shares,
+                            datasets = s.data.datasets,
+                            busy = busy,
+                            onCreateSmb = vm::createSmb,
+                            onUpdateSmb = vm::updateSmb,
+                            onDeleteSmb = vm::deleteSmb,
+                            onCreateNfs = vm::createNfs,
+                            onUpdateNfs = vm::updateNfs,
+                            onDeleteNfs = vm::deleteNfs,
+                        )
                     }
                 }
             }
@@ -269,32 +339,4 @@ private fun DisksList(disks: List<Disk>) {
     }
 }
 
-@Composable
-private fun DatasetsList(all: List<Dataset>, onOpen: (String) -> Unit) {
-    var showSystem by rememberSaveable { mutableStateOf(false) }
-    val list = if (showSystem) all else all.filterNot { it.isSystem }
-    LazyColumn(contentPadding = listPadding, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-        item {
-            FilterChip(selected = showSystem, onClick = { showSystem = !showSystem }, label = { Text("Show system datasets") })
-            Text("Tap a dataset to see and manage its snapshots.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (list.isEmpty()) item { EmptyState(Icons.Rounded.Folder, "No datasets", "Datasets you create in TrueNAS show up here.") }
-        items(list, key = { it.id }) { d ->
-            ElevatedSection(contentPadding = 14.dp, onClick = { onOpen(d.id) }, modifier = Modifier.padding(start = (d.depth.coerceAtMost(4) * 12).dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (d.locked) Icons.Rounded.Lock else Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(if (d.depth == 0) d.id else d.shortName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(d.id, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (d.encrypted) StatusChip(if (d.locked) Health.WARNING else Health.HEALTHY, if (d.locked) "Locked" else "Encrypted", showIcon = false)
-                }
-                Spacer(Modifier.height(10.dp))
-                CapacityBar(d.usedFraction, height = 8.dp)
-                Spacer(Modifier.height(4.dp))
-                Text("${Format.bytes(d.used)} used · ${Format.bytes(d.available)} available", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
+

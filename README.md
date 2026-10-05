@@ -30,7 +30,7 @@
 - **Open a terminal.** A shell on the NAS, in an app's container, or in an Incus container, like the TrueNAS web UI. With the app lock on it asks for your fingerprint first, and the session closes when you leave.
 - **Control VMs and containers.** Start, stop, restart, edit resources or create a simple VM.
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
-- **Keep an eye on storage.** Pools, disks with temperatures, and datasets.
+- **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
 - **Handle everyday chores.** Start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else.
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.

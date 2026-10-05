@@ -20,7 +20,13 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - CPU note: TrueNAS reports the aggregate CPU usage as a whole percent, so a nearly idle machine reads 0. The app then shows the per-thread average instead, and `<1%` when it is below 1
 - Tap the Pools, Apps, Alerts or Temperature blocks to open the matching tab
 
-**Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage and encryption/lock state, and system datasets are hidden by default.
+**Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage, compression, comments and encryption/lock state (system datasets are hidden by default).
+
+**Datasets and shares (new in 0.8):** Storage › Datasets / Shares.
+- **Datasets / ZVOLs:** tree list with used/available, compression and ratio. Create a child dataset or ZVOL (`pool.dataset.create` with `type` FILESYSTEM or VOLUME, optional `share_type`, `compression`, `volsize`/`sparse`). Rename (`pool.dataset.rename`) and delete (`pool.dataset.delete` with recursive/force). Delete and rename ask for confirmation, and for your fingerprint when *Confirm dangerous actions* is on.
+- **SMB shares** (`sharing.smb.query` / `create` / `update` / `delete`): name, path under `/mnt`, purpose (`DEFAULT_SHARE`, `MULTIPROTOCOL_SHARE`, `TIMEMACHINE_SHARE`, …), enabled, comment, read-only, browsable. Linked to a dataset path.
+- **NFS shares** (`sharing.nfs.query` / `create` / `update` / `delete`): path, networks, hosts, read-only (`ro`), enabled, comment.
+- SMB/NFS **service** start/stop stays on System › Services (same toggles as before). Network interface settings stay view-only.
 
 **Apps:** installed apps with their state, **start / stop / restart / redeploy**, and an "open web UI" portal link.
 - **App upgrades (new in 0.2):** apps with a newer catalog version show `current → latest` and an **Upgrade** button. The confirmation dialog shows the target version and release notes (`app.upgrade_summary`) and has an optional *Snapshot host paths first* switch. The upgrade runs as a TrueNAS job (`app.upgrade`) with a live progress bar on the app card.

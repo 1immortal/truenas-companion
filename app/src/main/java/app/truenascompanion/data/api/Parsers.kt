@@ -16,6 +16,8 @@ import app.truenascompanion.data.model.JobInfo
 import app.truenascompanion.data.model.JobState
 import app.truenascompanion.data.model.AppState
 import app.truenascompanion.data.model.Dataset
+import app.truenascompanion.data.model.NfsShare
+import app.truenascompanion.data.model.SmbShare
 import app.truenascompanion.data.model.Disk
 import app.truenascompanion.data.model.Pool
 import app.truenascompanion.data.model.RealtimeStats
@@ -205,8 +207,37 @@ object Parsers {
             encrypted = encrypted,
             locked = o.bool("locked") ?: (encrypted && o.bool("key_loaded") == false),
             mountpoint = o.str("mountpoint"),
+            compression = o.zfsString("compression"),
+            compressratio = o.zfsString("compressratio"),
+            comments = o.zfsString("comments")?.takeUnless { it.equals("INHERIT", true) || it.isBlank() },
+            recordsize = o.zfsString("recordsize"),
+            volsize = o.zfsLong("volsize"),
+            readonly = o.zfsString("readonly"),
         )
     }
+
+    fun smbShare(o: JsonObject): SmbShare = SmbShare(
+        id = o.long("id")?.toInt() ?: 0,
+        name = o.str("name") ?: "?",
+        path = o.str("path") ?: "",
+        purpose = o.str("purpose") ?: "DEFAULT_SHARE",
+        enabled = o.bool("enabled") ?: true,
+        comment = o.str("comment").orEmpty(),
+        readonly = o.bool("readonly") ?: false,
+        browsable = o.bool("browsable") ?: true,
+        locked = o.bool("locked"),
+    )
+
+    fun nfsShare(o: JsonObject): NfsShare = NfsShare(
+        id = o.long("id")?.toInt() ?: 0,
+        path = o.str("path") ?: "",
+        comment = o.str("comment").orEmpty(),
+        enabled = o.bool("enabled") ?: true,
+        readonly = o.bool("ro") ?: false,
+        networks = o["networks"].arr()?.mapNotNull { it.prim()?.contentOrNull }.orEmpty(),
+        hosts = o["hosts"].arr()?.mapNotNull { it.prim()?.contentOrNull }.orEmpty(),
+        locked = o.bool("locked"),
+    )
 
     fun app(o: JsonObject): AppInfo {
         val portals = o["portals"].obj()
