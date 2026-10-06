@@ -54,7 +54,6 @@ data class ServerEditState(
     val password: String = "",
     val rememberPassword: Boolean = false,
     val sessionDays: Int = 7,
-    val forceRest: Boolean = false,
     val pinnedCert: String? = null,
     val hasSavedKey: Boolean = false,
     val hasSavedPassword: Boolean = false,
@@ -112,7 +111,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
             val s = c.settings.servers.first().firstOrNull { it.id == serverId } ?: return@launch
             val hasPw = c.settings.hasPassword(s.id)
             _state.value = ServerEditState(
-                id = s.id, name = s.name, url = s.url, username = s.username, forceRest = s.forceRest,
+                id = s.id, name = s.name, url = s.url, username = s.username,
                 authMethod = s.authMethod, sessionDays = s.sessionDays,
                 pinnedCert = s.pinnedCertSha256, hasSavedKey = c.settings.apiKey(s.id) != null,
                 hasSavedPassword = hasPw, rememberPassword = hasPw,
@@ -136,7 +135,6 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         url = url,
         username = s.username.trim(),
         pinnedCertSha256 = s.pinnedCert,
-        forceRest = s.forceRest,
         authMethod = s.authMethod,
         sessionDays = s.sessionDays,
         localUrl = s.normalizedLocalUrl,

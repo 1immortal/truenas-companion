@@ -203,7 +203,7 @@ fun DashboardWidget(
 
 @Composable
 private fun NoLive(flavor: ApiFlavor?) {
-    Muted(if (flavor == ApiFlavor.REST) "Live stats need TrueNAS 25.04+ (WebSocket API)" else "Waiting for live data…", maxLines = 3)
+    Muted("Waiting for live data…", maxLines = 3)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -223,7 +223,6 @@ private fun SystemWidget(d: DashboardData, flavor: ApiFlavor?, live: LiveStats) 
         StatusChip(Health.HEALTHY, "Up ${Format.uptime(s.uptimeSeconds)}")
         s.cores?.let { StatusChip(Health.UNKNOWN, "$it threads", showIcon = false) }
         s.physicalMemory?.let { StatusChip(Health.UNKNOWN, Format.bytes(it) + " RAM", showIcon = false) }
-        if (flavor == ApiFlavor.REST) StatusChip(Health.WARNING, "Legacy API", showIcon = false)
     }
     s.cpuModel?.let { Spacer(Modifier.height(8.dp)); Muted(it, maxLines = 1) }
 }
@@ -342,7 +341,7 @@ private fun TemperatureWidget(full: Boolean, live: LiveStats, d: DashboardData, 
     Spacer(Modifier.height(10.dp))
     val status = LocalStatusColors.current
     val cpuT = live.latest?.cpuTempC
-    val cpuLabel = if (cpuT == null && live.latest == null && flavor == ApiFlavor.REST) "CPU (needs live API)" else "CPU"
+    val cpuLabel = "CPU"
     val cpuColor = if (cpuT != null) status.of(tempHealth(cpuT)) else MaterialTheme.colorScheme.onSurface
     if (full) {
         Row(verticalAlignment = Alignment.Bottom) {

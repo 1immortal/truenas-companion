@@ -453,7 +453,7 @@ fun SecurityTipCard(onDismiss: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Text(
             "Now that you can reach your NAS through the VPN, TrueNAS doesn't have to be open to the internet anymore. " +
-                "You could remove its public proxy host or port forward, and keep the DuckDNS address in the app as a backup for now. " +
+                "You could remove its public proxy host or port forward, and keep the dynamic DNS address in the app as a backup for now. " +
                 "Nothing is changed automatically.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

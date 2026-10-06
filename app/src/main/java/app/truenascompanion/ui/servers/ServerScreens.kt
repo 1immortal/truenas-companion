@@ -332,14 +332,6 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                             supportingText = { Text("Only needed on TrueNAS 26+/27, where API key login requires the username.") },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Use legacy REST API", style = MaterialTheme.typography.bodyLarge)
-                                Text("For SCALE releases older than 25.04. Detected automatically; no live stats.",
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(checked = s.forceRest, onCheckedChange = { v -> vm.update { it.copy(forceRest = v) } })
-                        }
                     }
                     if (s.pinnedCert != null) {
                         ElevatedSection {

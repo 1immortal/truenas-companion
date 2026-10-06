@@ -233,9 +233,9 @@ private fun WgForm(ui: SetupUi, a: SetupActions) {
     Header(Icons.Rounded.VpnKey, "WireGuard with wg-easy")
     OutlinedTextField(
         value = ui.publicHost, onValueChange = { v -> a.update { it.copy(publicHost = v.trim().removePrefix("https://").removePrefix("http://").substringBefore('/')) } },
-        label = { Text("Public address of your home") }, placeholder = { Text("myhome.duckdns.org") }, singleLine = true,
+        label = { Text("Public address of your home") }, placeholder = { Text("myhome.example.org") }, singleLine = true,
         leadingIcon = { Icon(Icons.Rounded.Public, null) },
-        supportingText = { Text("Where the phone finds your home from outside: your DuckDNS name (no https://).") },
+        supportingText = { Text("Where the phone finds your home from outside: your dynamic DNS name (no https://).") },
         isError = ui.publicHost.isNotBlank() && !VpnSetup.validPublicHost(ui.publicHost.trim()),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
         modifier = Modifier.fillMaxWidth(),

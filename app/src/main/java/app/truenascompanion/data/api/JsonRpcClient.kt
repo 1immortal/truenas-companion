@@ -77,7 +77,11 @@ class JsonRpcClient(
                 closed.complete(Unit)
                 val error = when {
                     response != null && (response.code == 401 || response.code == 403) -> TrueNasException.AuthFailed()
-                    response != null && response.code in 400..599 ->
+                    // 5xx: nginx answers 502/503 while middlewared (re)starts: a temporary outage, not a missing API.
+                    response != null && response.code in 500..599 ->
+                        TrueNasException.Unreachable("The server answered HTTP ${response.code} instead of opening the API connection. " +
+                            "TrueNAS may still be starting, or a reverse proxy isn't forwarding WebSocket connections.")
+                    response != null && response.code in 400..499 ->
                         TrueNasException.EndpointNotFound("WebSocket API not available (HTTP ${response.code})")
                     else -> mapNetworkError(t) { trustManager.lastChain?.firstOrNull()?.toInfo() }
                 }

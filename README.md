@@ -45,7 +45,7 @@
 2. Open the downloaded file. Android asks you to allow **Install unknown apps** for your browser or file manager. Allow it, go back, then tap **Install**.
 3. From then on the app lets you know about new versions (System › About › Check for updates) and installs them over the old one, keeping your settings.
 
-Needs Android 8.0 or newer and TrueNAS SCALE (25.04 or newer is recommended for live stats and password sign-in).
+Needs Android 8.0 or newer and TrueNAS 25.04 or newer (the app only uses the JSON-RPC WebSocket API, never the deprecated REST API).
 
 > [!IMPORTANT]
 > **Signing key change in 1.0.0.** Release APKs from 1.0.0 onwards are signed with a new key. If you installed 0.x (debug-signed) builds, Android will not let the in-app updater replace them — uninstall once, then install the release APK. Add your server again afterwards. From then on, updates install normally.

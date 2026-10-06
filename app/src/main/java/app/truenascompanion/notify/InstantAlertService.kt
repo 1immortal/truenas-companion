@@ -167,7 +167,7 @@ class InstantAlertService : Service() {
                             checker.check(server, live)
                         }
                     } catch (e: TrueNasException.Unsupported) {
-                        // Legacy REST API: no events, poll instead.
+                        // No alert events on this connection (e.g. no permission to subscribe): poll over the same socket.
                         while (currentCoroutineContext().isActive) {
                             delay(REST_POLL_MS)
                             if (checker.check(server, live) == CheckOutcome.NETWORK_ERROR) throw TrueNasException.NotConnected()

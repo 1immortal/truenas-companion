@@ -81,8 +81,8 @@ object WgConf {
             if (p.all("AllowedIPs").any { cidr(it) == null }) throw Invalid("Peer ${i + 1} has an invalid AllowedIPs entry.")
         }
         val main = peers.first()
-        val endpoint = main.one("Endpoint") ?: throw Invalid("The [Peer] has no Endpoint (your home address and port, e.g. myhome.duckdns.org:51820).")
-        if (endpointPort(endpoint) == null) throw Invalid("The Endpoint \"$endpoint\" needs a port, e.g. myhome.duckdns.org:51820.")
+        val endpoint = main.one("Endpoint") ?: throw Invalid("The [Peer] has no Endpoint (your home address and port, e.g. myhome.example.org:51820).")
+        if (endpointPort(endpoint) == null) throw Invalid("The Endpoint \"$endpoint\" needs a port, e.g. myhome.example.org:51820.")
         return WgSummary(
             endpoint = endpoint,
             addresses = addresses,

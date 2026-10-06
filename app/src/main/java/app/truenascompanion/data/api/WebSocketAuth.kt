@@ -92,9 +92,7 @@ object WebSocketAuth {
         try {
             rpc.open()
         } catch (e: TrueNasException.EndpointNotFound) {
-            throw TrueNasException.AuthFailed(
-                "Password sign-in needs TrueNAS 25.04 or newer (WebSocket API at /api/current). Use an API key on older releases."
-            )
+            throw TrueNasException.Unsupported(WEBSOCKET_API_REQUIRED_MESSAGE)
         }
         try {
             return when (credentials) {

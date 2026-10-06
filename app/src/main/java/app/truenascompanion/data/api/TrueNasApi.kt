@@ -21,13 +21,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Abstraction over the two TrueNAS APIs:
- * - [WebSocketTrueNasApi]: JSON-RPC 2.0 over WebSocket at `/api/current` (TrueNAS 25.04+), supports live stats.
- * - [RestTrueNasApi]: legacy REST API v2.0 at `/api/v2.0` (older SCALE releases), polling only.
+ * The TrueNAS API as used by the app. The only implementation is [WebSocketTrueNasApi]: JSON-RPC 2.0 over WebSocket at
+ * `/api/current` (TrueNAS 25.04+). The legacy REST API v2.0 is not used (deprecated in 25.04, removed in 26.04).
+ * Default method bodies only exist for test fakes.
  */
-private fun unsupported() = TrueNasException.Unsupported(
-    "This needs the WebSocket API (TrueNAS SCALE 25.04 or newer). Switch the server's connection away from the legacy REST API.",
-)
+private fun unsupported() = TrueNasException.Unsupported("This isn't supported by this connection.")
 
 interface TrueNasApi : AutoCloseable {
     val flavor: ApiFlavor

@@ -64,7 +64,7 @@ class WgEasyClient(
         post("/api/setup/2", buildJsonObject { put("username", username); put("password", password); put("confirmPassword", password) }, auth = null, setup = true)
     }
 
-    /** First-run step 4: the public host (e.g. your DuckDNS name) and port clients connect to. Finishes setup. */
+    /** First-run step 4: the public host (e.g. your dynamic DNS name) and port clients connect to. Finishes setup. */
     suspend fun setupHost(host: String, port: Int) {
         post("/api/setup/4", buildJsonObject { put("host", host); put("port", port) }, auth = null, setup = true)
     }

@@ -16,8 +16,6 @@ data class ServerConfig(
     val username: String = "",
     /** SHA-256 fingerprint (hex, uppercase, colon separated) of a self-signed certificate the user chose to trust. */
     val pinnedCertSha256: String? = null,
-    /** Skip the WebSocket API and use the legacy REST API v2.0 directly. */
-    val forceRest: Boolean = false,
     val authMethod: AuthMethod = AuthMethod.API_KEY,
     /** Lifetime of the reusable session token requested after a password (+2FA) sign-in. */
     val sessionDays: Int = 7,
@@ -104,7 +102,6 @@ enum class AuthMethod(val label: String) {
 
 enum class ApiFlavor(val label: String) {
     WEBSOCKET("JSON-RPC WebSocket (/api/current)"),
-    REST("REST API v2.0 (legacy)"),
 }
 
 data class SystemInfo(

@@ -195,9 +195,9 @@ class VpnTest {
             VpnSetup.tailscaleValues(" tskey-auth-abc ", "truenas", listOf("192.168.1.0/24")).toString(),
         )
         assertEquals("homenas.example.org", VpnSetup.publicHost("https://homenas.example.org/some/path"))
-        assertTrue(VpnSetup.validPublicHost("homenas.duckdns.org"))
+        assertTrue(VpnSetup.validPublicHost("homenas.example.org"))
         assertTrue(VpnSetup.validPublicHost("203.0.113.7"))
-        assertFalse(VpnSetup.validPublicHost("https://homenas.duckdns.org"))
+        assertFalse(VpnSetup.validPublicHost("https://homenas.example.org"))
         assertTrue(VpnSetup.validHostname("truenas-01"))
         assertFalse(VpnSetup.validHostname("true nas"))
         assertEquals("TrueNAS Companion Pixel 8", VpnSetup.clientName("Pixel 8"))
