@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Policy
 import androidx.compose.foundation.clickable
@@ -176,6 +177,7 @@ fun SystemScreen(
     onAccounts: () -> Unit = {},
     onReports: () -> Unit = {},
     onAudit: () -> Unit = {},
+    onCertificates: () -> Unit = {},
 ) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
@@ -258,6 +260,8 @@ fun SystemScreen(
                         ManageRow(Icons.Rounded.Insights, "Reports", "CPU, memory, network, disks and temperatures over time", onReports)
                         ManageDivider()
                         ManageRow(Icons.Rounded.Policy, "Audit log", "Who signed in and what changed", onAudit)
+                        ManageDivider()
+                        ManageRow(Icons.Rounded.VerifiedUser, "Certificates", "Expiry, ACME, imports and the web UI certificate", onCertificates)
                     }
                 }
 

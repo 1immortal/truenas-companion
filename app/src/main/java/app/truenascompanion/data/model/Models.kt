@@ -35,6 +35,13 @@ data class ServerConfig(
     val vpnMode: VpnMode = VpnMode.OFF,
     /** A WireGuard config is saved for this server (flag only; the config is a secret). */
     val wireGuardConfigured: Boolean = false,
+    /**
+     * 1.2.0: the web UI certificate was changed from the app. Every route then shows the "trust this server" step again
+     * (even for a CA-signed certificate) until the user reviews the new certificate in the connection settings.
+     */
+    val certReviewRequired: Boolean = false,
+    /** 1.2.0: `system.general.checkin` is due once a connection with the new web UI certificate works (else TrueNAS rolls back). */
+    val uiCertCheckinPending: Boolean = false,
     /** Which address this (resolved) copy connects to. Never stored: see [forRoute]. */
     @kotlinx.serialization.Transient val activeRoute: Route = Route.REMOTE,
 ) {
@@ -416,6 +423,8 @@ data class AlertItem(
     val datetimeMillis: Long?,
     val dismissed: Boolean,
     val oneShot: Boolean,
+    /** Alert arguments (1.2.0): a dict, a string or null, depending on the alert class. Used for deep links. */
+    val args: kotlinx.serialization.json.JsonElement? = null,
 ) {
     val health: Health
         get() = when (level.uppercase()) {

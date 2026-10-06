@@ -45,5 +45,9 @@ object WidgetStore {
             .put("error", snap.error)
             .put("updatedAt", snap.updatedAt)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, o.toString()).apply()
+        // 1.2.0: the status tile shows the same data; ask the system to refresh it if it's in the shade.
+        runCatching {
+            android.service.quicksettings.TileService.requestListeningState(context, android.content.ComponentName(context, app.truenascompanion.quick.StatusTileService::class.java))
+        }
     }
 }

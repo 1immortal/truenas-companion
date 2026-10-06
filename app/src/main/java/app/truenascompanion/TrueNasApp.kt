@@ -4,7 +4,10 @@ import app.truenascompanion.data.net.RouteResolver
 import app.truenascompanion.data.vpn.TunnelManager
 import app.truenascompanion.data.security.AppLock
 import android.app.Application
+import app.truenascompanion.data.api.CertificatesApi
 import app.truenascompanion.data.api.SharedConnections
+import app.truenascompanion.data.repository.ConnectionState
+import app.truenascompanion.quick.QuickActions
 import app.truenascompanion.data.api.SessionTokenManager
 import app.truenascompanion.data.repository.TrueNasRepository
 import app.truenascompanion.data.security.SecretCipher
@@ -25,8 +28,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-/** A notification tap asking the UI to show [destination] for [serverId]. */
-data class PendingDeepLink(val serverId: String?, val destination: String, val nonce: Long = System.nanoTime())
+/** A notification tap, app shortcut or tile asking the UI to show [destination] (with optional [arg]) for [serverId]. */
+data class PendingDeepLink(val serverId: String?, val destination: String, val nonce: Long = System.nanoTime(), val arg: String? = null)
 
 /** Tiny manual DI container — no DI framework needed for an app this size. */
 class AppContainer(app: Application) {
@@ -75,6 +78,20 @@ class TrueNasApp : Application() {
                     AlertScheduler.sync(this@TrueNasApp, prefs, servers)
                     SessionKeepAliveWorker.sync(this@TrueNasApp, servers)
                 }
+        }
+        // 1.2.0: after switching the web UI certificate, confirm it (system.general.checkin) once the app is connected
+        // again with the newly trusted certificate; otherwise TrueNAS rolls the change back by itself.
+        container.appScope.launch {
+            container.repository.state.collect { st ->
+                if (st !is ConnectionState.Connected) return@collect
+                val server = container.repository.activeServer.value ?: return@collect
+                if (!server.uiCertCheckinPending || server.certReviewRequired) return@collect
+                runCatching { container.repository.call { CertificatesApi(it).checkin() } }
+                    .onSuccess { container.settings.updateServer(server.id) { it.copy(uiCertCheckinPending = false) } }
+            }
+        }
+        container.appScope.launch {
+            container.settings.servers.collect { list -> QuickActions.pruneShortcuts(this@TrueNasApp, list.map { it.id }.toSet()) }
         }
     }
 }

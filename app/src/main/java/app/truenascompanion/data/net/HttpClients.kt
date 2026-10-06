@@ -48,7 +48,7 @@ fun X509Certificate.toInfo(): CertificateInfo {
  * The last seen chain is recorded so the UI can offer to pin it after a failure.
  */
 @SuppressLint("CustomX509TrustManager") // Delegates to the platform trust manager; only an explicitly pinned leaf is accepted in addition.
-class PinningTrustManager(private val pinnedSha256: String?) : X509TrustManager {
+class PinningTrustManager(private val pinnedSha256: String?, private val requirePin: Boolean = false) : X509TrustManager {
     private val system: X509TrustManager = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         .apply { init(null as KeyStore?) }
         .trustManagers.filterIsInstance<X509TrustManager>().first()
@@ -66,6 +66,8 @@ class PinningTrustManager(private val pinnedSha256: String?) : X509TrustManager 
     override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
         lastChain = chain
         if (matchesPin(chain.firstOrNull())) return
+        // 1.2.0: after the web UI certificate was changed from the app, even a CA-signed chain needs a fresh review.
+        if (requirePin) throw CertificateException("The server certificate changed; review it before connecting")
         system.checkServerTrusted(chain, authType)
     }
 
@@ -97,7 +99,7 @@ object HttpClients {
     }
 
     fun create(server: ServerConfig, keepalive: Keepalive = Keepalive.FOREGROUND): Pair<OkHttpClient, PinningTrustManager> {
-        val tm = PinningTrustManager(server.pinnedCertSha256)
+        val tm = PinningTrustManager(server.pinnedCertSha256, requirePin = server.certReviewRequired)
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
         val defaultVerifier = HttpsURLConnection.getDefaultHostnameVerifier()
         val verifier = HostnameVerifier { host, session ->

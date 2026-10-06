@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static app-icon shortcuts (1.2.0). They only open the app; every action asks for confirmation (and the
+     fingerprint when the app lock is on). Debug build copy: targets the app.truenascompanion.debug package. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="shell" android:enabled="true" android:icon="@drawable/ic_shortcut_shell"
+        android:shortcutShortLabel="@string/shortcut_shell" android:shortcutLongLabel="@string/shortcut_shell_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.truenascompanion.debug" android:targetClass="app.truenascompanion.MainActivity">
+            <extra android:name="app.truenascompanion.extra.DESTINATION" android:value="quick_shell" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="alerts" android:enabled="true" android:icon="@drawable/ic_shortcut_alerts"
+        android:shortcutShortLabel="@string/shortcut_alerts" android:shortcutLongLabel="@string/shortcut_alerts_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.truenascompanion.debug" android:targetClass="app.truenascompanion.MainActivity">
+            <extra android:name="app.truenascompanion.extra.DESTINATION" android:value="alerts" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="restart_app" android:enabled="true" android:icon="@drawable/ic_shortcut_restart"
+        android:shortcutShortLabel="@string/shortcut_restart" android:shortcutLongLabel="@string/shortcut_restart_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.truenascompanion.debug" android:targetClass="app.truenascompanion.MainActivity">
+            <extra android:name="app.truenascompanion.extra.DESTINATION" android:value="quick_restart_app" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="scrub_pool" android:enabled="true" android:icon="@drawable/ic_shortcut_scrub"
+        android:shortcutShortLabel="@string/shortcut_scrub" android:shortcutLongLabel="@string/shortcut_scrub_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.truenascompanion.debug" android:targetClass="app.truenascompanion.MainActivity">
+            <extra android:name="app.truenascompanion.extra.DESTINATION" android:value="quick_scrub_pool" />
+        </intent>
+    </shortcut>
+</shortcuts>

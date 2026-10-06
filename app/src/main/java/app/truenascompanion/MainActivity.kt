@@ -74,7 +74,9 @@ class MainActivity : FragmentActivity() {
     private fun handleIntent(intent: Intent?) {
         val destination = intent?.getStringExtra(DeepLink.EXTRA_DESTINATION) ?: return
         val serverId = intent.getStringExtra(DeepLink.EXTRA_SERVER_ID)
-        (application as TrueNasApp).container.deepLinks.value = PendingDeepLink(serverId, destination)
+        val arg = intent.getStringExtra(DeepLink.EXTRA_ARG)
+        (application as TrueNasApp).container.deepLinks.value = PendingDeepLink(serverId, destination, arg = arg)
         intent.removeExtra(DeepLink.EXTRA_DESTINATION)
+        intent.removeExtra(DeepLink.EXTRA_ARG)
     }
 }

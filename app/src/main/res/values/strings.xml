@@ -3,5 +3,15 @@
     <string name="widget_nas_status_description">Pool health and open alerts for your active TrueNAS server</string>
     <string name="widget_loading">TrueNAS Companion</string>
     <string name="widget_nas_status_label">NAS status</string>
+    <string name="shortcut_shell">Shell</string>
+    <string name="shortcut_shell_long">Open shell</string>
+    <string name="shortcut_alerts">Alerts</string>
+    <string name="shortcut_alerts_long">Show alerts</string>
+    <string name="shortcut_restart">Restart app…</string>
+    <string name="shortcut_restart_long">Restart an app…</string>
+    <string name="shortcut_scrub">Scrub pool…</string>
+    <string name="shortcut_scrub_long">Scrub a pool…</string>
+    <string name="tile_status_label">NAS status</string>
+    <string name="tile_action_label">TrueNAS action</string>
 </resources>
 

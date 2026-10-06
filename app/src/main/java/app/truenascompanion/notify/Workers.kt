@@ -57,21 +57,26 @@ class AlertActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_DISMISS) return
         val serverId = intent.getStringExtra(EXTRA_SERVER_ID) ?: return
-        val uuid = intent.getStringExtra(EXTRA_UUID) ?: return
+        val uuids = intent.getStringArrayExtra(EXTRA_UUIDS)?.toList()?.takeIf { it.isNotEmpty() }
+            ?: listOfNotNull(intent.getStringExtra(EXTRA_UUID)).ifEmpty { return }
         val container = (context.applicationContext as TrueNasApp).container
-        container.notifier.cancelAlert(serverId, uuid)
-        val request = OneTimeWorkRequestBuilder<DismissAlertWorker>()
-            .setInputData(workDataOf(DismissAlertWorker.KEY_SERVER to serverId, DismissAlertWorker.KEY_UUID to uuid))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .build()
-        WorkManager.getInstance(context).enqueueUniqueWork("dismiss-$serverId-$uuid", ExistingWorkPolicy.KEEP, request)
+        container.notifier.removeFromShade(serverId, uuids.toSet())
+        uuids.forEach { uuid ->
+            val request = OneTimeWorkRequestBuilder<DismissAlertWorker>()
+                .setInputData(workDataOf(DismissAlertWorker.KEY_SERVER to serverId, DismissAlertWorker.KEY_UUID to uuid))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("dismiss-$serverId-$uuid", ExistingWorkPolicy.KEEP, request)
+        }
     }
 
     companion object {
         const val ACTION_DISMISS = "app.truenascompanion.action.DISMISS_ALERT"
         const val EXTRA_SERVER_ID = "server_id"
         const val EXTRA_UUID = "uuid"
+        /** Grouped notifications (1.2.0) dismiss every alert they cover. */
+        const val EXTRA_UUIDS = "uuids"
     }
 }
 

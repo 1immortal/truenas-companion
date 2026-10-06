@@ -38,6 +38,8 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PriorityHigh
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -314,6 +316,24 @@ fun PhoneAlertsSection(
                     Switch(checked = prefs.notifyOnClear, onCheckedChange = { on -> onUpdate { it.copy(notifyOnClear = on) } })
                 }
                 Divider()
+                SettingRow(
+                    Icons.Rounded.VerifiedUser, "Certificate expiry",
+                    if (prefs.certWarnEnabled) "Warns ${prefs.certWarnDays} days before a certificate expires. Checked during the alert checks, at most twice a day."
+                    else "Off",
+                ) { Switch(checked = prefs.certWarnEnabled, onCheckedChange = { on -> onUpdate { it.copy(certWarnEnabled = on) } }) }
+                AnimatedVisibility(visible = prefs.certWarnEnabled) {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                        NotificationPrefs.CERT_WARN_DAYS.forEachIndexed { i, d ->
+                            SegmentedButton(
+                                selected = prefs.certWarnDays == d,
+                                onClick = { onUpdate { it.copy(certWarnDays = d) } },
+                                shape = SegmentedButtonDefaults.itemShape(i, NotificationPrefs.CERT_WARN_DAYS.size),
+                                icon = {},
+                            ) { Text("$d days", maxLines = 1, softWrap = false) }
+                        }
+                    }
+                }
+                Divider()
                 SettingRow(Icons.Rounded.Bedtime, "Quiet hours", "Only Critical and more severe alerts come through") {
                     Switch(checked = prefs.quietEnabled, onCheckedChange = { on -> onUpdate { it.copy(quietEnabled = on) } })
                 }
@@ -323,6 +343,8 @@ fun PhoneAlertsSection(
                         TimeButton("Until", prefs.quietEnd, Modifier.weight(1f)) { pickTime = "end" }
                     }
                 }
+                Divider()
+                ActionTileSetting()
                 Divider()
                 OutlinedButton(onClick = onTest, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Icon(Icons.Rounded.Send, null, Modifier.size(18.dp))
@@ -350,6 +372,30 @@ fun PhoneAlertsSection(
 }
 
 fun intervalLabel(minutes: Int) = if (minutes % 60 == 0) "${minutes / 60} hour" + (if (minutes > 60) "s" else "") else "$minutes min"
+
+/** Which quick action the Quick Settings "TrueNAS action" tile opens (1.2.0). */
+@Composable
+private fun ActionTileSetting() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var action by remember { mutableStateOf(app.truenascompanion.quick.QuickActions.tileAction(context)) }
+    var open by remember { mutableStateOf(false) }
+    SettingRow(Icons.Rounded.TouchApp, "Quick Settings tile", "Add \"TrueNAS action\" to Quick Settings. It opens the app and always asks before doing anything.") {
+        Box {
+            OutlinedButton(onClick = { open = true }, contentPadding = PaddingValues(start = 12.dp, end = 6.dp)) {
+                Text(action.shortLabel, maxLines = 1, softWrap = false)
+                Icon(Icons.Rounded.ExpandMore, null, Modifier.size(20.dp))
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                app.truenascompanion.quick.QuickAction.entries.forEach { a ->
+                    DropdownMenuItem(text = { Text(a.longLabel) }, onClick = {
+                        open = false; action = a
+                        app.truenascompanion.quick.QuickActions.setTileAction(context, a)
+                    })
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun Divider() {

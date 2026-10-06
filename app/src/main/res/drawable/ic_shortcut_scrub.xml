@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcut / tile icon (1.2.0): brand-blue circle with a Material glyph. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:pathData="M24,0 a24,24 0 1 1 0,48 a24,24 0 1 1 0,-48 z" android:fillColor="#FF2F5BEA" />
+    <group android:translateX="12" android:translateY="12">
+        <path android:pathData="M2,20h20v-4H2v4zM4,17h2v2H4v-2zM2,4v4h20V4H2zM6,7H4V5h2v2zM2,14h20v-4H2v4zM4,11h2v2H4v-2z" android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>

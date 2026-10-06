@@ -472,6 +472,7 @@ object Parsers {
             datetimeMillis = parseDate(o["last_occurrence"]) ?: parseDate(o["datetime"]),
             dismissed = o.bool("dismissed") ?: false,
             oneShot = o.bool("one_shot") ?: false,
+            args = o["args"]?.takeUnless { it is kotlinx.serialization.json.JsonNull },
         )
     }
 

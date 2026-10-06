@@ -50,6 +50,11 @@ import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
 import app.truenascompanion.data.api.userMessage
 import app.truenascompanion.data.model.AlertItem
+import app.truenascompanion.notify.AlertTarget
+import app.truenascompanion.notify.Snooze
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import kotlinx.coroutines.flow.flatMapLatest
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.EmptyState
 import app.truenascompanion.ui.components.ScrollableErrorState
@@ -109,6 +114,25 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
+    /** Local snoozes of the active server (1.2.0). */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val snoozes = server.map { it?.id }.distinctUntilChanged()
+        .flatMapLatest { id -> if (id == null) kotlinx.coroutines.flow.flowOf(emptyMap()) else c.settings.snoozesFlow(id) }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    fun snooze(alert: AlertItem, option: Snooze.Option) = viewModelScope.launch {
+        val id = server.value?.id ?: return@launch
+        val until = System.currentTimeMillis() + option.millis
+        c.settings.updateSnoozes(id) { it + (alert.uuid to until) }
+        c.notifier.removeFromShade(id, setOf(alert.uuid))
+        _messages.trySend("Snoozed for ${option.label} on this phone")
+    }
+
+    fun unsnooze(alert: AlertItem) = viewModelScope.launch {
+        val id = server.value?.id ?: return@launch
+        c.settings.updateSnoozes(id) { it - alert.uuid }
+    }
+
     fun dismiss(alert: AlertItem) = viewModelScope.launch {
         // Optimistic update, re-sync afterwards.
         _state.update { s -> if (s is UiState.Success) UiState.Success(s.data.map { if (it.uuid == alert.uuid) it.copy(dismissed = true) else it }) else s }
@@ -123,7 +147,7 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlertsScreen() {
+fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}) {
     val vm = appViewModel { AlertsViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -132,6 +156,8 @@ fun AlertsScreen() {
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     val server by vm.server.collectAsStateWithLifecycle()
     val prefs by vm.notificationPrefs.collectAsStateWithLifecycle()
+    val snoozes by vm.snoozes.collectAsStateWithLifecycle()
+    val now = remember(snoozes, state) { System.currentTimeMillis() }
     val context = LocalContext.current
     val enableAlerts = rememberNotificationAccess { vm.enablePhoneAlerts(context) }
     val showPrompt = server != null && prefs?.let { !it.promptDismissed && !it.isEnabled(server?.id) } == true
@@ -157,7 +183,13 @@ fun AlertsScreen() {
                         if (list.isEmpty()) item {
                             EmptyState(Icons.Rounded.DoneAll, "All clear", "No active alerts. Your NAS is happy.")
                         }
-                        items(list, key = { it.uuid }) { a -> AlertCard(a, onDismiss = { vm.dismiss(a) }, modifier = Modifier.animateItem()) }
+                        items(list, key = { it.uuid }) { a ->
+                            AlertCard(
+                                a, snoozedUntil = snoozes[a.uuid]?.takeIf { it > now },
+                                onDismiss = { vm.dismiss(a) }, onSnooze = { vm.snooze(a, it) }, onUnsnooze = { vm.unsnooze(a) },
+                                onOpen = onOpenTarget, modifier = Modifier.animateItem(),
+                            )
+                        }
                     }
                 }
             }
@@ -165,13 +197,24 @@ fun AlertsScreen() {
     }
 }
 
+/** One alert (stateless; screenshot tests render it with example data). */
 @Composable
-private fun AlertCard(a: AlertItem, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun AlertCard(
+    a: AlertItem,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    snoozedUntil: Long? = null,
+    onSnooze: (Snooze.Option) -> Unit = {},
+    onUnsnooze: () -> Unit = {},
+    onOpen: (AlertTarget) -> Unit = {},
+) {
     var expanded by rememberSaveable(a.uuid) { mutableStateOf(false) }
+    var snoozeMenu by remember { mutableStateOf(false) }
     val color = LocalStatusColors.current.of(a.health)
+    val target = remember(a.uuid, a.klass) { AlertTarget.of(a) }
     Card(
         onClick = { expanded = !expanded },
-        modifier = modifier.fillMaxWidth().animateContentSize().alpha(if (a.dismissed) 0.6f else 1f),
+        modifier = modifier.fillMaxWidth().animateContentSize().alpha(if (a.dismissed || snoozedUntil != null) 0.6f else 1f),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
@@ -180,13 +223,28 @@ private fun AlertCard(a: AlertItem, onDismiss: () -> Unit, modifier: Modifier = 
             Column(Modifier.padding(14.dp).weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StatusChip(a.health, a.level.lowercase().replaceFirstChar { it.uppercase() })
+                    if (snoozedUntil != null) {
+                        Spacer(Modifier.width(6.dp))
+                        StatusChip(app.truenascompanion.data.model.Health.UNKNOWN, "Snoozed until ${snoozeText(snoozedUntil)}", showIcon = false)
+                    }
                     Spacer(Modifier.weight(1f))
                     Text(Format.relativeTime(a.datetimeMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(a.text, style = MaterialTheme.typography.bodyMedium, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
                 if (!a.dismissed) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        if (target !is AlertTarget.Alerts) {
+                            TextButton(onClick = { onOpen(target) }) { Text(target.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            Spacer(Modifier.weight(1f))
+                        }
+                        if (snoozedUntil != null) TextButton(onClick = onUnsnooze) { Text("Unsnooze") }
+                        else Box {
+                            TextButton(onClick = { snoozeMenu = true }) { Text("Snooze") }
+                            DropdownMenu(snoozeMenu, onDismissRequest = { snoozeMenu = false }) {
+                                Snooze.OPTIONS.forEach { o -> DropdownMenuItem(text = { Text("For ${o.label}") }, onClick = { snoozeMenu = false; onSnooze(o) }) }
+                            }
+                        }
                         TextButton(onClick = onDismiss) { Text("Dismiss") }
                     }
                 } else {
@@ -198,3 +256,8 @@ private fun AlertCard(a: AlertItem, onDismiss: () -> Unit, modifier: Modifier = 
     }
 }
 
+private fun snoozeText(until: Long): String {
+    val sameDay = until - System.currentTimeMillis() < 20 * 3_600_000L
+    val f = if (sameDay) java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) else java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+    return f.format(java.util.Date(until))
+}

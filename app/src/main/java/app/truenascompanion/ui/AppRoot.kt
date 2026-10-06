@@ -83,6 +83,8 @@ private object Routes {
     const val ACCOUNTS = "accounts"
     const val REPORTS = "reports"
     const val AUDIT = "audit"
+    const val CERTIFICATES = "certificates?highlight={highlight}"
+    fun certificates(highlight: String? = null) = if (highlight == null) "certificates" else "certificates?highlight=${enc(highlight)}"
     const val EDIT = "server_edit?id={id}"
     fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
     const val CATALOG = "catalog"
@@ -144,7 +146,9 @@ fun AppRoot() {
 private fun AppContent(container: app.truenascompanion.AppContainer, list: List<app.truenascompanion.data.model.ServerConfig>, nav: NavHostController) {
     // First run: open the connection setup on top of the (empty) dashboard.
     LaunchedEffect(Unit) { if (list.isEmpty()) nav.navigate(Routes.edit()) }
-    // Notification taps: switch to the right server, then open Alerts (and the sign-in dialog if asked).
+    // Notification taps, app shortcuts and tiles: switch to the right server, then open the screen the alert is about
+    // (or Alerts), the sign-in dialog, or a quick action's confirmation.
+    var quick by remember { mutableStateOf<app.truenascompanion.ui.quick.QuickRequest?>(null) }
     val deepLink by container.deepLinks.collectAsStateWithLifecycle()
     LaunchedEffect(deepLink) {
         val link = deepLink ?: return@LaunchedEffect
@@ -159,7 +163,10 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 nav.switchTab(Tab.ALERTS.route)
                 container.repository.requestSignIn()
             }
-            else -> nav.switchTab(Tab.ALERTS.route)
+            DeepLink.DEST_DASHBOARD -> nav.switchTab(Tab.DASHBOARD.route)
+            DeepLink.DEST_SHELL, DeepLink.DEST_RESTART_APP, DeepLink.DEST_SCRUB_POOL ->
+                app.truenascompanion.quick.QuickAction.byDestination(link.destination)?.let { quick = app.truenascompanion.ui.quick.QuickRequest(it, link.arg) }
+            else -> nav.openTarget(container, app.truenascompanion.notify.AlertTarget.decode(link.destination, link.arg))
         }
     }
     val entry by nav.currentBackStackEntryAsState()
@@ -176,6 +183,8 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
         },
     ) { padding ->
         app.truenascompanion.ui.auth.AuthPromptHost()
+        app.truenascompanion.ui.quick.QuickActionHost(container, quick, onDone = { quick = null },
+            onOpenShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) })
         app.truenascompanion.ui.connection.ConnectionOverlayHost(
             container = container,
             hasSavedServers = list.isNotEmpty(),
@@ -270,14 +279,18 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 pushed(Routes.LOGS, "name", "container?") { a ->
                     LogsScreen(a.getValue("name"), a["container"], onBack = { nav.popBackStack() })
                 }
-                composable(Tab.ALERTS.route) { AlertsScreen() }
+                composable(Tab.ALERTS.route) { AlertsScreen(onOpenTarget = { nav.openTarget(container, it) }) }
                 composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onOverview = { nav.navigate(Routes.OVERVIEW) }, onJobs = { nav.navigate(Routes.JOBS) },
                     onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) },
-                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) }) }
+                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) },
+                    onCertificates = { nav.navigate(Routes.certificates()) }) }
                 composable(Routes.JOBS) { JobsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.ACCOUNTS) { app.truenascompanion.ui.accounts.AccountsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.REPORTS) { app.truenascompanion.ui.reports.ReportsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.AUDIT) { app.truenascompanion.ui.audit.AuditScreen(onBack = { nav.popBackStack() }) }
+                pushed(Routes.CERTIFICATES, "highlight?") { a ->
+                    app.truenascompanion.ui.certs.CertificatesScreen(onBack = { nav.popBackStack() }, onReviewServer = { id -> nav.navigate(Routes.edit(id)) }, highlight = a["highlight"])
+                }
                 composable(
                     Routes.SERVERS,
                     enterTransition = { slideInHorizontally { it } + fadeIn() },
@@ -323,6 +336,21 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
             }
         }
         }
+    }
+}
+
+/** Opens the screen an alert is about (1.2.0); Storage segments: 0 pools, 1 disks, 2 datasets. */
+private fun NavHostController.openTarget(container: app.truenascompanion.AppContainer, t: app.truenascompanion.notify.AlertTarget) {
+    when (t) {
+        is app.truenascompanion.notify.AlertTarget.Pool -> { container.storageTabRequest.value = 0; switchTab(Tab.STORAGE.route) }
+        is app.truenascompanion.notify.AlertTarget.Disk -> { container.storageTabRequest.value = 1; switchTab(Tab.STORAGE.route) }
+        is app.truenascompanion.notify.AlertTarget.Dataset -> { container.storageTabRequest.value = 2; switchTab(Tab.STORAGE.route) }
+        is app.truenascompanion.notify.AlertTarget.Snapshots -> { switchTab(Tab.STORAGE.route); navigate(Routes.snapshots(t.dataset)) }
+        is app.truenascompanion.notify.AlertTarget.App -> { switchTab(Tab.APPS.route); navigate(Routes.app(t.name)) }
+        app.truenascompanion.notify.AlertTarget.Apps -> switchTab(Tab.APPS.route)
+        app.truenascompanion.notify.AlertTarget.Update -> switchTab(Tab.SYSTEM.route)
+        is app.truenascompanion.notify.AlertTarget.Certificate -> { switchTab(Tab.SYSTEM.route); navigate(Routes.certificates(t.name)) }
+        app.truenascompanion.notify.AlertTarget.Alerts -> switchTab(Tab.ALERTS.route)
     }
 }
 

@@ -25,6 +25,22 @@ object DeepLink {
     const val DEST_ALERTS = "alerts"
     const val DEST_SIGN_IN = "sign_in"
     const val DEST_SETTINGS = "notification_settings"
+    /** 1.2.0: optional argument of the destination (pool, disk, app, dataset or certificate name). */
+    const val EXTRA_ARG = "app.truenascompanion.extra.ARG"
+    // Alert deep links (1.2.0)
+    const val DEST_POOL = "pool"
+    const val DEST_DISK = "disk"
+    const val DEST_APP = "app"
+    const val DEST_APPS = "apps"
+    const val DEST_DATASET = "dataset"
+    const val DEST_SNAPSHOTS = "snapshots"
+    const val DEST_UPDATE = "update"
+    const val DEST_CERTIFICATE = "certificate"
+    // Quick actions (1.2.0): app shortcuts and the Quick Settings action tile
+    const val DEST_SHELL = "quick_shell"
+    const val DEST_RESTART_APP = "quick_restart_app"
+    const val DEST_SCRUB_POOL = "quick_scrub_pool"
+    const val DEST_DASHBOARD = "dashboard"
 }
 
 /** Builds and posts all app notifications (alerts, sign-in reminder, test, instant-mode service). */
@@ -46,12 +62,22 @@ class AlertNotifier(private val context: Context) {
         const val ID_SIGN_IN = 3
         const val ID_CLEARED = 4
         const val ID_TEST = 5
+        const val ID_CERT = 6
         const val ID_SERVICE = 1001
 
         /** Individual notifications per check; the rest are only listed in the group summary. */
         const val MAX_INDIVIDUAL = 8
 
         val BRAND_COLOR = 0xFF2F5BEA.toInt()
+
+        // Notification extras describing the alerts a notification covers (grouping / withdrawal, 1.2.0).
+        private const val X_SERVER_NAME = "app.truenascompanion.server_name"
+        private const val X_TITLE = "app.truenascompanion.title"
+        private const val X_KLASS = "app.truenascompanion.klass"
+        private const val X_LEVEL = "app.truenascompanion.level"
+        private const val X_UUIDS = "app.truenascompanion.uuids"
+        private const val X_TEXTS = "app.truenascompanion.texts"
+        private const val X_LEVELS = "app.truenascompanion.levels"
 
         fun alertTag(serverId: String, uuid: String) = "alert/$serverId/$uuid"
         fun groupKey(serverId: String) = "app.truenascompanion.alerts.$serverId"
@@ -95,22 +121,36 @@ class AlertNotifier(private val context: Context) {
 
     // --- intents ---
 
-    fun openAppIntent(serverId: String?, destination: String, requestKey: String): PendingIntent {
+    fun openAppIntent(serverId: String?, destination: String, requestKey: String, arg: String? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(DeepLink.EXTRA_DESTINATION, destination)
             serverId?.let { putExtra(DeepLink.EXTRA_SERVER_ID, it) }
+            arg?.let { putExtra(DeepLink.EXTRA_ARG, it) }
         }
-        return PendingIntent.getActivity(context, requestKey.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return PendingIntent.getActivity(context, "$requestKey/$destination".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
-    private fun dismissIntent(serverId: String, uuid: String): PendingIntent {
+    private fun dismissIntent(serverId: String, uuids: List<String>): PendingIntent {
         val intent = Intent(context, AlertActionReceiver::class.java).apply {
             action = AlertActionReceiver.ACTION_DISMISS
             putExtra(AlertActionReceiver.EXTRA_SERVER_ID, serverId)
-            putExtra(AlertActionReceiver.EXTRA_UUID, uuid)
+            putExtra(AlertActionReceiver.EXTRA_UUID, uuids.first())
+            putExtra(AlertActionReceiver.EXTRA_UUIDS, uuids.toTypedArray())
         }
-        return PendingIntent.getBroadcast(context, "dismiss/$serverId/$uuid".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return PendingIntent.getBroadcast(context, "dismiss/$serverId/${uuids.joinToString(",")}".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
+    /** Opens the small snooze picker (1 h / 8 h / 1 day / 1 week); snoozes are kept on the phone. */
+    private fun snoozeIntent(serverId: String, serverName: String, uuids: List<String>, tag: String): PendingIntent {
+        val intent = Intent(context, SnoozeActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+            putExtra(SnoozeActivity.EXTRA_SERVER_ID, serverId)
+            putExtra(SnoozeActivity.EXTRA_UUIDS, uuids.toTypedArray())
+            putExtra(SnoozeActivity.EXTRA_TAG, tag)
+            putExtra(SnoozeActivity.EXTRA_SERVER_NAME, serverName)
+        }
+        return PendingIntent.getActivity(context, "snooze/$tag".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
     private fun base(channel: String) = NotificationCompat.Builder(context, channel)
@@ -120,37 +160,126 @@ class AlertNotifier(private val context: Context) {
 
     // --- alerts ---
 
-    fun buildAlert(server: ServerConfig, alert: AlertItem, title: String, silent: Boolean = false): NotificationCompat.Builder {
-        val level = AlertLevel.parse(alert.level)
-        val tag = alertTag(server.id, alert.uuid)
-        val open = openAppIntent(server.id, DeepLink.DEST_ALERTS, tag)
-        return base(channelFor(level))
-            .setContentTitle(title)
-            .setContentText(alert.text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(alert.text))
-            .setSubText("${server.name} · ${level.label}")
+    fun buildAlert(server: ServerConfig, alert: AlertItem, title: String, silent: Boolean = false): NotificationCompat.Builder =
+        buildGroup(server.id, server.name, listOf(alert), title, alertTag(server.id, alert.uuid), silent)
+
+    /**
+     * One notification for [items] of the same alert class (1.2.0): a single alert, or repeated ones with a count.
+     * The alert data is kept in the notification extras so later checks can merge into it or withdraw single alerts.
+     */
+    fun buildGroup(serverId: String, serverName: String, items: List<AlertItem>, title: String, tag: String, silent: Boolean = false): NotificationCompat.Builder {
+        val top = items.maxBy { AlertLevel.parse(it.level).rank }
+        val level = AlertLevel.parse(top.level)
+        val target = groupTarget(items)
+        val open = openAppIntent(serverId, target.destination, tag, target.arg)
+        val count = items.size
+        val uuids = items.map { it.uuid }
+        val b = base(channelFor(level))
+            .setContentTitle(if (count > 1) "$title · $count" else title)
+            .setContentText(if (count > 1) items.first().text else top.text)
+            .setSubText("$serverName · ${level.label}")
             .setCategory(if (level.group == SeverityGroup.CRITICAL) NotificationCompat.CATEGORY_ERROR else NotificationCompat.CATEGORY_STATUS)
             .setPriority(when (level.group) {
                 SeverityGroup.CRITICAL -> NotificationCompat.PRIORITY_HIGH
                 SeverityGroup.WARNING -> NotificationCompat.PRIORITY_DEFAULT
                 SeverityGroup.INFO -> NotificationCompat.PRIORITY_LOW
             })
-            .apply { alert.datetimeMillis?.let { setWhen(it); setShowWhen(true) } }
-            .setGroup(groupKey(server.id))
+            .setGroup(groupKey(serverId))
             .setContentIntent(open)
             .setSilent(silent)
-            .addAction(0, "Dismiss", dismissIntent(server.id, alert.uuid))
+            .setOnlyAlertOnce(true)
+            .setNumber(count)
+            .addAction(0, if (count > 1) "Dismiss all" else "Dismiss", dismissIntent(serverId, uuids))
+            .addAction(0, "Snooze", snoozeIntent(serverId, serverName, uuids, tag))
             .addAction(0, "Open", open)
+            .addExtras(android.os.Bundle().apply {
+                putString(X_SERVER_NAME, serverName)
+                putString(X_TITLE, title)
+                putString(X_KLASS, top.klass)
+                putString(X_LEVEL, top.level)
+                putStringArray(X_UUIDS, uuids.toTypedArray())
+                putStringArray(X_TEXTS, items.map { it.text }.toTypedArray())
+                putStringArray(X_LEVELS, items.map { it.level }.toTypedArray())
+            })
+        if (count > 1) {
+            val style = NotificationCompat.InboxStyle().setBigContentTitle("$title · $count").setSummaryText(serverName)
+            items.take(6).forEach { style.addLine(it.text) }
+            if (count > 6) style.addLine("+${count - 6} more")
+            b.setStyle(style)
+        } else {
+            b.setStyle(NotificationCompat.BigTextStyle().bigText(top.text))
+            top.datetimeMillis?.let { b.setWhen(it); b.setShowWhen(true) }
+        }
+        return b
+    }
+
+    /** Same target for every alert in the group, or the common screen (disks, apps…), else Alerts. */
+    private fun groupTarget(items: List<AlertItem>): AlertTarget {
+        val targets = items.map { AlertTarget.of(it) }.distinct()
+        return when {
+            targets.size == 1 -> targets[0]
+            targets.all { it is AlertTarget.Disk } -> AlertTarget.Disk(null)
+            targets.all { it is AlertTarget.App || it is AlertTarget.Apps } -> AlertTarget.Apps
+            targets.all { it is AlertTarget.Dataset || it is AlertTarget.Snapshots } -> AlertTarget.Dataset(null)
+            targets.all { it is AlertTarget.Certificate } -> AlertTarget.Certificate(null)
+            else -> AlertTarget.Alerts
+        }
+    }
+
+    private data class ShownGroup(val tag: String, val title: String, val serverName: String, val klass: String?, val items: List<AlertItem>)
+
+    /** Alert notifications of [serverId] currently in the shade, with the alerts they cover. */
+    private fun shown(serverId: String): List<ShownGroup> {
+        val prefix = "alert/$serverId/"
+        return runCatching { nm.activeNotifications }.getOrDefault(emptyList()).mapNotNull { sbn ->
+            val tag = sbn.tag ?: return@mapNotNull null
+            if (!tag.startsWith(prefix) || sbn.id != ID_ALERT) return@mapNotNull null
+            val x = sbn.notification.extras
+            val uuids = x.getStringArray(X_UUIDS) ?: return@mapNotNull null
+            val texts = x.getStringArray(X_TEXTS) ?: emptyArray()
+            val levels = x.getStringArray(X_LEVELS) ?: emptyArray()
+            val klass = x.getString(X_KLASS)
+            ShownGroup(
+                tag, x.getString(X_TITLE) ?: "TrueNAS alert", x.getString(X_SERVER_NAME) ?: "TrueNAS", klass,
+                uuids.mapIndexed { i, u -> AlertItem(u, levels.getOrNull(i) ?: "WARNING", texts.getOrNull(i) ?: "", klass, null, false, false) },
+            )
+        }
     }
 
     @SuppressLint("MissingPermission") // canPost() checks POST_NOTIFICATIONS
     fun postAlerts(server: ServerConfig, alerts: List<AlertItem>, titles: Map<String, String>) {
         if (alerts.isEmpty() || !canPost()) return
-        alerts.take(MAX_INDIVIDUAL).forEachIndexed { i, a ->
+        val shown = shown(server.id)
+        val known = shown.flatMap { it.items }.associateBy { it.uuid } + alerts.associateBy { it.uuid }
+        val posts = AlertGrouping.plan(alerts.map { it.uuid to it.klass }, shown.map { AlertGrouping.Shown(it.tag, it.klass, it.items.map { i -> i.uuid }) })
+            .sortedByDescending { p -> p.uuids.maxOf { AlertLevel.parse(known[it]?.level).rank } }
+        posts.take(MAX_INDIVIDUAL).forEachIndexed { i, p ->
+            val items = p.uuids.mapNotNull { known[it] }
+            if (items.isEmpty()) return@forEachIndexed
+            val tag = if (p.grouped) AlertGrouping.groupTag(server.id, p.klass!!) else alertTag(server.id, items[0].uuid)
+            p.replaces.filter { it != tag }.forEach { nm.cancel(it, ID_ALERT) }
+            val title = items.firstNotNullOfOrNull { titles[it.uuid] } ?: shown.firstOrNull { it.klass == p.klass }?.title ?: "TrueNAS alert"
             // Only the first (most severe) one makes a sound; the rest arrive quietly.
-            nm.notify(alertTag(server.id, a.uuid), ID_ALERT, buildAlert(server, a, titles.getValue(a.uuid), silent = i > 0).build())
+            nm.notify(tag, ID_ALERT, buildGroup(server.id, server.name, items, title, tag, silent = i > 0).build())
         }
-        updateSummary(server, extra = alerts.drop(MAX_INDIVIDUAL).map { titles.getValue(it.uuid) })
+        updateSummary(server, extra = posts.drop(MAX_INDIVIDUAL).mapNotNull { p -> p.uuids.firstNotNullOfOrNull { titles[it] } })
+    }
+
+    /** Certificate expiry warning (1.2.0); opens the Certificates screen. */
+    @SuppressLint("MissingPermission")
+    fun postCertificate(server: ServerConfig, w: CertExpiry.Warning) {
+        if (!canPost()) return
+        val (title, text) = CertExpiry.text(w)
+        val tag = "cert/${server.id}/${w.cert.id}"
+        val n = base(if (w.expired) CH_CRITICAL else CH_WARNING)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setSubText("${server.name} · Certificates")
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(openAppIntent(server.id, DeepLink.DEST_CERTIFICATE, tag, w.cert.name))
+            .build()
+        nm.notify(tag, ID_CERT, n)
     }
 
     @SuppressLint("MissingPermission")
@@ -168,23 +297,37 @@ class AlertNotifier(private val context: Context) {
         nm.notify("cleared/${server.id}", ID_CLEARED, n)
     }
 
-    /** Removes notifications for alerts that are gone or were dismissed. */
+    /** Removes notifications for alerts that are gone, dismissed or snoozed; grouped ones shrink (or go away). */
     fun withdraw(server: ServerConfig, uuids: Collection<String>) {
         if (uuids.isEmpty()) return
-        uuids.forEach { nm.cancel(alertTag(server.id, it), ID_ALERT) }
+        removeFromShade(server.id, uuids.toSet())
         updateSummary(server)
     }
 
-    fun cancelAlert(serverId: String, uuid: String) = nm.cancel(alertTag(serverId, uuid), ID_ALERT)
+    /** Dismiss action / snooze: takes the alerts out of their notifications without needing the server config. */
+    @SuppressLint("MissingPermission")
+    fun removeFromShade(serverId: String, uuids: Set<String>) {
+        uuids.forEach { nm.cancel(alertTag(serverId, it), ID_ALERT) }
+        shown(serverId).filter { g -> g.items.any { it.uuid in uuids } }.forEach { g ->
+            val rest = g.items.filter { it.uuid !in uuids }
+            if (rest.isEmpty() || !canPost()) nm.cancel(g.tag, ID_ALERT)
+            else nm.notify(g.tag, ID_ALERT, buildGroup(serverId, g.serverName, rest, g.title, g.tag, silent = true).build())
+        }
+    }
+
+    fun cancelAlert(serverId: String, uuid: String) = removeFromShade(serverId, setOf(uuid))
 
     /** InboxStyle summary so several alerts collapse into one expandable group. */
     @SuppressLint("MissingPermission")
-    fun updateSummary(server: ServerConfig, extra: List<String> = emptyList()) {
-        val prefix = "alert/${server.id}/"
+    fun updateSummary(server: ServerConfig, extra: List<String> = emptyList()) = updateSummary(server.id, server.name, extra)
+
+    @SuppressLint("MissingPermission")
+    fun updateSummary(serverId: String, serverName: String, extra: List<String> = emptyList()) {
+        val prefix = "alert/$serverId/"
         val active = runCatching { nm.activeNotifications }.getOrDefault(emptyList())
             .filter { it.tag?.startsWith(prefix) == true }
         val lines = active.mapNotNull { it.notification.extras.getCharSequence(NotificationCompat.EXTRA_TITLE)?.toString() } + extra
-        val summaryTag = "summary/${server.id}"
+        val summaryTag = "summary/$serverId"
         if (lines.size < 2 || !canPost()) {
             nm.cancel(summaryTag, ID_SUMMARY)
             return
@@ -194,18 +337,18 @@ class AlertNotifier(private val context: Context) {
         }
         val style = NotificationCompat.InboxStyle()
             .setBigContentTitle("${lines.size} TrueNAS alerts")
-            .setSummaryText(server.name)
+            .setSummaryText(serverName)
         lines.take(6).forEach { style.addLine(it) }
         if (lines.size > 6) style.addLine("+${lines.size - 6} more")
         val n = base(channel)
             .setContentTitle("${lines.size} TrueNAS alerts")
             .setContentText(lines.joinToString(", "))
-            .setSubText(server.name)
+            .setSubText(serverName)
             .setStyle(style)
-            .setGroup(groupKey(server.id))
+            .setGroup(groupKey(serverId))
             .setGroupSummary(true)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-            .setContentIntent(openAppIntent(server.id, DeepLink.DEST_ALERTS, summaryTag))
+            .setContentIntent(openAppIntent(serverId, DeepLink.DEST_ALERTS, summaryTag))
             .build()
         nm.notify(summaryTag, ID_SUMMARY, n)
     }

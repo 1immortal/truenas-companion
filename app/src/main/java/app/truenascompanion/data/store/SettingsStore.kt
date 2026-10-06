@@ -62,12 +62,16 @@ data class NotificationPrefs(
     val quietEnd: Int = 7 * 60,
     /** The "get alerts on your phone" card on the Alerts screen was answered. */
     val promptDismissed: Boolean = false,
+    /** 1.2.0: warn [certWarnDays] before a certificate expires (checked at most twice a day inside the alert check). */
+    val certWarnEnabled: Boolean = true,
+    val certWarnDays: Int = 14,
 ) {
     val filter: AlertFilter get() = AlertFilter(minLevel, notifyOnClear, QuietHours(quietEnabled, quietStart, quietEnd))
     fun isEnabled(serverId: String?) = serverId != null && serverId in enabledServers
 
     companion object {
         val INTERVALS = listOf(15, 30, 60)
+        val CERT_WARN_DAYS = listOf(7, 14, 30)
     }
 }
 
@@ -96,6 +100,8 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         val UPDATE_NOTIFIED = stringPreferencesKey("update_notified_version")
         val UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
+        fun snoozes(id: String) = stringPreferencesKey("alert_snooze_$id")
+        fun certCheck(id: String) = stringPreferencesKey("cert_check_$id")
         fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
         fun wireGuard(id: String) = stringPreferencesKey("wireguard_conf_$id")
         fun vpnWorked(id: String) = booleanPreferencesKey("vpn_worked_$id")
@@ -345,6 +351,32 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
 
     suspend fun clearSeenAlerts(serverId: String) {
         store.edit { it.remove(Keys.seenAlerts(serverId)) }
+    }
+
+    // --- 1.2.0: snoozed alerts and certificate expiry checks ---
+
+    /** Alert uuid → snoozed until (epoch ms), stored on the phone only. */
+    suspend fun snoozes(serverId: String): Map<String, Long> =
+        store.data.first()[Keys.snoozes(serverId)]?.let { runCatching { json.decodeFromString<Map<String, Long>>(it) }.getOrNull() } ?: emptyMap()
+
+    fun snoozesFlow(serverId: String): Flow<Map<String, Long>> = store.data.map { p ->
+        p[Keys.snoozes(serverId)]?.let { runCatching { json.decodeFromString<Map<String, Long>>(it) }.getOrNull() } ?: emptyMap()
+    }.distinctUntilChanged()
+
+    suspend fun updateSnoozes(serverId: String, transform: (Map<String, Long>) -> Map<String, Long>) {
+        store.edit { p ->
+            val cur = p[Keys.snoozes(serverId)]?.let { runCatching { json.decodeFromString<Map<String, Long>>(it) }.getOrNull() } ?: emptyMap()
+            val next = transform(cur)
+            if (next.isEmpty()) p.remove(Keys.snoozes(serverId)) else p[Keys.snoozes(serverId)] = json.encodeToString(next)
+        }
+    }
+
+    suspend fun certCheck(serverId: String): app.truenascompanion.notify.CertCheckState =
+        store.data.first()[Keys.certCheck(serverId)]?.let { runCatching { json.decodeFromString<app.truenascompanion.notify.CertCheckState>(it) }.getOrNull() }
+            ?: app.truenascompanion.notify.CertCheckState()
+
+    suspend fun saveCertCheck(serverId: String, state: app.truenascompanion.notify.CertCheckState) {
+        store.edit { it[Keys.certCheck(serverId)] = json.encodeToString(state) }
     }
 
     /** Returns true if the flag changed (used so "sign in to keep receiving alerts" is posted only once). */

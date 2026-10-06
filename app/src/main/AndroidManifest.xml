@@ -45,7 +45,41 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- App-icon shortcuts (1.2.0) -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- Snooze picker behind the alert notification's "Snooze" action (1.2.0) -->
+        <activity
+            android:name=".notify.SnoozeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TrueNASCompanion.Translucent" />
+
+        <!-- Quick Settings tiles (1.2.0) -->
+        <service
+            android:name=".quick.StatusTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_status"
+            android:label="@string/tile_status_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="false" />
+        </service>
+        <service
+            android:name=".quick.ActionTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_alerts"
+            android:label="@string/tile_action_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".notify.InstantAlertService"

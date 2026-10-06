@@ -217,6 +217,13 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth(),
             )
+            AnimatedVisibility(ServerEditViewModel.reviewStillRequired(s)) {
+                InfoBanner(
+                    "The web UI certificate was changed. Tap \"${if (s.authMethod == AuthMethod.PASSWORD) "Test sign-in" else "Test connection"}\" to review the new certificate and trust it, then save. " +
+                        "TrueNAS switches back to the old certificate if the app doesn't reconnect within 10 minutes.",
+                    health = Health.WARNING,
+                )
+            }
             AnimatedVisibility(s.isHttp) {
                 InfoBanner(
                     if (s.authMethod == AuthMethod.API_KEY)

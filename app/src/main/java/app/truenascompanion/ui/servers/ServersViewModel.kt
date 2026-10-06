@@ -71,6 +71,8 @@ data class ServerEditState(
     val detecting: Boolean = false,
     val detected: LocalDetector.Found? = null,
     val pendingLocalCertificate: CertificateInfo? = null,
+    /** 1.2.0: the web UI certificate was changed from the app; the next connection must show the trust step. */
+    val certReviewRequired: Boolean = false,
 ) {
     val normalizedLocalUrl: String? get() = localUrl.takeIf { it.isNotBlank() }?.let { UrlUtils.normalize(it) }
     val localIsHttp: Boolean get() = normalizedLocalUrl?.startsWith("http://") == true
@@ -116,6 +118,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
                 pinnedCert = s.pinnedCertSha256, hasSavedKey = c.settings.apiKey(s.id) != null,
                 hasSavedPassword = hasPw, rememberPassword = hasPw,
                 localUrl = s.localUrl.orEmpty(), localPinnedCert = s.localPinnedCertSha256, routeMode = s.routeMode,
+                certReviewRequired = s.certReviewRequired,
             )
         }
     }
@@ -140,6 +143,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         localUrl = s.normalizedLocalUrl,
         localPinnedCertSha256 = s.localPinnedCert.takeIf { s.normalizedLocalUrl != null },
         routeMode = s.routeMode,
+        certReviewRequired = reviewStillRequired(s),
     )
 
     // --- home network ---
@@ -185,7 +189,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         _state.update { it.copy(localStatus = LocalStatus.Checking) }
         viewModelScope.launch {
             val remote = buildConfig(s, remoteUrl)
-            val localCfg = remote.copy(url = local, pinnedCertSha256 = s.localPinnedCert)
+            val localCfg = remote.copy(url = local, pinnedCertSha256 = s.localPinnedCert, certReviewRequired = s.certReviewRequired && s.localPinnedCert == null)
             try {
                 val same = LocalCheck.check(localCfg, remote)
                 c.routes.invalidate(remote.id)
@@ -304,6 +308,9 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
         val cert = _state.value.pendingCertificate ?: return
         _state.update { it.copy(pinnedCert = cert.sha256, pendingCertificate = null) }
         test()
+        // After a web UI certificate change the local address needs its new certificate reviewed too.
+        val s = _state.value
+        if (s.certReviewRequired && s.normalizedLocalUrl?.startsWith("https://") == true && s.localPinnedCert == null) checkLocal()
     }
 
     fun dismissCertificate() = _state.update { it.copy(pendingCertificate = null) }
@@ -321,6 +328,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
                 built.copy(
                     tailscaleUrl = it.tailscaleUrl, tailscalePinnedCertSha256 = it.tailscalePinnedCertSha256,
                     vpnMode = it.vpnMode, wireGuardConfigured = it.wireGuardConfigured,
+                    uiCertCheckinPending = it.uiCertCheckinPending,
                 )
             } ?: built
             c.settings.saveServer(config, if (s.authMethod == AuthMethod.API_KEY) s.apiKey.trim().ifBlank { null } else null)
@@ -348,5 +356,10 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
 
     override fun onCleared() {
         pendingOtp?.cancel()
+    }
+
+    companion object {
+        /** The review stays required until the user trusted the (new) certificate of the main address. */
+        fun reviewStillRequired(s: ServerEditState): Boolean = s.certReviewRequired && s.pinnedCert == null && s.normalizedUrl?.startsWith("https://") == true
     }
 }
