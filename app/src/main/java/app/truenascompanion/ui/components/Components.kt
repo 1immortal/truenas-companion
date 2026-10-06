@@ -389,16 +389,30 @@ fun ConfirmDialog(
     icon: ImageVector? = null,
     /** Ask for fingerprint / face again first when "Confirm dangerous actions" is on (default: destructive actions). */
     requireAuth: Boolean = destructive,
+    /** Security actions (accounts, certificates, quick actions): fingerprint / face whenever the app lock is on. */
+    strongAuth: Boolean = false,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /** Optional extra controls under the text (e.g. "also delete the group" checkbox). */
+    extra: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val guard = app.truenascompanion.ui.lock.LocalDangerGuard.current
-    val confirm: () -> Unit = if (requireAuth) ({ guard.guard(title, onConfirm) }) else onConfirm
+    val lockGuard = app.truenascompanion.ui.lock.LocalLockGuard.current
+    val confirm: () -> Unit = when {
+        strongAuth -> ({ lockGuard.guard(title, onConfirm) })
+        requireAuth -> ({ guard.guard(title, onConfirm) })
+        else -> onConfirm
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = icon?.let { { Icon(it, null) } },
         title = { Text(title) },
-        text = { Text(text, modifier = Modifier.verticalScroll(rememberScrollState())) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(text)
+                extra?.invoke(this)
+            }
+        },
         confirmButton = {
             if (destructive) {
                 Button(

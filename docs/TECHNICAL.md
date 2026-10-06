@@ -12,13 +12,35 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - Shimmer skeletons while loading, friendly empty and error states, pull-to-refresh everywhere
 
 **Customizable dashboard**
-- Built from blocks: *System, CPU, Memory, Temperature, Network, Storage pools, Apps, Alerts*
+- Built from blocks: *System, CPU, Memory, Temperature, Network, Storage pools, Apps, Alerts, Data protection, Reports*
 - **Edit dashboard** mode (tune icon): long-press and drag to **reorder**, tap the eye to **show/hide** a block, and use the arrows to make it **half or full width** in a 2-column grid
 - The layout is saved **per server** (DataStore). **Reset to default layout** is in edit mode
 - Live CPU % (with per-thread bars in the full-width card), CPU temperature, and network throughput (auto units, e.g. `7.2 KB/s`) over the WebSocket API (`reporting.realtime`)
 - Memory is split like the TrueNAS web UI: **Services / ZFS cache (ARC) / Free**. ARC is not counted as "used", because ZFS gives it back when services need RAM
 - CPU note: TrueNAS reports the aggregate CPU usage as a whole percent, so a nearly idle machine reads 0. The app then shows the per-thread average instead, and `<1%` when it is below 1
-- Tap the Pools, Apps, Alerts or Temperature blocks to open the matching tab
+- Tap the Pools, Apps, Alerts or Temperature blocks to open the matching tab; CPU, Memory, Network and Reports open the Reports screen (1.1.0)
+
+**Users and groups (new in 1.1):** System › Users & groups.
+- Lists local accounts from `user.query` / `group.query` with the filter `[["local","=",true]]` (directory-service accounts can't be edited through TrueNAS). Built-in / immutable accounts (`builtin` or `immutable`) are hidden behind **Show built-in** and are read-only.
+- **Create** (`user.create`): username, full name, email, password (or *Disable password*, which sends `password: null` like the web UI), primary group (`group_create: true` or an existing `group` id), additional `groups` (API ids, not GIDs), `home` + `home_create`, `shell` (choices from `user.shell_choices`), `sshpubkey`, `smb`, `ssh_password_enabled`, `locked`.
+- **Edit** (`user.update(id, patch)`): only changed fields are sent. A new home directory is created first with a separate `{home_create: true, home}` call, as in the web UI's user form. **Lock/unlock** sends `{locked}`; **Reset password** sends `{password}` (the middleware checks password history/complexity). SMB users can't have password login disabled; the middleware also refuses to lock the last full admin. Its validation messages are shown as-is.
+- **Delete** (`user.delete(id, {delete_group})`), **groups** (`group.create {name, gid?, smb, users}` → id, `group.update(id, {name, smb, users})`, `group.delete(id, {delete_users})`).
+- Every write asks for confirmation and, when the app lock is on, your fingerprint (security action, independent of *Confirm dangerous actions*).
+
+**Reports (new in 1.1):** System › Reports, or tap the CPU / Memory / Network / Reports dashboard cards.
+- Uses the same calls as the web UI's Reports page on 25.10: `reporting.netdata_graphs` (available graphs + identifiers) and **one** `reporting.netdata_get_data([{name, identifier}…], {start, end, aggregate: true})` per refresh. Graph names: `cpu`, `cputemp`, `memory` (*available*, bytes), `arcsize`, `interface` (received/sent, kilobits/s), `disk` (read/write, KiB/s), `disktemp` (°C, one result per disk, merged into one chart), `load`.
+- Ranges **1h / 1d / 1w / 1m** (`end = now`, `start = end - range`). Long ranges are averaged down to ≤360 points on the phone; gaps (`null`) stay gaps.
+- Charts are drawn with Compose Canvas (no chart library): smooth cubic lines, gradient fill, glow, avg/max legend from the server's `aggregations`. **Pinch** to zoom around your fingers, **two-finger drag** to pan, **touch / slide** for a tooltip with every series' value, **double-tap** (or the reset button) to zoom out. Vertical swipes still scroll the page.
+- Pick the network interface or disk with chips. Charts the NAS doesn't have (e.g. no CPU temperature sensor) are left out.
+
+**Audit log (new in 1.1):** System › Audit log.
+- `audit.query({services: [MIDDLEWARE|SMB|SUDO], "query-filters", "query-options": {limit: 50, offset, order_by: ["-message_timestamp"]}})`, plus `{"count": true}` for the total, like the web UI's System › Audit page. Infinite scroll loads 50 more at a time.
+- Filters: service, time range (`message_timestamp >`), event (`=`), username and address (regex `~`, `*` is a wildcard). The search box works like the web UI's basic search: an event name searches by event, anything else by username.
+- Quick chips: **Authentication** (`event = AUTHENTICATION`), **Failed** (`success = false`), **Method calls**, and **REST logins** (`event = AUTHENTICATION` + `service_data.protocol = LEGACY_REST`, exactly what TrueNAS's *Deprecated REST API usage* alert counts). Combine it with an address to find the script or device that still uses REST.
+- Tap an entry for a sheet with the details and the full JSON record (copyable).
+- **Export** builds a CSV on the phone from the current filter (up to 5,000 newest rows, 500 per request) and opens the share sheet. `audit.export` isn't used because it needs an HTTP download. Exports are written to the app cache and cleaned up after a day.
+
+**Legacy REST fallback removed (1.1).** The app now only speaks the JSON-RPC WebSocket API.
 
 **Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage, compression, comments and encryption/lock state (system datasets are hidden by default).
 
@@ -233,7 +255,7 @@ The key has the same permissions as the user it belongs to. For read-mostly use,
 |---|---|---|
 | **25.04 "Fangtooth", 25.10 "Goldeye"** | JSON-RPC 2.0 WebSocket at `wss://HOST/api/current`, `auth.login_with_api_key` | Main target. Live stats included |
 | **26 / 27 (preview)** | Same endpoint. The app falls back to `auth.login_ex` with `API_KEY_PLAIN` when `auth.login_with_api_key` is gone | Set the key owner's username under *Advanced options* (default `truenas_admin`) |
-| 24.10 "Electric Eel" and older SCALE | Not supported | The app shows "needs TrueNAS 25.04 or newer". Since 1.0.4 the app never uses the legacy REST API v2.0 (`/api/v2.0`): TrueNAS 25.04+ logs every credentialed REST request as a `LEGACY_REST` authentication (the "Deprecated REST API usage" alert) and 26.04 removes it |
+| 24.10 "Electric Eel" and older SCALE | Not supported | The app shows "needs TrueNAS 25.04 or newer". Since 1.1.0 the app never uses the legacy REST API v2.0 (`/api/v2.0`): TrueNAS 25.04+ logs every credentialed REST request as a `LEGACY_REST` authentication (the "Deprecated REST API usage" alert) and 26.04 removes it |
 
 Methods used on the WebSocket API: `auth.login_ex` / `auth.login_ex_continue` / `auth.generate_token` (password sign-in), `system.info`, `core.subscribe("reporting.realtime")`, `pool.query`, `disk.query`, `disk.temperatures`,
 `pool.dataset.query`, `app.query` / `app.start` / `app.stop` / `app.redeploy` (jobs, tracked with `core.get_jobs`), `alert.list` / `alert.dismiss`,
@@ -246,6 +268,7 @@ Methods used on the WebSocket API: `auth.login_ex` / `auth.login_ex_continue` / 
 `pool.snapshot.query` / `create` / `delete` / `rollback` / `clone` / `hold` / `release`, `pool.snapshottask.query` / `create` / `update` / `delete` / `run`, `pool.scrub.query` / `create` / `update` / `scrub`, `cronjob.query` / `create` / `update` / `delete` / `run`, `replication.query` / `update` / `run`, `cloudsync.query` / `update` / `sync`, `rsynctask.query` / `update` / `run` (0.5),
 `core.subscribe("app.stats:{interval}")`, `core.subscribe("app.container_log_follow:{app_name, container_id, tail_lines}")`, `GET /api/versions` (auto-detect) and `GET /api/boot_id` (same-NAS check).
 Method names and payloads for 0.4 / 0.4.1 / 0.5 / 0.7 were checked against the middleware source of TrueNAS 25.10.3.
+1.1 adds `user.query` / `create` / `update` / `delete` / `shell_choices`, `group.query` / `create` / `update` / `delete`, `reporting.netdata_graphs`, `reporting.netdata_get_data` and `audit.query`, checked against the `stable/goldeye` middleware (API `v25_10_2`) and the web UI source.
 The method names come from the official docs at <https://api.truenas.com/>.
 
 ## Installing APKs: details
@@ -297,11 +320,12 @@ DataStore, AndroidX Biometric, [wireguard-android](https://git.zx2c4.com/wiregua
 - Auto-detect, local/remote switching and the app lock were tested with unit tests and a fake server only. Real-network behaviour (VPN apps, captive portals, OEM biometric prompts) is unverified.
 - VM and container actions (0.4.1) were built from the 25.10.3 middleware source and tested against a fake server. **They are unverified on a real NAS.** In particular, whether the SPICE web display opens without first signing in to the TrueNAS web UI in the same browser is unverified. VM creation covers the common case (one disk, ISO, NIC, display); passthrough devices, CPU pinning and similar options are left to the web UI.
 - Data protection (0.5) was built from the 25.10.3 middleware source and tested with unit tests and a fake API. **It is unverified on a real NAS.** In particular: the one-off SMART test via a temporary cron job, toggling cloud sync tasks with a partial `cloudsync.update`, and rollback error messages when clones exist. Creating replication, cloud sync and rsync tasks is left to the web UI, and SMART test results can't be shown on 25.10 (see above).
+- Users & groups, Reports and the Audit log (1.1) were built from the 25.10 middleware and web UI sources and tested with unit tests (exact request payloads) and screenshot previews with example data. **They are unverified on a real NAS.** In particular, netdata identifiers and legends vary by hardware, and very large audit exports are capped at 5,000 rows.
 - The in-app installer (0.5) was tested with unit tests; the download → verify → system installer flow is **unverified on a real phone**.
 - The shell (0.7) follows TrueNAS 25.10.3 `apps/webshell_app.py` and the web UI's `auth.generate_token` / `/websocket/shell/` calls. Handshake, resize, binary frames and a real pty were tested with unit tests and `tools/webshell_stub.py`. **It has not been tried on a live NAS.** A program path can't take arguments. Incus and classic VMs have no in-app console. If a reverse proxy doesn't forward WebSockets, the shell says so instead of connecting.
 - The VPN features (0.6) were built from the wg-easy 15.4.0 and TrueNAS apps catalog sources and the wireguard-android library. The tunnel itself (bring-up, handshake, split tunnel, reference counting, fallback on a failed handshake) was tested on an Android 14 emulator against a real WireGuard peer (see [Building](BUILDING.md#testing-the-wireguard-tunnel)). **Unverified:** installing wg-easy and Tailscale on a real TrueNAS 25.10, wg-easy's setup API on a real install, the background tunnel for alert checks on a real Android 14+ phone, real Tailscale detection, and QR scanning on a real camera. If another VPN app takes over while the tunnel is up, the status may only update once a connection fails.
 - Shares (SMB/NFS) can't be managed yet.
-- The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used. REST is used instead.
+- The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used, and neither is the REST API (removed in 1.1.0), so those releases are not supported.
 - No home-screen widgets yet.
 - Phone alerts depend on Android letting the app run in the background. Aggressive OEM battery savers (some Xiaomi, Huawei and Samsung settings) can delay or stop checks unless the app is allowed to run in the background. Instant mode only reconnects after a reboot if Android lets it start a foreground service at boot.
 

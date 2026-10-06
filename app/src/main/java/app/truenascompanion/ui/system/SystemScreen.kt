@@ -7,6 +7,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Policy
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -163,7 +168,15 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SystemScreen(onServers: () -> Unit, onOverview: () -> Unit = {}, onJobs: () -> Unit = {}, onShell: () -> Unit = {}) {
+fun SystemScreen(
+    onServers: () -> Unit,
+    onOverview: () -> Unit = {},
+    onJobs: () -> Unit = {},
+    onShell: () -> Unit = {},
+    onAccounts: () -> Unit = {},
+    onReports: () -> Unit = {},
+    onAudit: () -> Unit = {},
+) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -236,6 +249,17 @@ fun SystemScreen(onServers: () -> Unit, onOverview: () -> Unit = {}, onJobs: () 
                 }
 
                 item { ShellEntry(enabled = connection is ConnectionState.Connected) { confirmShell = true } }
+
+                item { SectionTitle("Manage") }
+                item {
+                    ElevatedSection(contentPadding = 6.dp) {
+                        ManageRow(Icons.Rounded.Group, "Users & groups", "Accounts, passwords, SSH keys and groups", onAccounts)
+                        ManageDivider()
+                        ManageRow(Icons.Rounded.Insights, "Reports", "CPU, memory, network, disks and temperatures over time", onReports)
+                        ManageDivider()
+                        ManageRow(Icons.Rounded.Policy, "Audit log", "Who signed in and what changed", onAudit)
+                    }
+                }
 
                 item { SectionTitle("TrueNAS update") }
                 item { NasUpdateSection() }
@@ -455,3 +479,22 @@ fun ShellEntry(enabled: Boolean, onClick: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun ManageRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
+    ) {
+        IconBadge(icon, size = 36.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable
+private fun ManageDivider() = HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))

@@ -80,6 +80,9 @@ private object Routes {
     const val SERVERS = "servers"
     const val OVERVIEW = "servers_overview"
     const val JOBS = "jobs"
+    const val ACCOUNTS = "accounts"
+    const val REPORTS = "reports"
+    const val AUDIT = "audit"
     const val EDIT = "server_edit?id={id}"
     fun edit(id: String? = null) = if (id == null) "server_edit" else "server_edit?id=$id"
     const val CATALOG = "catalog"
@@ -195,6 +198,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                                 WidgetType.APPS -> nav.switchTab(Tab.APPS.route)
                                 WidgetType.ALERTS -> nav.switchTab(Tab.ALERTS.route)
                                 WidgetType.PROTECTION -> { container.storageTabRequest.value = 4; nav.switchTab(Tab.STORAGE.route) }
+                                WidgetType.REPORTS, WidgetType.CPU, WidgetType.MEMORY, WidgetType.NETWORK -> nav.navigate(Routes.REPORTS)
                                 else -> Unit
                             }
                         },
@@ -268,8 +272,12 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 }
                 composable(Tab.ALERTS.route) { AlertsScreen() }
                 composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onOverview = { nav.navigate(Routes.OVERVIEW) }, onJobs = { nav.navigate(Routes.JOBS) },
-                    onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) }) }
+                    onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) },
+                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) }) }
                 composable(Routes.JOBS) { JobsScreen(onBack = { nav.popBackStack() }) }
+                pushed(Routes.ACCOUNTS) { app.truenascompanion.ui.accounts.AccountsScreen(onBack = { nav.popBackStack() }) }
+                pushed(Routes.REPORTS) { app.truenascompanion.ui.reports.ReportsScreen(onBack = { nav.popBackStack() }) }
+                pushed(Routes.AUDIT) { app.truenascompanion.ui.audit.AuditScreen(onBack = { nav.popBackStack() }) }
                 composable(
                     Routes.SERVERS,
                     enterTransition = { slideInHorizontally { it } + fadeIn() },

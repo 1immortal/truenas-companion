@@ -17,6 +17,8 @@ enum class WidgetType(val title: String, val defaultSize: WidgetSize, val shortT
     APPS("Apps", WidgetSize.HALF),
     ALERTS("Alerts", WidgetSize.HALF),
     PROTECTION("Data protection", WidgetSize.FULL, "Protection"),
+    /** Shortcut to the Reports screen (1.1.0); shows the live CPU trend when it's already streaming. */
+    REPORTS("Reports", WidgetSize.HALF),
 }
 
 @Serializable

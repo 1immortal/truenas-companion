@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -90,6 +91,7 @@ fun WidgetType.icon(): ImageVector = when (this) {
     WidgetType.APPS -> Icons.Rounded.Apps
     WidgetType.ALERTS -> Icons.Rounded.NotificationsActive
     WidgetType.PROTECTION -> Icons.Rounded.Shield
+    WidgetType.REPORTS -> Icons.Rounded.Insights
 }
 
 fun tempHealth(c: Double?): Health = when {
@@ -197,6 +199,7 @@ fun DashboardWidget(
             WidgetType.APPS -> AppsWidget(full, data)
             WidgetType.ALERTS -> AlertsWidget(full, data)
             WidgetType.PROTECTION -> ProtectionWidget(full, data)
+            WidgetType.REPORTS -> ReportsWidget(full, live)
         }
     }
 }
@@ -493,4 +496,17 @@ private fun ProtectionWidget(full: Boolean, d: DashboardData) {
             })
         }
     }
+}
+
+@Composable
+private fun ReportsWidget(full: Boolean, live: LiveStats) {
+    WidgetHeader(WidgetType.REPORTS, full)
+    Spacer(Modifier.height(10.dp))
+    if (live.cpu.size >= 2) {
+        Sparkline(live.cpu, Modifier.fillMaxWidth().height(if (full) 52.dp else 40.dp), color = LocalBrandColors.current.accent, maxValue = cpuScale(live.cpu))
+        Spacer(Modifier.height(8.dp))
+    } else {
+        BigValue("1h – 1m")
+    }
+    Muted(if (full) "CPU, memory, network, disks and temperatures over time" else "History & charts")
 }

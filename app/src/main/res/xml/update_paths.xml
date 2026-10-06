@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Only the downloaded update APK is shared with the package installer. -->
+    <!-- The downloaded update APK is shared with the package installer. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Audit log CSV exports, shared through the system share sheet. -->
+    <cache-path name="exports" path="exports/" />
 </paths>
