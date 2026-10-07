@@ -106,6 +106,8 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun wireGuard(id: String) = stringPreferencesKey("wireguard_conf_$id")
         fun vpnWorked(id: String) = booleanPreferencesKey("vpn_worked_$id")
         fun vpnTipDismissed(id: String) = booleanPreferencesKey("vpn_tip_dismissed_$id")
+        val RESILVER_WATCHES = stringPreferencesKey("resilver_watches")
+        val FILES_SHOW_SYSTEM = booleanPreferencesKey("files_show_system")
     }
 
     val servers: Flow<List<ServerConfig>> = store.data.map { prefs ->
@@ -377,6 +379,28 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
 
     suspend fun saveCertCheck(serverId: String, state: app.truenascompanion.notify.CertCheckState) {
         store.edit { it[Keys.certCheck(serverId)] = json.encodeToString(state) }
+    }
+
+    // --- 1.3.0: resilver watches (notify when a disk replacement finishes) and file browser options ---
+
+    suspend fun resilverWatches(): List<app.truenascompanion.data.model.ResilverWatch> =
+        store.data.first()[Keys.RESILVER_WATCHES]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.data.model.ResilverWatch>>(it) }.getOrNull() }
+            ?: emptyList()
+
+    suspend fun updateResilverWatches(transform: (List<app.truenascompanion.data.model.ResilverWatch>) -> List<app.truenascompanion.data.model.ResilverWatch>): List<app.truenascompanion.data.model.ResilverWatch> {
+        var result = emptyList<app.truenascompanion.data.model.ResilverWatch>()
+        store.edit { p ->
+            val cur = p[Keys.RESILVER_WATCHES]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.data.model.ResilverWatch>>(it) }.getOrNull() } ?: emptyList()
+            result = transform(cur)
+            if (result.isEmpty()) p.remove(Keys.RESILVER_WATCHES) else p[Keys.RESILVER_WATCHES] = json.encodeToString(result)
+        }
+        return result
+    }
+
+    val filesShowSystem: Flow<Boolean> = store.data.map { it[Keys.FILES_SHOW_SYSTEM] ?: false }
+
+    suspend fun setFilesShowSystem(show: Boolean) {
+        store.edit { if (show) it[Keys.FILES_SHOW_SYSTEM] = true else it.remove(Keys.FILES_SHOW_SYSTEM) }
     }
 
     /** Returns true if the flag changed (used so "sign in to keep receiving alerts" is posted only once). */

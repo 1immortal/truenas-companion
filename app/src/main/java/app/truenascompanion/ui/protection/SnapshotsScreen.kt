@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
@@ -176,7 +177,7 @@ private sealed interface SDialog {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SnapshotsScreen(dataset: String, onBack: () -> Unit) {
+fun SnapshotsScreen(dataset: String, onBack: () -> Unit, onBrowse: ((String) -> Unit)? = null) {
     val vm = appViewModel(key = "snapshots:$dataset") { SnapshotsViewModel(it, dataset) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -205,6 +206,9 @@ fun SnapshotsScreen(dataset: String, onBack: () -> Unit) {
                     else IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
                 },
                 actions = {
+                    if (!selecting && onBrowse != null) IconButton(onClick = { onBrowse(app.truenascompanion.data.api.StorageApi.pathForDataset(dataset)) }) {
+                        Icon(Icons.Rounded.FolderOpen, "Browse files")
+                    }
                     if (selecting) {
                         IconButton(onClick = { selected = sortSnapshots(all, query, sort).map { it.id }.toSet() }) { Icon(Icons.Rounded.SelectAll, "Select all") }
                         IconButton(onClick = { dialog = SDialog.Delete(all.filter { it.id in selected }) }, enabled = !busy) { Icon(Icons.Rounded.Delete, "Delete selected") }

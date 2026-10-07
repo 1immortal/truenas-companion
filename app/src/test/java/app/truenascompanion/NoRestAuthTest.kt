@@ -139,7 +139,17 @@ class NoRestAuthTest {
             assertFalse("${f.name} sends a Bearer token", code.contains("Bearer "))
             assertFalse("${f.name} sends auth_token", code.contains("auth_token"))
             // wg-easy (a separate app on its own port, not the TrueNAS middleware) is the only HTTP API with credentials.
-            if (f.name != "WgEasyClient.kt") assertFalse("${f.name} sets an Authorization header", code.contains("\"Authorization\""))
+            // 1.3.0: the file browser's upload goes to TrueNAS's file application (`/_upload`, audited as "REST", not
+            // LEGACY_REST) with a single-use `Token` from auth.generate_token; nothing else, no Basic/Bearer.
+            if (f.name == "FileTransfers.kt") {
+                assertTrue(code.contains("\"Token \$token\""))
+                assertTrue(code.contains("/_upload"))
+                assertFalse(code.contains("Basic "))
+                assertFalse(code.contains("/api/"))
+            } else if (f.name != "WgEasyClient.kt") {
+                assertFalse("${f.name} sets an Authorization header", code.contains("\"Authorization\""))
+            }
         }
+        assertTrue(sources.any { it.name == "FileTransfers.kt" })
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Album
@@ -72,6 +73,7 @@ fun DatasetsPane(
     onCreate: (DatasetCreateRequest) -> Unit,
     onRename: (id: String, newName: String) -> Unit,
     onDelete: (id: String, recursive: Boolean, force: Boolean) -> Unit,
+    onBrowse: (String) -> Unit = {},
 ) {
     var showSystem by rememberSaveable { mutableStateOf(false) }
     var createFor by remember { mutableStateOf<String?>(null) }
@@ -84,7 +86,7 @@ fun DatasetsPane(
             item {
                 FilterChip(selected = showSystem, onClick = { showSystem = !showSystem }, label = { Text("Show system datasets") })
                 Text(
-                    "Tap a dataset for snapshots. Use ⋮ to rename or delete. + creates under a pool or parent.",
+                    "Tap a dataset for snapshots. Use ⋮ to browse files, rename or delete. + creates under a pool or parent.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -100,6 +102,7 @@ fun DatasetsPane(
                     onCreateChild = { createFor = d.id },
                     onRename = { renameTarget = d },
                     onDelete = { deleteTarget = d },
+                    onBrowse = { onBrowse(d.mountpoint?.takeIf { it.startsWith("/mnt/") } ?: app.truenascompanion.data.api.StorageApi.pathForDataset(d.id)) },
                 )
             }
             item { Spacer(Modifier.height(72.dp)) }
@@ -134,6 +137,7 @@ private fun DatasetCard(
     onCreateChild: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onBrowse: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
     ElevatedSection(contentPadding = 14.dp, onClick = onOpen, modifier = Modifier.padding(start = (d.depth.coerceAtMost(4) * 12).dp)) {
@@ -165,6 +169,7 @@ private fun DatasetCard(
             if (d.encrypted) StatusChip(if (d.locked) Health.WARNING else Health.HEALTHY, if (d.locked) "Locked" else "Encrypted", showIcon = false)
             IconButton(onClick = { menu = true }, enabled = !busy) { Icon(Icons.Rounded.MoreVert, "Actions") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (!d.isVolume && !d.locked) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse() }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })
                 if (!d.isVolume) DropdownMenuItem(text = { Text("Create child") }, onClick = { menu = false; onCreateChild() }, leadingIcon = { Icon(Icons.Rounded.Add, null) })
                 if (d.depth > 0) DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() }, leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, null) })
                 if (d.depth > 0) DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })

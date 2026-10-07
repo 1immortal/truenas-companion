@@ -254,6 +254,25 @@ class AlertChecker(
     }
 
     /**
+     * 1.3.0: runs [block] on a connection to [server] for background work (resilver watch): borrows the app's shared
+     * connection when it is open, else connects through the right route and closes again afterwards.
+     */
+    suspend fun <T> withConnection(server: ServerConfig, block: suspend (TrueNasApi) -> T): T = withContext(Dispatchers.IO) {
+        val borrowed = shared.borrow(resolver.resolve(server))
+        var target: ServerConfig? = null
+        val api = borrowed ?: connectVia(server) { target = it }
+        try {
+            onConnected(server)
+            block(api)
+        } finally {
+            if (borrowed == null) {
+                api.close()
+                resolver.release(target, TunnelHolder.CHECK)
+            }
+        }
+    }
+
+    /**
      * Connects through the right route for a background check. The tunnel (if that's the route) is held with
      * [TunnelHolder.CHECK] and must be released by the caller with the target passed to [onTarget]. An unreachable
      * local/Tailscale/tunnel route is skipped once, like in the app.

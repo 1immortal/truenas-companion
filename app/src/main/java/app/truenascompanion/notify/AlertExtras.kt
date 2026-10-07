@@ -40,6 +40,10 @@ sealed interface AlertTarget {
     data class Certificate(val name: String?) : AlertTarget {
         override val destination get() = DeepLink.DEST_CERTIFICATE; override val arg get() = name; override val label get() = "Open certificates"
     }
+    /** 1.3.0: a pool reports unhealthy member disks; opens the guided disk replacement for that pool. */
+    data class ReplaceDisk(val pool: String) : AlertTarget {
+        override val destination get() = DeepLink.DEST_REPLACE_DISK; override val arg get() = pool; override val label get() = "Replace disk in $pool"
+    }
     data object Alerts : AlertTarget { override val destination get() = DeepLink.DEST_ALERTS; override val label get() = "Open alerts" }
 
     companion object {
@@ -54,6 +58,8 @@ sealed interface AlertTarget {
         fun of(klass: String?, args: JsonElement?): AlertTarget {
             val k = klass ?: return Alerts
             return when {
+                k == "VolumeStatus" && !args.text("devices").isNullOrBlank() ->
+                    args.text("volume", "pool")?.let { ReplaceDisk(it) } ?: Alerts
                 k == "VolumeStatus" || k.startsWith("ZpoolCapacity") || k == "PoolUSBDisks" || k == "PoolUpgraded" || k.startsWith("Scrub") ->
                     args.text("volume", "pool", "pool_name", "name")?.let { Pool(it) } ?: Alerts
                 k.startsWith("SMART") || k.startsWith("DiskTemperature") || k == "DiskNotDetected" ->
@@ -72,6 +78,7 @@ sealed interface AlertTarget {
         fun decode(destination: String?, arg: String?): AlertTarget = when (destination) {
             DeepLink.DEST_POOL -> arg?.let { Pool(it) } ?: Alerts
             DeepLink.DEST_DISK -> Disk(arg)
+            DeepLink.DEST_REPLACE_DISK -> arg?.let { ReplaceDisk(it) } ?: Disk(null)
             DeepLink.DEST_APP -> arg?.let { App(it) } ?: Apps
             DeepLink.DEST_APPS -> Apps
             DeepLink.DEST_DATASET -> Dataset(arg)

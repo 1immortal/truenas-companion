@@ -36,6 +36,8 @@ object DeepLink {
     const val DEST_SNAPSHOTS = "snapshots"
     const val DEST_UPDATE = "update"
     const val DEST_CERTIFICATE = "certificate"
+    // 1.3.0: guided disk replacement for a pool (from VolumeStatus alerts) and finished resilvers
+    const val DEST_REPLACE_DISK = "replace_disk"
     // Quick actions (1.2.0): app shortcuts and the Quick Settings action tile
     const val DEST_SHELL = "quick_shell"
     const val DEST_RESTART_APP = "quick_restart_app"
@@ -63,6 +65,7 @@ class AlertNotifier(private val context: Context) {
         const val ID_CLEARED = 4
         const val ID_TEST = 5
         const val ID_CERT = 6
+        const val ID_RESILVER = 7
         const val ID_SERVICE = 1001
 
         /** Individual notifications per check; the rest are only listed in the group summary. */
@@ -280,6 +283,28 @@ class AlertNotifier(private val context: Context) {
             .setContentIntent(openAppIntent(server.id, DeepLink.DEST_CERTIFICATE, tag, w.cert.name))
             .build()
         nm.notify(tag, ID_CERT, n)
+    }
+
+    /** 1.3.0: a disk replacement's resilver finished (or the pool reports a problem afterwards). */
+    @SuppressLint("MissingPermission") // canPost() checks POST_NOTIFICATIONS
+    fun postResilverDone(server: ServerConfig, poolName: String, healthy: Boolean, errors: Long?) {
+        if (!canPost()) return
+        val tag = "resilver/${server.id}/$poolName"
+        val title = if (healthy) "Disk replacement finished" else "Resilver finished on $poolName"
+        val text = when {
+            healthy -> "Pool $poolName finished resilvering and is healthy again. You can remove the old disk."
+            (errors ?: 0) > 0 -> "Pool $poolName finished resilvering with $errors errors. Check the pool."
+            else -> "Pool $poolName finished resilvering but isn't healthy yet. Check the pool."
+        }
+        val n = base(if (healthy) CH_INFO else CH_WARNING)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setSubText("${server.name} · Storage")
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(openAppIntent(server.id, DeepLink.DEST_POOL, tag, poolName))
+            .build()
+        nm.notify(tag, ID_RESILVER, n)
     }
 
     @SuppressLint("MissingPermission")

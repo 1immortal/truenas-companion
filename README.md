@@ -32,12 +32,24 @@
 - **Control VMs and containers.** Start, stop, restart, edit resources or create a simple VM.
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
 - **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
+- **Browse your files.** Open any pool or dataset in **Storage › Files**, or tap *Browse files* on a dataset or share.
+  - Folders and files with size, date and type; sort by name, size or date and search the folder you're in.
+  - Peek at text files and photos without leaving the app, or open a file in another app.
+  - **Save to Downloads** with one tap, or pick any folder with **Save as…**.
+  - Upload a file from your phone and create folders. You see progress and can cancel. If you stop an upload halfway, the app tells you that an incomplete file stays on the NAS.
+  - TrueNAS system folders stay hidden unless you ask for them.
+  - Deleting, renaming and moving files isn't available, because TrueNAS 25.10 doesn't offer a way to do that through its API. Use an SMB/NFS share or the TrueNAS shell for those.
+- **Replace a failing disk, step by step.**
+  - Every disk shows its model, serial, size, type, pool, status, temperature and error counts, and each pool shows its layout.
+  - A guided wizard walks you through a swap: pick the disk, optionally take it offline, insert the new one, scan, double-check the serial and size, and confirm with your fingerprint.
+  - It won't let you pick a disk that's too small and warns you if the "new" disk looks like the old one.
+  - Follow the resilver live, and get a notification when it's done. A disk alert takes you straight there.
 - **Manage users and groups.** Add, edit, lock or delete accounts, reset passwords, paste SSH keys and pick groups, home folder and shell. Built-in system accounts stay out of the way unless you ask to see them.
 - **Look back in time.** Reports show CPU, memory, network, disk activity and temperatures for the last hour, day, week or month. Pinch to zoom and touch the chart for exact values. Open them from System › Reports or by tapping the CPU, Memory, Network or Reports cards.
 - **See who did what.** The audit log lists sign-ins, changes, SMB file access and sudo use, with the same filters as the web UI. One tap on **REST logins** shows which old scripts still use the deprecated REST API, and you can export the list as a CSV.
 - **Keep certificates fresh.** See every certificate with who issued it, the names it covers and how many days are left, with a heads-up before one expires. Import a certificate, request one from Let's Encrypt with your DNS provider, or switch the web UI certificate (with a clear warning, and the app makes you re-check the new one).
 - **Do things faster.** Long-press the app icon for Shell, Alerts, Restart app… or Scrub pool…, or add the NAS status and TrueNAS action tiles to Quick Settings. Every action still asks first, with your fingerprint when the app lock is on.
-- **Calmer alerts.** Snooze an alert right from the notification, see repeated alerts as one notification with a count, and tap through to the pool, disk, app, dataset, update or certificate it's about.
+- **Calmer alerts.** Snooze an alert right from the notification, see repeated alerts as one notification with a count, and tap through to the pool, disk, app, dataset, update or certificate it's about (or straight into the disk replacement when a pool reports a failed disk).
 - **Handle everyday chores.** Check for TrueNAS updates and apply them, manage boot environments, start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a modal blurred overlay blocks the UI underneath (including the bottom tabs, which are grayed out and not clickable) and offers **Quit**, **Check connection settings**, or **Try again**. System › Connection sets how long to keep retrying (10 s / 30 s / 1 min / 2 min) before that overlay.
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.

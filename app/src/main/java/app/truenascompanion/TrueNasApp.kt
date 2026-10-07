@@ -33,6 +33,8 @@ data class PendingDeepLink(val serverId: String?, val destination: String, val n
 
 /** Tiny manual DI container — no DI framework needed for an app this size. */
 class AppContainer(app: Application) {
+    /** Application context (1.3.0: file browser cache, content resolver for downloads/uploads). */
+    val context: android.content.Context = app
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settings = SettingsStore(app, SecretCipher())
     val notifier = AlertNotifier(app)

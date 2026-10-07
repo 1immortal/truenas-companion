@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.FolderShared
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Share
@@ -79,6 +80,7 @@ fun SharesPane(
     onCreateNfs: (NfsShareInput) -> Unit,
     onUpdateNfs: (Int, NfsShareInput) -> Unit,
     onDeleteNfs: (Int) -> Unit,
+    onBrowse: (String) -> Unit = {},
 ) {
     var sub by rememberSaveable { mutableIntStateOf(0) }
     var editingSmb by remember { mutableStateOf<SmbShare?>(null) }
@@ -96,8 +98,8 @@ fun SharesPane(
         }
         Box(Modifier.fillMaxSize()) {
             when (sub) {
-                0 -> SmbList(data.smb, busy, onEdit = { editingSmb = it }, onDelete = { deleteSmb = it })
-                else -> NfsList(data.nfs, busy, onEdit = { editingNfs = it }, onDelete = { deleteNfs = it })
+                0 -> SmbList(data.smb, busy, onEdit = { editingSmb = it }, onDelete = { deleteSmb = it }, onBrowse = onBrowse)
+                else -> NfsList(data.nfs, busy, onEdit = { editingNfs = it }, onDelete = { deleteNfs = it }, onBrowse = onBrowse)
             }
             FloatingActionButton(
                 onClick = { if (sub == 0) creatingSmb = true else creatingNfs = true },
@@ -155,7 +157,7 @@ fun SharesPane(
 }
 
 @Composable
-private fun SmbList(shares: List<SmbShare>, busy: Set<String>, onEdit: (SmbShare) -> Unit, onDelete: (SmbShare) -> Unit) {
+private fun SmbList(shares: List<SmbShare>, busy: Set<String>, onEdit: (SmbShare) -> Unit, onDelete: (SmbShare) -> Unit, onBrowse: (String) -> Unit = {}) {
     if (shares.isEmpty()) {
         LazyColumn(Modifier.fillMaxSize()) {
             item { EmptyState(Icons.Rounded.FolderShared, "No SMB shares", "Add a share pointing at a dataset under /mnt.") }
@@ -195,6 +197,7 @@ private fun SmbList(shares: List<SmbShare>, busy: Set<String>, onEdit: (SmbShare
                     )
                     IconButton(onClick = { menu = true }, enabled = "smb:${s.id}" !in busy) { Icon(Icons.Rounded.MoreVert, null) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (s.path.startsWith("/mnt/") && s.locked != true) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse(s.path) }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })
                         DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit(s) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
                         DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete(s) }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
                     }
@@ -206,7 +209,7 @@ private fun SmbList(shares: List<SmbShare>, busy: Set<String>, onEdit: (SmbShare
 }
 
 @Composable
-private fun NfsList(shares: List<NfsShare>, busy: Set<String>, onEdit: (NfsShare) -> Unit, onDelete: (NfsShare) -> Unit) {
+private fun NfsList(shares: List<NfsShare>, busy: Set<String>, onEdit: (NfsShare) -> Unit, onDelete: (NfsShare) -> Unit, onBrowse: (String) -> Unit = {}) {
     if (shares.isEmpty()) {
         LazyColumn(Modifier.fillMaxSize()) {
             item { EmptyState(Icons.Rounded.Share, "No NFS shares", "Export a dataset over NFS for Linux and other UNIX clients.") }
@@ -245,6 +248,7 @@ private fun NfsList(shares: List<NfsShare>, busy: Set<String>, onEdit: (NfsShare
                     )
                     IconButton(onClick = { menu = true }, enabled = "nfs:${s.id}" !in busy) { Icon(Icons.Rounded.MoreVert, null) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (s.path.startsWith("/mnt/") && s.locked != true) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse(s.path) }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })
                         DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit(s) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
                         DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete(s) }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
                     }
