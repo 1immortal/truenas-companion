@@ -32,8 +32,18 @@
 - **Control VMs and containers.** Start, stop, restart, edit resources or create a simple VM.
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
 - **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
-- **Browse your files.** Open any pool or dataset in **Storage › Files** (or *Browse files* on a dataset or share) to see folders and files with size, date and type. Sort, search the folder, peek at text files and photos, open a file in another app, download it to your phone or upload one from it, and create folders. You see progress and can cancel. TrueNAS system folders stay hidden unless you ask for them.
-- **Replace a failing disk, step by step.** Every disk shows its model, serial, size, type, pool, status, temperature and error counts, and each pool shows its layout. When a disk fails, a guided wizard walks you through it: pick the disk, optionally take it offline, insert the new one, scan, double-check the serial and size, confirm with your fingerprint, then follow the resilver. You get a notification when it's done. A disk alert takes you straight there.
+- **Browse your files.** Open any pool or dataset in **Storage › Files**, or tap *Browse files* on a dataset or share.
+  - Folders and files with size, date and type; sort by name, size or date and search the folder you're in.
+  - Peek at text files and photos without leaving the app, or open a file in another app.
+  - **Save to Downloads** with one tap, or pick any folder with **Save as…**.
+  - Upload a file from your phone and create folders. You see progress and can cancel. If you stop an upload halfway, the app tells you that an incomplete file stays on the NAS.
+  - TrueNAS system folders stay hidden unless you ask for them.
+  - Deleting, renaming and moving files isn't available, because TrueNAS 25.10 doesn't offer a way to do that through its API. Use an SMB/NFS share or the TrueNAS shell for those.
+- **Replace a failing disk, step by step.**
+  - Every disk shows its model, serial, size, type, pool, status, temperature and error counts, and each pool shows its layout.
+  - A guided wizard walks you through a swap: pick the disk, optionally take it offline, insert the new one, scan, double-check the serial and size, and confirm with your fingerprint.
+  - It won't let you pick a disk that's too small and warns you if the "new" disk looks like the old one.
+  - Follow the resilver live, and get a notification when it's done. A disk alert takes you straight there.
 - **Manage users and groups.** Add, edit, lock or delete accounts, reset passwords, paste SSH keys and pick groups, home folder and shell. Built-in system accounts stay out of the way unless you ask to see them.
 - **Look back in time.** Reports show CPU, memory, network, disk activity and temperatures for the last hour, day, week or month. Pinch to zoom and touch the chart for exact values. Open them from System › Reports or by tapping the CPU, Memory, Network or Reports cards.
 - **See who did what.** The audit log lists sign-ins, changes, SMB file access and sudo use, with the same filters as the web UI. One tap on **REST logins** shows which old scripts still use the deprecated REST API, and you can export the list as a CSV.
