@@ -50,6 +50,7 @@ import app.truenascompanion.ui.files.FileDetails
 import app.truenascompanion.ui.files.FilePreview
 import app.truenascompanion.ui.files.FilesLauncher
 import app.truenascompanion.ui.files.PreviewContent
+import app.truenascompanion.ui.files.StopUploadDialog
 import app.truenascompanion.ui.files.TransferKind
 import app.truenascompanion.ui.files.TransferState
 import app.truenascompanion.ui.theme.TrueNasTheme
@@ -177,6 +178,12 @@ class V130ScreenshotTest {
         )
     }
 
+    @Test fun filesUploadStop() = shot("v130_files_upload_stop") {
+        val t = TransferState(TransferKind.UPLOAD, "IMG_0042.jpg", 1_900_000, 4_200_000, target = "/mnt/tank/media/IMG_0042.jpg", started = true, replacing = true)
+        FileBrowserContent(ui.copy(transfer = t, incomplete = setOf("/mnt/tank/media/backup-config.tar.gz")))
+        StopUploadDialog(t, onKeep = {}, onStop = {})
+    }
+
     // ---------- disks ----------
 
     @Test fun disksTab() = shot("v130_disks", title = "Storage · Disks") { DisksPane(data) {} }
@@ -216,5 +223,16 @@ class V130ScreenshotTest {
 
     @Test fun replaceResilver() = shot("v130_replace_resilver") {
         Column { ReplaceWizardContent(ReplaceUi(step = ReplaceStep.RESILVER, loading = false, pool = layout, disks = disks, member = member), ReplaceActions()) }
+    }
+
+    @Test fun replacePickWarnings() = shot("v130_replace_pick_warning", dark = false) {
+        val oldDisk = ReplacementCandidate("sdk", "{serial_lunid}WD-EXAMPLE0002", "WD-EXAMPLE0002", "WDC WD40EFRX-68N32N0", 4_000_787_030_016, "HDD", "USB", null, emptyList())
+        Column {
+            ReplaceWizardContent(
+                ReplaceUi(step = ReplaceStep.PICK, loading = false, pool = layout, disks = disks, member = member,
+                    candidates = DiskLogic.candidates(candidates + oldDisk, 4_000_787_030_016), selected = oldDisk),
+                ReplaceActions(),
+            )
+        }
     }
 }

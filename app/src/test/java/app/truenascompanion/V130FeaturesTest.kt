@@ -340,4 +340,80 @@ class V130FeaturesTest {
         val b = ReplacementCandidate("sdy", "{y}", null, null, 10, null, null, null, emptyList())
         assertEquals(listOf("sdx", "sdy"), DiskLogic.candidates(listOf(b, a), 50).map { it.name })
     }
+
+    // ---------------- Review fixes (save targets, partial uploads, wizard safety) ----------------
+
+    @Test fun saveToDownloadsUsesMediaStoreFromAndroid10() {
+        assertFalse(app.truenascompanion.data.files.SaveTargets.mediaStoreDownloads(26))
+        assertFalse(app.truenascompanion.data.files.SaveTargets.mediaStoreDownloads(28))
+        assertTrue(app.truenascompanion.data.files.SaveTargets.mediaStoreDownloads(29))
+        assertTrue(app.truenascompanion.data.files.SaveTargets.mediaStoreDownloads(37))
+    }
+
+    @Test fun saveMimeNeverMakesTheSystemRenameTheFile() {
+        val platform = mapOf("jpg" to "image/jpeg", "pdf" to "application/pdf", "txt" to "text/plain")
+        val mime = { n: String -> app.truenascompanion.data.files.SaveTargets.saveMime(n) { platform[it] } }
+        assertEquals("image/jpeg", mime("IMG_0042.JPG"))
+        assertEquals("application/pdf", mime("manual.pdf"))
+        // Unknown to the platform (yaml, log, no extension): octet-stream keeps "config.yaml" instead of "config.yaml.txt".
+        assertEquals("application/octet-stream", mime("config.yaml"))
+        assertEquals("application/octet-stream", mime("server.log"))
+        assertEquals("application/octet-stream", mime("Makefile"))
+    }
+
+    @Test fun cancellingAStartedUploadWarnsAboutThePartialFile() {
+        val notYet = app.truenascompanion.ui.files.TransferState(app.truenascompanion.ui.files.TransferKind.UPLOAD, "big.iso", 0, 4_000_000_000, target = "/mnt/tank/big.iso")
+        assertFalse(notYet.cancelLeavesPartial)
+        val streaming = notYet.copy(done = 1_000_000_000, started = true, replacing = true)
+        assertTrue(streaming.cancelLeavesPartial)
+        // Downloads never leave anything on the NAS (and the phone copy is deleted).
+        assertFalse(app.truenascompanion.ui.files.TransferState(app.truenascompanion.ui.files.TransferKind.DOWNLOAD, "big.iso", 5, 10, started = true).cancelLeavesPartial)
+        val text = app.truenascompanion.ui.files.FileBrowserViewModel.partialMessage("Upload stopped.", "big.iso", streaming)
+        assertTrue(text, text.startsWith("Upload stopped. An incomplete big.iso"))
+        assertTrue(text, text.contains("in place of the original"))
+        assertTrue(text, text.contains("SMB/NFS"))
+        assertFalse(app.truenascompanion.ui.files.FileBrowserViewModel.partialMessage("x", "a", streaming.copy(replacing = false)).contains("original"))
+    }
+
+    @Test fun memberLookupPrefersTheDiskThatHasTheNameNow() {
+        // sdb went missing and Linux gave the name "sdb" to a disk in another vdev.
+        val p = DisksApi.pool(j(poolJson.replace("\"name\":\"sda1\",\"type\":\"DISK\",\"guid\":\"201\",\"status\":\"ONLINE\",\"path\":\"/dev/disk/by-partuuid/aaa\",\"disk\":\"sda\"",
+            "\"name\":\"sdb1\",\"type\":\"DISK\",\"guid\":\"201\",\"status\":\"ONLINE\",\"path\":\"/dev/disk/by-partuuid/aaa\",\"disk\":\"sdb\"")).jsonObject)
+        assertEquals("201", DiskLogic.memberFor(listOf(p), "sdb")?.node?.guid)
+        assertEquals("201", DiskLogic.preselect(p, "sdb")?.node?.guid)
+        // Without a clash the missing member is still found by its recorded name.
+        assertEquals("202", DiskLogic.memberFor(listOf(DisksApi.pool(j(poolJson).jsonObject)), "sdb")?.node?.guid)
+    }
+
+    @Test fun wizardFlagsTheOldDiskPickedAsNew() {
+        val p = DisksApi.pool(j(poolJson).jsonObject)
+        val m = DiskLogic.memberByGuid(p, "202")
+        val old = ReplacementCandidate("sdk", "{serial_lunid}WD-EXAMPLE2", "wd-example2", "WDC WD40EFRX", 4_000_787_030_016, "HDD", "ATA", null, emptyList())
+        val fresh = old.copy(name = "sdl", identifier = "{serial_lunid}EX-NEW", serial = "EX-NEW")
+        val ui = app.truenascompanion.ui.disks.ReplaceUi(loading = false, pool = p, member = m, selected = old, serialConfirmed = true)
+        assertEquals("sdb", ui.oldName)
+        assertEquals("WD-EXAMPLE2", ui.oldSerial)
+        assertTrue(ui.sameSerialAsOld)
+        assertFalse(ui.copy(selected = fresh).sameSerialAsOld)
+        assertTrue(ui.copy(selected = fresh).canReplace)
+        // Serial not confirmed, too small, or Force needed but off: Replace stays disabled.
+        assertFalse(ui.copy(selected = fresh, serialConfirmed = false).canReplace)
+        assertFalse(ui.copy(selected = fresh.copy(size = 2_000_000_000_000)).canReplace)
+        assertFalse(ui.copy(selected = fresh.copy(exportedZpool = "old")).canReplace)
+        assertTrue(ui.copy(selected = fresh.copy(exportedZpool = "old"), force = true).canReplace)
+        assertFalse(ui.copy(selected = fresh, forceRequired = true).canReplace)
+    }
+
+    @Test fun uploadReportsStartBeforeTheFirstByte() {
+        val progress = mutableListOf<Pair<Long, Long>>()
+        val client = okhttp3.OkHttpClient()
+        val req = app.truenascompanion.data.files.FileTransfers(client, "https://nas.example").uploadRequest(
+            "/mnt/tank/a.bin", "tok", "a.bin", 3, open = { java.io.ByteArrayInputStream(byteArrayOf(1, 2, 3)) },
+        ) { d, t -> progress += d to t }
+        req.body!!.writeTo(okio.Buffer())
+        assertEquals(0L to 3L, progress.first())
+        assertEquals(3L to 3L, progress.last())
+        assertEquals("Token tok", req.header("Authorization"))
+        assertTrue(req.url.encodedPath == "/_upload")
+    }
 }
