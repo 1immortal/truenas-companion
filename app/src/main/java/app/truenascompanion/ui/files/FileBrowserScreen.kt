@@ -3,6 +3,7 @@ package app.truenascompanion.ui.files
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +14,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -54,12 +57,14 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.SaveAs
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Slideshow
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -78,8 +83,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -108,6 +115,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.truenascompanion.data.files.FilePolicy
+import app.truenascompanion.data.files.SaveTargets
 import app.truenascompanion.data.model.FileEntry
 import app.truenascompanion.data.model.FileKind
 import app.truenascompanion.data.model.FileSort
@@ -122,6 +130,7 @@ import app.truenascompanion.ui.components.InfoBanner
 import app.truenascompanion.ui.components.ScrollableErrorState
 import app.truenascompanion.ui.components.SkeletonList
 import app.truenascompanion.ui.theme.LocalBrandColors
+import app.truenascompanion.ui.theme.LocalStatusColors
 import app.truenascompanion.util.Format
 import java.text.DateFormat
 import java.util.Date
@@ -133,17 +142,40 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
-    var saveTarget by remember { mutableStateOf<FileEntry?>(null) }
+    // Starting folder for the next "Save as" dialog (Downloads for the Android 8-9 "Save to Downloads" fallback).
+    var saveInDownloads by remember { mutableStateOf(false) }
 
     val createDoc = rememberLauncherForActivityResult(object : ActivityResultContracts.CreateDocument("*/*") {
-        override fun createIntent(context: Context, input: String): Intent = super.createIntent(context, input).setType(FilePolicy.mimeOf(input))
-    }) { uri -> val e = saveTarget; saveTarget = null; if (uri != null && e != null) vm.download(e, uri) }
+        override fun createIntent(context: Context, input: String): Intent = super.createIntent(context, input).apply {
+            setType(SaveTargets.saveMime(input))
+            if (saveInDownloads) putExtra(DocumentsContract.EXTRA_INITIAL_URI, SaveTargets.downloadsInitialUri)
+        }
+    }) { uri -> vm.onSaveLocation(uri) }
     val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.prepareUpload(uri) }
 
     LaunchedEffect(vm) {
         vm.eventFlow.collect { ev ->
             when (ev) {
-                is FileEvent.Message -> snackbar.showSnackbar(ev.text)
+                is FileEvent.Message -> snackbar.showSnackbar(ev.text, withDismissAction = ev.text.length > 80, duration = if (ev.text.length > 80) SnackbarDuration.Long else SnackbarDuration.Short)
+                is FileEvent.PickSaveLocation -> {
+                    saveInDownloads = ev.inDownloads
+                    try {
+                        createDoc.launch(ev.suggestedName)
+                    } catch (_: ActivityNotFoundException) {
+                        vm.onSaveLocation(null)
+                        snackbar.showSnackbar("This phone has no app to pick a save location.")
+                    }
+                }
+                is FileEvent.Saved -> {
+                    if (snackbar.showSnackbar(ev.text, actionLabel = "Open", withDismissAction = true) == SnackbarResult.ActionPerformed) {
+                        val view = Intent(Intent.ACTION_VIEW).setDataAndType(ev.uri, ev.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        try {
+                            context.startActivity(Intent.createChooser(view, "Open ${ev.name} with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                        } catch (_: ActivityNotFoundException) {
+                            snackbar.showSnackbar("No app on this phone can open this file type.")
+                        }
+                    }
+                }
                 is FileEvent.OpenWith -> {
                     val view = Intent(Intent.ACTION_VIEW).setDataAndType(ev.uri, ev.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     try {
@@ -160,6 +192,7 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
     FileBrowserContent(
         ui = ui,
         snackbar = snackbar,
+        backLeavesScreen = ui.atRoot || ui.path == FilePolicy.normalize(initialPath),
         actions = FileActions(
             onBack = { if (ui.atRoot || ui.path == FilePolicy.normalize(initialPath) || !vm.up()) onBack() },
             onOpen = vm::open,
@@ -172,7 +205,8 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
                 }
             },
             onDetails = vm::showDetails,
-            onDownload = { e -> saveTarget = e; createDoc.launch(e.name) },
+            onDownload = vm::saveToDownloads,
+            onSaveAs = vm::saveAs,
             onOpenWith = vm::openWith,
             onPreview = vm::preview,
             onSort = vm::setSort,
@@ -196,7 +230,10 @@ class FileActions(
     val onOpen: (String) -> Unit = {},
     val onEntry: (FileEntry) -> Unit = {},
     val onDetails: (FileEntry) -> Unit = {},
+    /** "Save to Downloads" (MediaStore on Android 10+, else the "Save as" dialog in Downloads). */
     val onDownload: (FileEntry) -> Unit = {},
+    /** "Save as…": system dialog to pick folder and name. */
+    val onSaveAs: (FileEntry) -> Unit = {},
     val onOpenWith: (FileEntry) -> Unit = {},
     val onPreview: (FileEntry) -> Unit = {},
     val onSort: (FileSort) -> Unit = {},
@@ -215,18 +252,34 @@ class FileActions(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FileBrowserContent(ui: FileBrowserUi, snackbar: SnackbarHostState = remember { SnackbarHostState() }, actions: FileActions = FileActions(), inlineDetails: Boolean = false) {
+fun FileBrowserContent(
+    ui: FileBrowserUi,
+    snackbar: SnackbarHostState = remember { SnackbarHostState() },
+    actions: FileActions = FileActions(),
+    inlineDetails: Boolean = false,
+    /** Back closes the browser (instead of going up a folder): leaving cancels a running transfer. */
+    backLeavesScreen: Boolean = true,
+) {
     var searching by rememberSaveable { mutableStateOf(ui.query.isNotEmpty()) }
     var menu by remember { mutableStateOf(false) }
     var addMenu by remember { mutableStateOf(false) }
     var mkdirDialog by remember { mutableStateOf(false) }
+    // Stopping an upload that is already streaming leaves a partial file on the NAS: ask first. Holds what to do on "Stop".
+    var stopUpload by remember { mutableStateOf<(() -> Unit)?>(null) }
     val title = if (ui.atRoot) "Files" else ui.path.substringAfterLast('/')
+    val cancelTransfer = {
+        if (ui.transfer?.cancelLeavesPartial == true) stopUpload = actions.onCancelTransfer else actions.onCancelTransfer()
+    }
+    val back = {
+        if (backLeavesScreen && ui.transfer?.cancelLeavesPartial == true) stopUpload = { actions.onCancelTransfer(); actions.onBack() } else actions.onBack()
+    }
+    BackHandler(enabled = backLeavesScreen && ui.transfer?.cancelLeavesPartial == true) { back() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
                 actions = {
                     if (!ui.atRoot) IconButton(onClick = { searching = !searching; if (!searching) actions.onQuery("") }) {
                         Icon(if (searching) Icons.Rounded.Close else Icons.Rounded.Search, if (searching) "Close search" else "Search this folder")
@@ -272,7 +325,7 @@ fun FileBrowserContent(ui: FileBrowserUi, snackbar: SnackbarHostState = remember
                 )
             }
             if (!ui.atRoot) SortRow(ui, actions.onSort)
-            ui.transfer?.let { TransferCard(it, actions.onCancelTransfer) }
+            ui.transfer?.let { TransferCard(it, cancelTransfer) }
             Box(Modifier.weight(1f)) {
                 PullToRefreshBox(isRefreshing = false, onRefresh = actions.onRefresh, modifier = Modifier.fillMaxSize()) {
                     when {
@@ -295,6 +348,42 @@ fun FileBrowserContent(ui: FileBrowserUi, snackbar: SnackbarHostState = remember
     }
     ui.preview?.let { PreviewDialog(it, actions) }
     ui.pendingUpload?.let { p -> UploadDialog(p, ui, actions) }
+    val t = ui.transfer
+    val stop = stopUpload
+    if (stop != null && t != null && t.cancelLeavesPartial) {
+        StopUploadDialog(t, onKeep = { stopUpload = null }, onStop = { stopUpload = null; stop() })
+    } else if (stop != null && t == null) {
+        stopUpload = null
+    }
+}
+
+/** Shown before stopping an upload that has started: TrueNAS keeps the part that arrived and has no delete API. */
+@Composable
+fun StopUploadDialog(t: TransferState, onKeep: () -> Unit, onStop: () -> Unit) {
+    val where = t.target ?: t.name
+    AlertDialog(
+        onDismissRequest = onKeep,
+        icon = { Icon(Icons.Rounded.Warning, null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("Stop the upload?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "TrueNAS is already writing $where. If you stop now, an incomplete file " +
+                        "(${Format.bytes(t.done)}${if (t.total > 0) " of ${Format.bytes(t.total)}" else ""}) stays on the NAS" +
+                        (if (t.replacing) ", and the original file it was replacing is already overwritten." else ".")
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "The app can't delete files (TrueNAS 25.10 has no API for it). Delete it over an SMB/NFS share or the TrueNAS shell, or upload it again to replace it.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onStop) { Text("Stop upload", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onKeep) { Text("Keep uploading") } },
+    )
 }
 
 @Composable
@@ -380,10 +469,12 @@ private fun EntryList(ui: FileBrowserUi, actions: FileActions) {
         return
     }
     LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
+        // A refresh or "load more" that failed while older entries are still shown.
+        ui.error?.let { err -> item(key = "error") { InfoBanner(err, health = Health.WARNING, modifier = Modifier.padding(vertical = 4.dp)) } }
         if (ui.atRoot) item {
             Text("Choose a pool to browse its datasets and files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
         }
-        items(list, key = { it.path }) { e -> EntryRow(e, ui.atRoot, actions) }
+        items(list, key = { it.path }) { e -> EntryRow(e, ui.atRoot, actions, incomplete = e.path in ui.incomplete) }
         if (ui.hasMore) item {
             LaunchedEffect(ui.entries.size) { actions.onLoadMore() }
             Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -413,7 +504,7 @@ fun kindIcon(kind: FileKind): ImageVector = when (kind) {
 private fun dateText(millis: Long?): String? = millis?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it)) }
 
 @Composable
-private fun EntryRow(e: FileEntry, atRoot: Boolean, actions: FileActions) {
+private fun EntryRow(e: FileEntry, atRoot: Boolean, actions: FileActions, incomplete: Boolean = false) {
     var menu by remember { mutableStateOf(false) }
     val kind = FilePolicy.kindOf(e)
     val brand = LocalBrandColors.current
@@ -430,9 +521,13 @@ private fun EntryRow(e: FileEntry, atRoot: Boolean, actions: FileActions) {
                 atRoot -> "Pool · ${e.path}"
                 e.isDirectory -> listOfNotNull(if (e.isMountpoint) "Dataset" else "Folder", dateText(e.mtimeMillis)).joinToString(" · ")
                 e.isSymlink -> "Link"
+                incomplete -> "Incomplete upload · ${Format.bytes(e.size)}"
                 else -> listOfNotNull(Format.bytes(e.size), dateText(e.mtimeMillis)).joinToString(" · ")
             }
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (incomplete) LocalStatusColors.current.of(Health.WARNING) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (FilePolicy.isSystemName(e.name)) Icon(Icons.Rounded.Lock, "System folder", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!atRoot) Box {
@@ -441,7 +536,8 @@ private fun EntryRow(e: FileEntry, atRoot: Boolean, actions: FileActions) {
                 if (e.isFile) {
                     if (FilePolicy.previewKind(e) != null) DropdownMenuItem(text = { Text("Preview") }, leadingIcon = { Icon(Icons.Rounded.Visibility, null) }, onClick = { menu = false; actions.onPreview(e) })
                     DropdownMenuItem(text = { Text("Open with…") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) }, onClick = { menu = false; actions.onOpenWith(e) })
-                    DropdownMenuItem(text = { Text("Download") }, leadingIcon = { Icon(Icons.Rounded.Download, null) }, onClick = { menu = false; actions.onDownload(e) })
+                    DropdownMenuItem(text = { Text("Save to Downloads") }, leadingIcon = { Icon(Icons.Rounded.Download, null) }, onClick = { menu = false; actions.onDownload(e) })
+                    DropdownMenuItem(text = { Text("Save as…") }, leadingIcon = { Icon(Icons.Rounded.SaveAs, null) }, onClick = { menu = false; actions.onSaveAs(e) })
                 }
                 DropdownMenuItem(text = { Text("Details") }, leadingIcon = { Icon(Icons.Rounded.Info, null) }, onClick = { menu = false; actions.onDetails(e) })
             }
@@ -449,6 +545,7 @@ private fun EntryRow(e: FileEntry, atRoot: Boolean, actions: FileActions) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FileDetails(e: FileEntry, stat: FileStat?, error: String?, actions: FileActions) {
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
@@ -462,10 +559,11 @@ fun FileDetails(e: FileEntry, stat: FileStat?, error: String?, actions: FileActi
         }
         Spacer(Modifier.height(16.dp))
         if (e.isFile) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (FilePolicy.previewKind(e) != null) FilledTonalButton(onClick = { actions.onHideDetails(); actions.onPreview(e) }) { Text("Preview") }
                 FilledTonalButton(onClick = { actions.onHideDetails(); actions.onOpenWith(e) }) { Text("Open with") }
-                OutlinedButton(onClick = { actions.onHideDetails(); actions.onDownload(e) }) { Text("Download") }
+                OutlinedButton(onClick = { actions.onHideDetails(); actions.onDownload(e) }) { Text("Save to Downloads") }
+                OutlinedButton(onClick = { actions.onHideDetails(); actions.onSaveAs(e) }) { Text("Save as…") }
             }
             Spacer(Modifier.height(16.dp))
         } else if (e.isDirectory) {
@@ -566,7 +664,7 @@ fun PreviewContent(p: FilePreview, actions: FileActions) {
                     Text(Format.bytes(p.entry.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { actions.onClosePreview(); actions.onOpenWith(p.entry) }) { Icon(Icons.AutoMirrored.Rounded.OpenInNew, "Open with") }
-                IconButton(onClick = { actions.onClosePreview(); actions.onDownload(p.entry) }) { Icon(Icons.Rounded.Download, "Download") }
+                IconButton(onClick = { actions.onClosePreview(); actions.onDownload(p.entry) }) { Icon(Icons.Rounded.Download, "Save to Downloads") }
             }
             HorizontalDivider()
             when (p) {

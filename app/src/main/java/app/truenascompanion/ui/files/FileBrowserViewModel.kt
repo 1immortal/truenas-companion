@@ -3,7 +3,7 @@ package app.truenascompanion.ui.files
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.provider.DocumentsContract
+import android.os.Build
 import android.provider.OpenableColumns
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -15,6 +15,8 @@ import app.truenascompanion.data.api.awaitJob
 import app.truenascompanion.data.files.FilePolicy
 import app.truenascompanion.data.files.FileTransfers
 import app.truenascompanion.data.files.FilesApi
+import app.truenascompanion.data.files.SaveTarget
+import app.truenascompanion.data.files.SaveTargets
 import app.truenascompanion.data.model.FileEntry
 import app.truenascompanion.data.model.FileSort
 import app.truenascompanion.data.model.FileStat
@@ -49,7 +51,15 @@ data class TransferState(
     /** Upload sent, TrueNAS is still writing the file (filesystem.put job). */
     val finishing: Boolean = false,
     val proxyHint: Boolean = false,
+    /** Uploads: the file's path on the NAS. */
+    val target: String? = null,
+    /** Uploads: the body is streaming, so TrueNAS has already opened (created or truncated) [target]. */
+    val started: Boolean = false,
+    /** Uploads: [target] already existed and is being overwritten. */
+    val replacing: Boolean = false,
 ) {
+    /** Stopping now leaves an incomplete file on the NAS (TrueNAS 25.10 has no API to delete it). */
+    val cancelLeavesPartial: Boolean get() = kind == TransferKind.UPLOAD && started
     val fraction: Float? get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
 }
 
@@ -82,6 +92,8 @@ data class FileBrowserUi(
     val pendingUpload: PendingUpload? = null,
     val route: Route? = null,
     val pools: List<String> = emptyList(),
+    /** NAS paths of uploads that were stopped or failed midway in this session (the file there is incomplete). */
+    val incomplete: Set<String> = emptySet(),
 ) {
     val atRoot: Boolean get() = path == FilePolicy.ROOT
     val hasMore: Boolean get() = total != null && entries.size < total
@@ -96,6 +108,10 @@ data class FileBrowserUi(
 sealed interface FileEvent {
     data class Message(val text: String) : FileEvent
     data class OpenWith(val uri: Uri, val mime: String, val name: String) : FileEvent
+    /** A download finished; the snackbar offers to open it. */
+    data class Saved(val text: String, val uri: Uri, val mime: String, val name: String) : FileEvent
+    /** Ask the user where to save [suggestedName] (system "Save as" dialog), optionally starting in Downloads. */
+    data class PickSaveLocation(val suggestedName: String, val inDownloads: Boolean) : FileEvent
 }
 
 /**
@@ -312,25 +328,70 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
             }
         }
 
-    fun download(entry: FileEntry, dest: Uri) {
+    /** File waiting for the "Save as" dialog's answer (kept here so it survives rotation while the dialog is open). */
+    private var pendingSave: FileEntry? = null
+
+    /**
+     * "Save to Downloads": Android 10+ writes straight into the shared Downloads collection (MediaStore, no permission);
+     * Android 8-9 opens the "Save as" dialog in the Downloads folder instead.
+     */
+    fun saveToDownloads(entry: FileEntry) {
         if (transferJob?.isActive == true) { msg("Another transfer is running."); return }
+        if (!SaveTargets.mediaStoreDownloads()) { askSaveLocation(entry, inDownloads = true); return }
+        val resolver = c.context.contentResolver
+        viewModelScope.launch {
+            val target = withContext(Dispatchers.IO) { runCatching { SaveTargets.createDownload(resolver, entry.name) }.getOrNull() }
+            if (target == null) { msg("Couldn't create the file in Downloads. Try \"Save as…\" instead."); return@launch }
+            download(entry, target)
+        }
+    }
+
+    /** "Save as…": the user picks the folder and name in the system dialog. */
+    fun saveAs(entry: FileEntry) {
+        if (transferJob?.isActive == true) { msg("Another transfer is running."); return }
+        askSaveLocation(entry, inDownloads = false)
+    }
+
+    private fun askSaveLocation(entry: FileEntry, inDownloads: Boolean) {
+        pendingSave = entry
+        events.trySend(FileEvent.PickSaveLocation(entry.name, inDownloads))
+    }
+
+    /** Answer from the "Save as" dialog (null = cancelled). */
+    fun onSaveLocation(uri: Uri?) {
+        val e = pendingSave ?: return
+        pendingSave = null
+        if (uri != null) download(e, SaveTarget.Document(uri))
+    }
+
+    fun download(entry: FileEntry, target: SaveTarget) {
+        if (transferJob?.isActive == true) {
+            msg("Another transfer is running.")
+            if (target is SaveTarget.Downloads) viewModelScope.launch(Dispatchers.IO) { SaveTargets.discard(c.context.contentResolver, target) }
+            return
+        }
         val ctx = c.context
+        val resolver = ctx.contentResolver
         transferJob = viewModelScope.launch {
             _ui.update { it.copy(transfer = TransferState(TransferKind.DOWNLOAD, entry.name, 0, entry.size, proxyHint = hint(entry.size))) }
             var ok = false
             try {
                 withContext(Dispatchers.IO) {
-                    val out = ctx.contentResolver.openOutputStream(dest, "wt") ?: throw IllegalStateException("Can't write to the chosen file.")
+                    val out = resolver.openOutputStream(target.uri, "wt") ?: throw IllegalStateException("Can't write to the chosen file.")
                     out.use { fetch(entry, it) }
+                    if (target is SaveTarget.Downloads && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) SaveTargets.publish(resolver, target)
                 }
                 ok = true
-                msg("Saved ${entry.name}")
+                val name = withContext(Dispatchers.IO) { SaveTargets.displayName(resolver, target.uri) } ?: entry.name
+                val text = if (target is SaveTarget.Downloads) "Saved to Downloads as $name" else "Saved $name"
+                events.trySend(FileEvent.Saved(text, target.uri, FilePolicy.mimeOf(name), name))
             } catch (e: CancellationException) {
                 msg("Download cancelled")
             } catch (e: Throwable) {
                 msg("Download failed: ${FilePolicy.friendlyError(e)}")
             } finally {
-                if (!ok) withContext(NonCancellable + Dispatchers.IO) { runCatching { DocumentsContract.deleteDocument(ctx.contentResolver, dest) } }
+                // Never leave a half-written copy on the phone.
+                if (!ok) withContext(NonCancellable + Dispatchers.IO) { SaveTargets.discard(resolver, target) }
                 _ui.update { it.copy(transfer = null) }
             }
         }
@@ -422,7 +483,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
         if (transferJob?.isActive == true) { msg("Another transfer is running."); return }
         val ctx = c.context
         transferJob = viewModelScope.launch {
-            _ui.update { it.copy(transfer = TransferState(TransferKind.UPLOAD, p.name, 0, p.size, proxyHint = hint(p.size))) }
+            _ui.update { it.copy(transfer = TransferState(TransferKind.UPLOAD, p.name, 0, p.size, proxyHint = hint(p.size), target = p.target, replacing = p.exists)) }
             try {
                 c.repository.withEndpoint { api, target ->
                     val files = FilesApi(api)
@@ -431,8 +492,8 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
                     val jobId = FileTransfers(client, target.url).upload(
                         p.target, token, p.name, p.size,
                         open = { ctx.contentResolver.openInputStream(p.uri) ?: throw IllegalStateException("Can't read the chosen file.") },
-                    ) { done, total -> _ui.update { it.copy(transfer = it.transfer?.copy(done = done, total = total)) } }
-                    _ui.update { it.copy(transfer = it.transfer?.copy(finishing = true)) }
+                    ) { done, total -> _ui.update { it.copy(transfer = it.transfer?.copy(done = done, total = total, started = true)) } }
+                    _ui.update { it.copy(transfer = it.transfer?.copy(finishing = true, started = true)) }
                     try {
                         api.awaitJob(jobId, "filesystem.put", timeoutMs = 60 * 60_000L)
                     } catch (e: CancellationException) {
@@ -440,16 +501,35 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
                         throw e
                     }
                 }
+                _ui.update { it.copy(incomplete = it.incomplete - p.target) }
                 msg("Uploaded ${p.name}")
                 load(reset = true)
             } catch (e: CancellationException) {
-                msg("Upload cancelled")
+                val t = _ui.value.transfer
+                if (t?.cancelLeavesPartial == true) {
+                    markIncomplete(p.target)
+                    msg(partialMessage("Upload stopped.", p.name, t))
+                } else {
+                    msg("Upload cancelled. Nothing was written on TrueNAS.")
+                }
             } catch (e: Throwable) {
-                msg("Upload failed: ${FilePolicy.friendlyError(e)}")
+                val t = _ui.value.transfer
+                if (t?.cancelLeavesPartial == true) {
+                    markIncomplete(p.target)
+                    msg(partialMessage("Upload failed: ${FilePolicy.friendlyError(e)}", p.name, t))
+                } else {
+                    msg("Upload failed: ${FilePolicy.friendlyError(e)}")
+                }
             } finally {
                 _ui.update { it.copy(transfer = null) }
             }
         }
+    }
+
+    /** Shows the incomplete file in the list (refresh runs outside the cancelled transfer job). */
+    private fun markIncomplete(path: String) {
+        _ui.update { it.copy(incomplete = it.incomplete + path) }
+        viewModelScope.launch { load(reset = true) }
     }
 
     override fun onCleared() {
@@ -458,6 +538,12 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
 
     companion object {
         const val AUTO_MTIME_LIMIT = 300
+
+        /** Snackbar text after an upload stopped midway: TrueNAS keeps what arrived and the app can't delete it. */
+        fun partialMessage(prefix: String, name: String, t: TransferState): String =
+            "$prefix An incomplete $name (${app.truenascompanion.util.Format.bytes(t.done)}" +
+                (if (t.total > 0) " of ${app.truenascompanion.util.Format.bytes(t.total)}" else "") + ") is left on TrueNAS" +
+                (if (t.replacing) " in place of the original" else "") + ". Delete or replace it over SMB/NFS or the TrueNAS shell."
 
         fun safeName(name: String): String = name.replace(Regex("[/\\\\:*?\"<>|\u0000]"), "_").take(120).ifBlank { "file" }
 

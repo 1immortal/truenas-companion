@@ -41,7 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,6 +105,10 @@ data class ReplaceUi(
     val oldSize: Long? get() = member?.let { DiskLogic.memberSize(it, disks.mapNotNull { d -> d.size?.let { s -> d.name to s } }.toMap()) }
     val oldSerial: String? get() = member?.let { m -> m.node.disk?.let { n -> disks.firstOrNull { it.name == n }?.serial } ?: m.node.unavailDisk?.serial }
     val oldModel: String? get() = member?.let { m -> m.node.disk?.let { n -> disks.firstOrNull { it.name == n }?.model } ?: m.node.unavailDisk?.model }
+    /** Name shown for the member being replaced (a missing disk keeps TrueNAS's record of its old name). */
+    val oldName: String get() = member?.let { it.node.disk ?: it.node.unavailDisk?.name } ?: "the disk"
+    /** The picked "new" disk reports the same serial as the one being replaced: probably the old disk itself. */
+    val sameSerialAsOld: Boolean get() = selected?.serial != null && selected.serial.equals(oldSerial, ignoreCase = true)
     val canReplace: Boolean get() = selected != null && serialConfirmed && DiskLogic.sizeCheck(oldSize, selected.size) !is DiskLogic.SizeCheck.TooSmall &&
         (!(DiskLogic.needsForce(selected) || forceRequired) || force)
 }
@@ -159,7 +163,11 @@ class ReplaceViewModel(private val c: AppContainer, private val poolName: String
         _ui.update { s -> s.copy(candidates = DiskLogic.candidates(list, s.oldSize), selected = s.selected?.takeIf { sel -> list.any { it.identifier == sel.identifier } }) }
     }
 
-    fun select(cand: ReplacementCandidate) = _ui.update { it.copy(selected = cand, serialConfirmed = false, force = false) }
+    fun select(cand: ReplacementCandidate) = _ui.update {
+        // "Force required" came from TrueNAS about the previously picked disk; a different disk starts clean.
+        val same = it.selected?.identifier == cand.identifier
+        it.copy(selected = cand, serialConfirmed = false, force = false, forceRequired = it.forceRequired && same)
+    }
     fun setSerialConfirmed(v: Boolean) = _ui.update { it.copy(serialConfirmed = v) }
     fun setForce(v: Boolean) = _ui.update { it.copy(force = v) }
 
@@ -295,6 +303,9 @@ fun ReplaceWizardContent(ui: ReplaceUi, a: ReplaceActions) {
                         Bullet("The new disk must be at least as large as the old one.")
                     }
                 }
+                if (ui.pool == null && ui.error != null) item {
+                    OutlinedButton(onClick = a.retry) { Text("Try again") }
+                }
                 item { NavRow(next = "Start", onNext = { a.go(ReplaceStep.CHOOSE) }, back = "Cancel", onBack = a.close, nextEnabled = ui.pool != null) }
             }
             ReplaceStep.CHOOSE -> {
@@ -314,7 +325,7 @@ fun ReplaceWizardContent(ui: ReplaceUi, a: ReplaceActions) {
             ReplaceStep.OFFLINE -> {
                 val m = ui.member
                 item {
-                    StepCard("Take ${m?.node?.disk ?: "the disk"} offline first? (optional)", Icons.Rounded.Warning) {
+                    StepCard("Take ${ui.oldName} offline first? (optional)", Icons.Rounded.Warning) {
                         Text(
                             "If the old disk still works, taking it offline lets ZFS stop using it cleanly before you pull it. " +
                                 "If you have a free bay, you can skip this and replace the disk while it's still in the pool (safer: redundancy stays).",
@@ -363,6 +374,14 @@ fun ReplaceWizardContent(ui: ReplaceUi, a: ReplaceActions) {
                         Text("Confirm the new disk", style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
                         SerialLine(sel.model, sel.serial, prefix = sel.name)
+                        if (ui.sameSerialAsOld) {
+                            Spacer(Modifier.height(8.dp))
+                            InfoBanner("This disk reports the same serial as the disk being replaced (${sel.serial}). It is probably the old disk. Pick the new one.", health = Health.CRITICAL)
+                        }
+                        if (sel.serial == null) {
+                            Spacer(Modifier.height(8.dp))
+                            InfoBanner("This disk doesn't report a serial number. Check the model, size and bay before you continue.")
+                        }
                         if (sel.duplicateSerial.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
                             InfoBanner("Other disks report the same serial (${sel.duplicateSerial.joinToString()}), common with USB enclosures. Make extra sure this is the right disk.")
@@ -424,15 +443,19 @@ fun ReplaceWizardContent(ui: ReplaceUi, a: ReplaceActions) {
     val sel = ui.selected
     val m = ui.member
     if (confirm && sel != null && m != null) ConfirmDialog(
-        title = "Replace ${m.node.disk ?: "missing disk"} with ${sel.name}?",
-        text = "TrueNAS erases ${sel.name} (${listOfNotNull(sel.model, sel.serial?.let { "SN $it" }).joinToString(" · ")}) and starts resilvering ${ui.pool?.name}. " +
-            "All data on the new disk is lost." + if (ui.force) " Force is on: existing partitions or pool data on it are wiped." else "",
+        title = "Replace ${ui.oldName} with ${sel.name}?",
+        text = "Old disk: ${listOfNotNull(ui.oldModel, "SN ${ui.oldSerial ?: "unknown"}").joinToString(" · ")}.\n" +
+            "New disk: ${sel.name} (${listOfNotNull(sel.model, Format.bytes(sel.size), sel.serial?.let { "SN $it" }).joinToString(" · ")}).\n\n" +
+            "TrueNAS erases the new disk and starts resilvering ${ui.pool?.name}. All data on the new disk is lost." +
+            (if (ui.force) " Force is on: existing partitions or pool data on it are wiped." else "") +
+            " Keep the old disk in place until the resilver has finished, if you can.",
         confirmLabel = "Replace", destructive = true, strongAuth = true, icon = Icons.Rounded.SwapHoriz,
         onConfirm = { confirm = false; a.replace() }, onDismiss = { confirm = false },
     )
     if (confirmOffline && m != null) ConfirmDialog(
-        title = "Take ${m.node.disk ?: "the disk"} offline?",
-        text = "ZFS stops using this disk in ${m.poolName}. The pool loses redundancy until the new disk has resilvered.",
+        title = "Take ${ui.oldName} offline?",
+        text = "ZFS stops using this disk (SN ${ui.oldSerial ?: "unknown"}) in ${m.poolName}. The pool loses redundancy until the new disk has resilvered." +
+            if (!DiskLogic.offlineIsSafe(m)) "\n\nWarning: this vdev may have no redundancy left. Taking the disk offline could make the pool unavailable." else "",
         confirmLabel = "Take offline", destructive = true, strongAuth = true,
         onConfirm = { confirmOffline = false; a.offline() }, onDismiss = { confirmOffline = false },
     )

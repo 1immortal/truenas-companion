@@ -21,11 +21,15 @@ object DiskLogic {
         if (node.isLeaf) listOf(PoolMember(pool.id, pool.name, category, node, parent))
         else node.children.flatMap { collect(pool, category, it, node) }
 
-    /** The member for disk [name] (matched on the mapped disk or the missing disk's recorded name). */
-    fun memberFor(pools: List<PoolLayout>, name: String): PoolMember? =
-        pools.asSequence().flatMap { members(it).asSequence() }.firstOrNull { m ->
-            m.node.disk == name || m.node.unavailDisk?.name == name || m.node.path?.substringAfterLast('/') == name
-        }
+    /**
+     * The member for disk [name]: the member that disk is mapped to right now first, then a missing member whose
+     * recorded name or device path matches (Linux reuses names like `sdb`, so a new disk may carry the old one's name).
+     */
+    fun memberFor(pools: List<PoolLayout>, name: String): PoolMember? {
+        val all = pools.flatMap { members(it) }
+        return all.firstOrNull { it.node.disk == name }
+            ?: all.firstOrNull { m -> m.node.disk == null && (m.node.unavailDisk?.name == name || m.node.path?.substringAfterLast('/') == name) }
+    }
 
     fun memberByGuid(pool: PoolLayout, guid: String): PoolMember? = members(pool).firstOrNull { it.node.guid == guid }
 
@@ -63,7 +67,7 @@ object DiskLogic {
     /** The member to replace by default: the first one that isn't ONLINE or has errors, else the first one. */
     fun preselect(pool: PoolLayout, diskName: String? = null): PoolMember? {
         val all = members(pool).filter { canReplace(it) }
-        diskName?.let { n -> all.firstOrNull { it.node.disk == n || it.node.unavailDisk?.name == n }?.let { return it } }
+        diskName?.let { n -> (all.firstOrNull { it.node.disk == n } ?: all.firstOrNull { it.node.disk == null && it.node.unavailDisk?.name == n })?.let { return it } }
         return all.firstOrNull { it.node.status != "ONLINE" } ?: all.firstOrNull { it.node.errors > 0 } ?: all.firstOrNull()
     }
 

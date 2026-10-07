@@ -521,12 +521,12 @@ fun DiskDetailContent(
                     LabeledValue("Serial", d?.serial ?: m?.node?.unavailDisk?.serial ?: "—", Modifier.weight(1.4f))
                     LabeledValue("Temperature", Format.temp(d?.temperatureC), Modifier.weight(1f))
                 }
-                if (d?.tempMax != null || d?.tempAvg != null) {
+                if (d != null && (d.tempMax != null || d.tempAvg != null)) {
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth()) {
-                        LabeledValue("7-day min", Format.temp(d?.tempMin), Modifier.weight(1f))
-                        LabeledValue("avg", Format.temp(d?.tempAvg), Modifier.weight(1f))
-                        LabeledValue("max", Format.temp(d?.tempMax), Modifier.weight(1f))
+                        LabeledValue("7-day min", Format.temp(d.tempMin), Modifier.weight(1f))
+                        LabeledValue("avg", Format.temp(d.tempAvg), Modifier.weight(1f))
+                        LabeledValue("max", Format.temp(d.tempMax), Modifier.weight(1f))
                     }
                 }
                 if (d != null) {

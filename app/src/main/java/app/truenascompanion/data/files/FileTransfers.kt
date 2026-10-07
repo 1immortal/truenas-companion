@@ -64,7 +64,7 @@ class FileTransfers(client: OkHttpClient, baseUrl: String) {
         val request = Request.Builder().url(base + downloadUrl).get().build()
         return http.newCall(request).executeCancellable { response ->
             if (!response.isSuccessful) throw httpError(response)
-            val body = response.body ?: throw TrueNasException.Http(response.code, "Empty download")
+            val body = response.body
             val total = body.contentLength().takeIf { it > 0 } ?: expectedSize
             var done = 0L
             var lastReport = 0L
@@ -87,12 +87,16 @@ class FileTransfers(client: OkHttpClient, baseUrl: String) {
     /**
      * Uploads [size] bytes from [open] to [path] with `filesystem.put` (overwrites an existing file; the caller asks
      * first). Returns the id of the `filesystem.put` job, which the caller then waits for over the WebSocket.
+     *
+     * [onProgress] is first called with 0 bytes when the body starts streaming. TrueNAS writes the file while it
+     * arrives (`filesystem.put` opens the target for writing before the data is complete) and has no API to delete
+     * files, so cancelling or losing the connection after that point leaves a partial file on the NAS.
      */
     suspend fun upload(path: String, token: String, fileName: String, size: Long, open: () -> InputStream, onProgress: (Long, Long) -> Unit): Long {
         val request = uploadRequest(path, token, fileName, size, open, onProgress)
         return http.newCall(request).executeCancellable { response ->
             if (!response.isSuccessful) throw httpError(response)
-            val text = response.body?.string().orEmpty()
+            val text = response.body.string()
             runCatching { Json.parseToJsonElement(text).jsonObject["job_id"]?.jsonPrimitive?.longOrNull }.getOrNull()
                 ?: throw TrueNasException.Http(response.code, "TrueNAS did not start the upload job.")
         }
@@ -117,6 +121,9 @@ class FileTransfers(client: OkHttpClient, baseUrl: String) {
         override fun writeTo(sink: BufferedSink) {
             var done = 0L
             var lastReport = 0L
+            // First report (0 bytes) = the request body is being sent: from here on TrueNAS may already have created
+            // (or truncated) the target file, so a cancel can leave a partial file behind.
+            onProgress(0, size)
             open().use { input ->
                 input.source().use { src ->
                     val buffer = okio.Buffer()
@@ -135,7 +142,7 @@ class FileTransfers(client: OkHttpClient, baseUrl: String) {
     }
 
     private fun httpError(response: Response): TrueNasException {
-        val text = runCatching { response.body?.string()?.take(300) }.getOrNull().orEmpty()
+        val text = runCatching { response.body.string().take(300) }.getOrNull().orEmpty()
         val msg = when (response.code) {
             401 -> "TrueNAS refused the transfer (the one-time link expired or isn't allowed)."
             403 -> "Permission denied."
