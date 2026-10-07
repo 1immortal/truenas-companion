@@ -132,6 +132,7 @@ import app.truenascompanion.ui.components.SkeletonList
 import app.truenascompanion.ui.theme.LocalBrandColors
 import app.truenascompanion.ui.theme.LocalStatusColors
 import app.truenascompanion.util.Format
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -154,20 +155,22 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
     val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.prepareUpload(uri) }
 
     LaunchedEffect(vm) {
+        // Snackbars run in their own coroutines so a message on screen never delays the next event (e.g. a save dialog).
+        val scope = this
         vm.eventFlow.collect { ev ->
             when (ev) {
-                is FileEvent.Message -> snackbar.showSnackbar(ev.text, withDismissAction = ev.text.length > 80, duration = if (ev.text.length > 80) SnackbarDuration.Long else SnackbarDuration.Short)
+                is FileEvent.Message -> scope.launch { snackbar.showSnackbar(ev.text, withDismissAction = ev.text.length > 80, duration = if (ev.text.length > 80) SnackbarDuration.Long else SnackbarDuration.Short) }
                 is FileEvent.PickSaveLocation -> {
                     saveInDownloads = ev.inDownloads
                     try {
                         createDoc.launch(ev.suggestedName)
                     } catch (_: ActivityNotFoundException) {
                         vm.onSaveLocation(null)
-                        snackbar.showSnackbar("This phone has no app to pick a save location.")
+                        scope.launch { snackbar.showSnackbar("This phone has no app to pick a save location.") }
                     }
                 }
-                is FileEvent.Saved -> {
-                    if (snackbar.showSnackbar(ev.text, actionLabel = "Open", withDismissAction = true) == SnackbarResult.ActionPerformed) {
+                is FileEvent.Saved -> scope.launch {
+                    if (snackbar.showSnackbar(ev.text, actionLabel = "Open", withDismissAction = true, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
                         val view = Intent(Intent.ACTION_VIEW).setDataAndType(ev.uri, ev.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         try {
                             context.startActivity(Intent.createChooser(view, "Open ${ev.name} with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
@@ -181,7 +184,7 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
                     try {
                         context.startActivity(Intent.createChooser(view, "Open ${ev.name} with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                     } catch (_: ActivityNotFoundException) {
-                        snackbar.showSnackbar("No app on this phone can open this file type.")
+                        scope.launch { snackbar.showSnackbar("No app on this phone can open this file type.") }
                     }
                 }
             }
