@@ -337,7 +337,8 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
      */
     fun saveToDownloads(entry: FileEntry) {
         if (transferJob?.isActive == true) { msg("Another transfer is running."); return }
-        if (!SaveTargets.mediaStoreDownloads()) { askSaveLocation(entry, inDownloads = true); return }
+        // Same rule as SaveTargets.mediaStoreDownloads(), spelled out so lint sees the API check.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { askSaveLocation(entry, inDownloads = true); return }
         val resolver = c.context.contentResolver
         viewModelScope.launch {
             val target = withContext(Dispatchers.IO) { runCatching { SaveTargets.createDownload(resolver, entry.name) }.getOrNull() }
