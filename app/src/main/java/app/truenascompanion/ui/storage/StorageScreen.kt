@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,8 +61,12 @@ import app.truenascompanion.data.model.NfsShareInput
 import app.truenascompanion.data.model.DatasetCreateRequest
 import app.truenascompanion.data.api.StorageApi
 import app.truenascompanion.data.model.Dataset
-import app.truenascompanion.data.model.Disk
-import app.truenascompanion.data.model.Health
+import app.truenascompanion.data.model.DiskInfo
+import app.truenascompanion.data.model.PoolLayout
+import app.truenascompanion.data.disks.DisksApi
+import app.truenascompanion.data.api.Parsers
+import app.truenascompanion.data.api.arr
+import app.truenascompanion.data.api.obj
 import app.truenascompanion.data.model.Pool
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.CapacityBar
@@ -78,7 +80,6 @@ import app.truenascompanion.ui.components.isLoginRequired
 import app.truenascompanion.ui.components.SkeletonList
 import app.truenascompanion.ui.components.StatusChip
 import app.truenascompanion.ui.components.UiState
-import app.truenascompanion.ui.dashboard.diskTempHealth
 import app.truenascompanion.ui.theme.LocalStatusColors
 import app.truenascompanion.util.Format
 import kotlinx.coroutines.async
@@ -92,10 +93,23 @@ import kotlinx.coroutines.launch
 
 data class StorageData(
     val pools: List<Pool>,
-    val disks: List<Disk>,
+    val disks: List<DiskInfo>,
     val datasets: List<Dataset>,
     val shares: SharesData = SharesData(emptyList(), emptyList()),
+    /** 1.3.0: vdev trees of the same pools (Disks tab: pool/vdev, status and errors per disk). */
+    val layouts: List<PoolLayout> = emptyList(),
 )
+
+/** Storage segments (1.3.0 adds Files). Deep links and the dashboard use these indexes. */
+object StorageTabs {
+    const val POOLS = 0
+    const val DISKS = 1
+    const val DATASETS = 2
+    const val FILES = 3
+    const val SHARES = 4
+    const val PROTECTION = 5
+    val labels = listOf("Pools", "Disks", "Datasets", "Files", "Shares", "Protection")
+}
 
 class StorageViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow<UiState<StorageData>>(UiState.Loading)
@@ -119,19 +133,20 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
     private suspend fun load() {
         try {
             coroutineScope {
-                val pools = async { c.repository.call { it.pools() } }
-                val disks = async { c.repository.call { it.disks() } }
+                // One pool.query for both the pool cards and the vdev trees.
+                val rawPools = async { c.repository.call { it.rpc("pool.query") } }
+                val disks = async { c.repository.call { DisksApi(it).disks() } }
                 val datasets = async { runCatching { c.repository.call { it.datasets() } }.getOrDefault(emptyList()) }
                 val smb = async { runCatching { c.repository.call { StorageApi(it).smbShares() } }.getOrDefault(emptyList()) }
                 val nfs = async { runCatching { c.repository.call { StorageApi(it).nfsShares() } }.getOrDefault(emptyList()) }
-                val diskList = disks.await()
-                val temps = runCatching { c.repository.call { it.diskTemperatures(diskList.map { d -> d.name }) } }.getOrDefault(emptyMap())
+                val poolObjs = rawPools.await().arr().orEmpty().mapNotNull { it.obj() }
                 _state.value = UiState.Success(
                     StorageData(
-                        pools.await(),
-                        diskList.map { it.copy(temperatureC = temps[it.name]) },
+                        poolObjs.map(Parsers::pool),
+                        disks.await(),
                         datasets.await(),
                         SharesData(smb.await(), nfs.await()),
+                        poolObjs.map(DisksApi::pool),
                     )
                 )
             }
@@ -170,14 +185,21 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?) -> Unit = {}) {
+fun StorageScreen(
+    onOpenSnapshots: (String) -> Unit = {},
+    onSnapshotTask: (Int?) -> Unit = {},
+    onBrowse: (String) -> Unit = {},
+    onOpenPool: (String) -> Unit = {},
+    onOpenDisk: (String) -> Unit = {},
+    onReplace: (String) -> Unit = {},
+) {
     val vm = appViewModel { StorageViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val message by vm.messages.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = listOf("Pools", "Disks", "Datasets", "Shares", "Protection")
+    val tabs = StorageTabs.labels
     val container = (LocalContext.current.applicationContext as TrueNasApp).container
     val request by container.storageTabRequest.collectAsStateWithLifecycle()
     LaunchedEffect(request) { request?.let { tab = it; container.storageTabRequest.value = null } }
@@ -189,7 +211,7 @@ fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?)
             PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
                 tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
             }
-            if (tab == 4) {
+            if (tab == StorageTabs.PROTECTION) {
                 ProtectionPane(snackbar, onSnapshotTask)
                 return@Column
             }
@@ -198,9 +220,10 @@ fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?)
                     UiState.Loading -> SkeletonList(4, 110.dp)
                     is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
                     is UiState.Success -> when (tab) {
-                        0 -> PoolsList(s.data.pools)
-                        1 -> DisksList(s.data.disks)
-                        2 -> DatasetsPane(
+                        StorageTabs.POOLS -> PoolsList(s.data.pools, onOpenPool, onReplace)
+                        StorageTabs.DISKS -> app.truenascompanion.ui.disks.DisksPane(app.truenascompanion.ui.disks.DisksData(s.data.layouts, s.data.disks), onOpenDisk)
+                        StorageTabs.FILES -> app.truenascompanion.ui.files.FilesLauncher(s.data.pools, s.data.datasets, onBrowse)
+                        StorageTabs.DATASETS -> DatasetsPane(
                             datasets = s.data.datasets,
                             pools = s.data.pools,
                             busy = busy,
@@ -208,6 +231,7 @@ fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?)
                             onCreate = vm::createDataset,
                             onRename = vm::renameDataset,
                             onDelete = vm::deleteDataset,
+                            onBrowse = onBrowse,
                         )
                         else -> SharesPane(
                             data = s.data.shares,
@@ -219,6 +243,7 @@ fun StorageScreen(onOpenSnapshots: (String) -> Unit = {}, onSnapshotTask: (Int?)
                             onCreateNfs = vm::createNfs,
                             onUpdateNfs = vm::updateNfs,
                             onDeleteNfs = vm::deleteNfs,
+                            onBrowse = onBrowse,
                         )
                     }
                 }
@@ -252,18 +277,18 @@ private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -
 private val listPadding = PaddingValues(16.dp)
 
 @Composable
-private fun PoolsList(pools: List<Pool>) {
+private fun PoolsList(pools: List<Pool>, onOpenPool: (String) -> Unit, onReplace: (String) -> Unit) {
     if (pools.isEmpty()) {
         LazyColumn(Modifier.fillMaxSize()) { item { EmptyState(Icons.Rounded.Storage, "No pools", "Create a storage pool in the TrueNAS web UI to see it here.") } }
         return
     }
     LazyColumn(contentPadding = listPadding, verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
-        items(pools, key = { it.id }) { PoolCard(it) }
+        items(pools, key = { it.id }) { PoolCard(it, onOpenPool, onReplace) }
     }
 }
 
 @Composable
-private fun PoolCard(p: Pool) {
+private fun PoolCard(p: Pool, onOpenPool: (String) -> Unit, onReplace: (String) -> Unit) {
     var expanded by rememberSaveable(p.id) { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
     ElevatedSection(onClick = { expanded = !expanded }, modifier = Modifier.animateContentSize()) {
@@ -306,37 +331,10 @@ private fun PoolCard(p: Pool) {
                 Text("Disks: " + p.diskNames.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-    }
-}
-
-@Composable
-private fun DisksList(disks: List<Disk>) {
-    if (disks.isEmpty()) {
-        LazyColumn(Modifier.fillMaxSize()) { item { EmptyState(Icons.Rounded.Album, "No disks", "No disks were reported by the server.") } }
-        return
-    }
-    LazyColumn(contentPadding = listPadding, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-        items(disks, key = { it.name }) { d ->
-            ElevatedSection(contentPadding = 14.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val ssd = d.type.equals("SSD", true) || d.name.startsWith("nvme")
-                    IconBadge(if (ssd) Icons.Rounded.Memory else Icons.Rounded.Album)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(d.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            listOfNotNull(d.model, Format.bytes(d.size), d.pool?.let { "pool $it" } ?: "unassigned").joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    if (d.temperatureC != null) StatusChip(diskTempHealth(d.temperatureC), Format.temp(d.temperatureC))
-                    else StatusChip(Health.UNKNOWN, "—", showIcon = false)
-                }
-            }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.FilledTonalButton(onClick = { onOpenPool(p.name) }) { Text("Layout & disks") }
+            if (!p.healthy) androidx.compose.material3.OutlinedButton(onClick = { onReplace(p.name) }) { Text("Replace a disk") }
         }
     }
 }
-
-

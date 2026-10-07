@@ -4,4 +4,6 @@
     <cache-path name="updates" path="updates/" />
     <!-- Audit log CSV exports, shared through the system share sheet. -->
     <cache-path name="exports" path="exports/" />
+    <!-- 1.3.0 file browser: a NAS file opened with another app ("Open with"), cleared on the next open. -->
+    <cache-path name="files" path="files/" />
 </paths>

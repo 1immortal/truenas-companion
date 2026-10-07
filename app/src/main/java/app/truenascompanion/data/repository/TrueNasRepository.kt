@@ -388,6 +388,21 @@ class TrueNasRepository(
         }
     }
 
+    /**
+     * 1.3.0 file transfers: runs [block] with the connected API and the resolved address (route, certificate pin) so
+     * an HTTP transfer goes to the same place as the WebSocket. Counts as an active call, so the 30 s background
+     * disconnect waits until the transfer is done.
+     */
+    suspend fun <T> withEndpoint(block: suspend (TrueNasApi, ServerConfig) -> T): T = withContext(Dispatchers.IO) {
+        activeCalls.incrementAndGet()
+        try {
+            val (a, target) = try { shellEndpoint() } catch (e: TrueNasException.NotConnected) { shellEndpoint() }
+            block(a, target)
+        } finally {
+            activeCalls.decrementAndGet()
+        }
+    }
+
     /** Live stats (WebSocket only). Re-subscribes after connection loss with exponential backoff. */
     fun realtime(): Flow<RealtimeStats> = reconnecting { a -> if (a.supportsRealtime) a.realtimeStats() else null }
 

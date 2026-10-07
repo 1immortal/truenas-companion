@@ -97,6 +97,18 @@ private object Routes {
     const val LOGS = "app/{name}/logs?container={container}"
     const val SNAPSHOTS = "snapshots/{dataset}"
     const val SNAP_TASK = "snapshot_task?id={id}"
+    // 1.3.0: file browser and disk screens
+    const val FILES = "files?path={path}"
+    const val POOL_LAYOUT = "pool_layout/{pool}"
+    const val DISK = "disk/{name}"
+    const val REPLACE = "replace/{pool}?guid={guid}&disk={disk}"
+    fun files(path: String) = "files?path=${enc(path)}"
+    fun poolLayout(pool: String) = "pool_layout/${enc(pool)}"
+    fun disk(name: String) = "disk/${enc(name)}"
+    fun replace(pool: String, guid: String? = null, disk: String? = null): String {
+        val q = listOfNotNull(guid?.let { "guid=${enc(it)}" }, disk?.let { "disk=${enc(it)}" })
+        return "replace/${enc(pool)}" + if (q.isEmpty()) "" else q.joinToString("&", prefix = "?")
+    }
     const val VPN = "vpn/{id}"
     const val VPN_SETUP = "vpn_setup/{id}"
     const val SHELL = "shell/{kind}?app={app}&ctr={ctr}&cname={cname}&cmd={cmd}&id={id}"
@@ -206,7 +218,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                                 WidgetType.POOLS, WidgetType.TEMPERATURE -> nav.switchTab(Tab.STORAGE.route)
                                 WidgetType.APPS -> nav.switchTab(Tab.APPS.route)
                                 WidgetType.ALERTS -> nav.switchTab(Tab.ALERTS.route)
-                                WidgetType.PROTECTION -> { container.storageTabRequest.value = 4; nav.switchTab(Tab.STORAGE.route) }
+                                WidgetType.PROTECTION -> { container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.PROTECTION; nav.switchTab(Tab.STORAGE.route) }
                                 WidgetType.REPORTS, WidgetType.CPU, WidgetType.MEMORY, WidgetType.NETWORK -> nav.navigate(Routes.REPORTS)
                                 else -> Unit
                             }
@@ -215,10 +227,40 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     )
                 }
                 composable(Tab.STORAGE.route) {
-                    StorageScreen(onOpenSnapshots = { nav.navigate(Routes.snapshots(it)) }, onSnapshotTask = { nav.navigate(Routes.snapTask(it)) })
+                    StorageScreen(
+                        onOpenSnapshots = { nav.navigate(Routes.snapshots(it)) },
+                        onSnapshotTask = { nav.navigate(Routes.snapTask(it)) },
+                        onBrowse = { nav.navigate(Routes.files(it)) },
+                        onOpenPool = { nav.navigate(Routes.poolLayout(it)) },
+                        onOpenDisk = { nav.navigate(Routes.disk(it)) },
+                        onReplace = { nav.navigate(Routes.replace(it)) },
+                    )
                 }
                 pushed(Routes.SNAPSHOTS, "dataset") { a ->
-                    app.truenascompanion.ui.protection.SnapshotsScreen(a.getValue("dataset"), onBack = { nav.popBackStack() })
+                    app.truenascompanion.ui.protection.SnapshotsScreen(a.getValue("dataset"), onBack = { nav.popBackStack() }, onBrowse = { nav.navigate(Routes.files(it)) })
+                }
+                pushed(Routes.FILES, "path?") { a ->
+                    app.truenascompanion.ui.files.FileBrowserScreen(a["path"] ?: app.truenascompanion.data.files.FilePolicy.ROOT, onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.POOL_LAYOUT, "pool") { a ->
+                    app.truenascompanion.ui.disks.PoolLayoutScreen(
+                        a.getValue("pool"), onBack = { nav.popBackStack() },
+                        onOpenDisk = { nav.navigate(Routes.disk(it)) },
+                        onReplace = { guid -> nav.navigate(Routes.replace(a.getValue("pool"), guid = guid)) },
+                    )
+                }
+                pushed(Routes.DISK, "name") { a ->
+                    app.truenascompanion.ui.disks.DiskDetailScreen(
+                        a.getValue("name"), onBack = { nav.popBackStack() },
+                        onReplace = { pool, guid, disk -> nav.navigate(Routes.replace(pool, guid, disk)) },
+                        onOpenPool = { nav.navigate(Routes.poolLayout(it)) },
+                    )
+                }
+                pushed(Routes.REPLACE, "pool", "guid?", "disk?") { a ->
+                    app.truenascompanion.ui.disks.ReplaceWizardScreen(
+                        a.getValue("pool"), a["guid"], a["disk"], onBack = { nav.popBackStack() },
+                        onOpenPool = { nav.navigate(Routes.poolLayout(it)) },
+                    )
                 }
                 pushed(Routes.SNAP_TASK, "id?") { a ->
                     app.truenascompanion.ui.protection.SnapshotTaskEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
@@ -339,12 +381,20 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
     }
 }
 
-/** Opens the screen an alert is about (1.2.0); Storage segments: 0 pools, 1 disks, 2 datasets. */
+/** Opens the screen an alert is about (1.2.0; 1.3.0 opens pool layout, disk detail and the replace wizard). */
 private fun NavHostController.openTarget(container: app.truenascompanion.AppContainer, t: app.truenascompanion.notify.AlertTarget) {
     when (t) {
-        is app.truenascompanion.notify.AlertTarget.Pool -> { container.storageTabRequest.value = 0; switchTab(Tab.STORAGE.route) }
-        is app.truenascompanion.notify.AlertTarget.Disk -> { container.storageTabRequest.value = 1; switchTab(Tab.STORAGE.route) }
-        is app.truenascompanion.notify.AlertTarget.Dataset -> { container.storageTabRequest.value = 2; switchTab(Tab.STORAGE.route) }
+        is app.truenascompanion.notify.AlertTarget.Pool -> {
+            container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.POOLS; switchTab(Tab.STORAGE.route); navigate(Routes.poolLayout(t.name))
+        }
+        is app.truenascompanion.notify.AlertTarget.Disk -> {
+            container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.DISKS; switchTab(Tab.STORAGE.route)
+            t.name?.let { navigate(Routes.disk(it)) }
+        }
+        is app.truenascompanion.notify.AlertTarget.ReplaceDisk -> {
+            container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.POOLS; switchTab(Tab.STORAGE.route); navigate(Routes.replace(t.pool))
+        }
+        is app.truenascompanion.notify.AlertTarget.Dataset -> { container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.DATASETS; switchTab(Tab.STORAGE.route) }
         is app.truenascompanion.notify.AlertTarget.Snapshots -> { switchTab(Tab.STORAGE.route); navigate(Routes.snapshots(t.dataset)) }
         is app.truenascompanion.notify.AlertTarget.App -> { switchTab(Tab.APPS.route); navigate(Routes.app(t.name)) }
         app.truenascompanion.notify.AlertTarget.Apps -> switchTab(Tab.APPS.route)
