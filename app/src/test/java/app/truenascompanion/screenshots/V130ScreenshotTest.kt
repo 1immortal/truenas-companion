@@ -180,7 +180,7 @@ class V130ScreenshotTest {
 
     @Test fun filesUploadStop() = shot("v130_files_upload_stop") {
         val t = TransferState(TransferKind.UPLOAD, "IMG_0042.jpg", 1_900_000, 4_200_000, target = "/mnt/tank/media/IMG_0042.jpg", started = true, replacing = true)
-        FileBrowserContent(ui.copy(transfer = t, incomplete = setOf("/mnt/tank/media/backup-config.tar.gz")))
+        FileBrowserContent(ui.copy(transfer = t, incomplete = setOf("/mnt/tank/media/holiday-2026.mp4")))
         StopUploadDialog(t, onKeep = {}, onStop = {})
     }
 
@@ -230,7 +230,7 @@ class V130ScreenshotTest {
         Column {
             ReplaceWizardContent(
                 ReplaceUi(step = ReplaceStep.PICK, loading = false, pool = layout, disks = disks, member = member,
-                    candidates = DiskLogic.candidates(candidates + oldDisk, 4_000_787_030_016), selected = oldDisk),
+                    candidates = listOf(oldDisk), selected = oldDisk),
                 ReplaceActions(),
             )
         }
