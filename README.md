@@ -19,6 +19,10 @@
     <td><img src="docs/images/catalog-dark.png" width="200" alt="Apps catalog"></td>
     <td><img src="docs/images/notif-mock-dark.png" width="200" alt="Phone alerts"></td>
   </tr>
+  <tr>
+    <td><img src="docs/images/services-dark.png" width="200" alt="Services"></td>
+    <td><img src="docs/images/scheduled-tasks-dark.png" width="200" alt="Scheduled tasks"></td>
+  </tr>
 </table>
 <sub>Screenshots use made-up example data.</sub>
 
@@ -44,13 +48,22 @@
   - A guided wizard walks you through a swap: pick the disk, optionally take it offline, insert the new one, scan, double-check the serial and size, and confirm with your fingerprint.
   - It won't let you pick a disk that's too small and warns you if the "new" disk looks like the old one.
   - Follow the resilver live, and get a notification when it's done. A disk alert takes you straight there.
+- **Run your services.** **System › Services** shows SSH, SMB, NFS, UPS, SNMP, FTP and the rest, whether each one is running and whether it starts on boot.
+  - Start, stop or restart a service with one tap and watch it happen. Before stopping something like SSH or SMB, the app warns you that it may cut off access.
+  - Tap SSH, SMB, NFS, UPS, SNMP or FTP to change its settings: port and password login, workgroup and multichannel, NFS versions, UPS driver and shutdown timer, SNMPv3, FTP limits and more.
+  - Passwords stay hidden until you tap **Show**. If TrueNAS doesn't accept a value, the reason shows up right under that field.
+- **Schedule tasks.** **System › Scheduled tasks** holds your cron jobs and init/shutdown scripts.
+  - Every cron job reads in plain words ("Every day at 03:00", "Weekdays at 06:30"). Turn it on or off, or run it right now: the app asks first, then shows progress and the output.
+  - Add or edit a job with a simple schedule picker (hourly, daily, weekly, monthly or your own custom schedule), and pick the user it runs as.
+  - Init/shutdown scripts run a command or a script file when the NAS starts up or shuts down. You can pick the script file straight from your pools.
+  - TrueNAS 25.10 has no way to run an init/shutdown script on demand, so the app doesn't offer that.
 - **Manage users and groups.** Add, edit, lock or delete accounts, reset passwords, paste SSH keys and pick groups, home folder and shell. Built-in system accounts stay out of the way unless you ask to see them.
 - **Look back in time.** Reports show CPU, memory, network, disk activity and temperatures for the last hour, day, week or month. Pinch to zoom and touch the chart for exact values. Open them from System › Reports or by tapping the CPU, Memory, Network or Reports cards.
 - **See who did what.** The audit log lists sign-ins, changes, SMB file access and sudo use, with the same filters as the web UI. One tap on **REST logins** shows which old scripts still use the deprecated REST API, and you can export the list as a CSV.
 - **Keep certificates fresh.** See every certificate with who issued it, the names it covers and how many days are left, with a heads-up before one expires. Import a certificate, request one from Let's Encrypt with your DNS provider, or switch the web UI certificate (with a clear warning, and the app makes you re-check the new one).
 - **Do things faster.** Long-press the app icon for Shell, Alerts, Restart app… or Scrub pool…, or add the NAS status and TrueNAS action tiles to Quick Settings. Every action still asks first, with your fingerprint when the app lock is on.
 - **Calmer alerts.** Snooze an alert right from the notification, see repeated alerts as one notification with a count, and tap through to the pool, disk, app, dataset, update or certificate it's about (or straight into the disk replacement when a pool reports a failed disk).
-- **Handle everyday chores.** Check for TrueNAS updates and apply them, manage boot environments, start or stop services, follow running tasks, dismiss alerts, reboot or shut down.
+- **Handle everyday chores.** Check for TrueNAS updates and apply them, manage boot environments, follow running tasks, dismiss alerts, reboot or shut down.
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a modal blurred overlay blocks the UI underneath (including the bottom tabs, which are grayed out and not clickable) and offers **Quit**, **Check connection settings**, or **Try again**. System › Connection sets how long to keep retrying (10 s / 30 s / 1 min / 2 min) before that overlay.
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.
