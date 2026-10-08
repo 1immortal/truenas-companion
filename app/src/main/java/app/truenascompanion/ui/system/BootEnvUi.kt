@@ -115,32 +115,7 @@ fun BootEnvSection() {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(vm) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.refresh() } }
 
-    ElevatedSection {
-        SettingRow(Icons.Rounded.Storage, "Boot environments", "Activate, clone, keep or delete")
-        Spacer(Modifier.height(8.dp))
-        when (val s = state) {
-            UiState.Loading -> repeat(2) { SkeletonCard(height = 64.dp); Spacer(Modifier.height(6.dp)) }
-            is UiState.Error -> Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            is UiState.Success -> {
-                if (s.data.isEmpty()) Text("No boot environments reported.", style = MaterialTheme.typography.bodySmall)
-                s.data.forEachIndexed { i, be ->
-                    BootEnvRow(
-                        be = be,
-                        busy = be.id in busy,
-                        onActivate = { activate = be },
-                        onKeep = { vm.keep(be.id, !be.keep) },
-                        onClone = { cloneSrc = be },
-                        onDelete = { destroy = be },
-                    )
-                    if (i < s.data.lastIndex) HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                }
-            }
-        }
-        message?.let {
-            Spacer(Modifier.height(6.dp))
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-        }
-    }
+    BootEnvCard(state, busy, message, onActivate = { activate = it }, onKeep = { vm.keep(it.id, !it.keep) }, onClone = { cloneSrc = it }, onDelete = { destroy = it })
 
     activate?.let { be ->
         ConfirmDialog(
@@ -217,6 +192,45 @@ private fun BootEnvRow(
             )
             DropdownMenuItem(text = { Text("Clone") }, onClick = { menu = false; onClone() }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
             if (!be.active && !be.activated) DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
+        }
+    }
+}
+
+/** Stateless boot environment card (System › Updates & boot; also rendered by the screenshot tests). */
+@Composable
+fun BootEnvCard(
+    state: UiState<List<BootEnvironment>>,
+    busy: Set<String>,
+    message: String?,
+    onActivate: (BootEnvironment) -> Unit,
+    onKeep: (BootEnvironment) -> Unit,
+    onClone: (BootEnvironment) -> Unit,
+    onDelete: (BootEnvironment) -> Unit,
+) {
+    ElevatedSection {
+        SettingRow(Icons.Rounded.Storage, "Boot environments", "Activate, clone, keep or delete")
+        Spacer(Modifier.height(8.dp))
+        when (val s = state) {
+            UiState.Loading -> repeat(2) { SkeletonCard(height = 64.dp); Spacer(Modifier.height(6.dp)) }
+            is UiState.Error -> Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            is UiState.Success -> {
+                if (s.data.isEmpty()) Text("No boot environments reported.", style = MaterialTheme.typography.bodySmall)
+                s.data.forEachIndexed { i, be ->
+                    BootEnvRow(
+                        be = be,
+                        busy = be.id in busy,
+                        onActivate = { onActivate(be) },
+                        onKeep = { onKeep(be) },
+                        onClone = { onClone(be) },
+                        onDelete = { onDelete(be) },
+                    )
+                    if (i < s.data.lastIndex) HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                }
+            }
+        }
+        message?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

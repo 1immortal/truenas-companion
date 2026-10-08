@@ -111,6 +111,9 @@ private object Routes {
     }
     // 1.4.0: services and scheduled tasks
     const val SERVICES = "services"
+    // 1.4.1: System hub pages (updates, power, phone alerts, app lock, connection, appearance, about)
+    const val SYSTEM_PAGE = "system_page/{page}"
+    fun systemPage(page: app.truenascompanion.ui.system.SystemPage) = "system_page/${page.name.lowercase()}"
     const val SERVICE = "service/{kind}"
     const val TASKS = "scheduled_tasks"
     const val CRON_JOB = "cron_job?id={id}"
@@ -182,7 +185,11 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
             kotlinx.coroutines.withTimeoutOrNull(3_000) { container.repository.activeServer.first { it?.id == id } }
         }
         when (link.destination) {
-            DeepLink.DEST_SETTINGS -> nav.switchTab(Tab.SYSTEM.route)
+            DeepLink.DEST_SETTINGS -> {
+                // Plain link: the System hub. The instant-alerts notification and app-update notification open their page.
+                nav.switchTab(Tab.SYSTEM.route)
+                app.truenascompanion.ui.system.SystemPage.forSettingsLink(link.arg)?.let { nav.navigate(Routes.systemPage(it)) }
+            }
             DeepLink.DEST_SIGN_IN -> {
                 nav.switchTab(Tab.ALERTS.route)
                 container.repository.requestSignIn()
@@ -338,7 +345,13 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) },
                     onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) },
                     onCertificates = { nav.navigate(Routes.certificates()) },
-                    onServices = { nav.navigate(Routes.SERVICES) }, onScheduledTasks = { nav.navigate(Routes.TASKS) }) }
+                    onServices = { nav.navigate(Routes.SERVICES) }, onScheduledTasks = { nav.navigate(Routes.TASKS) },
+                    onPage = { nav.navigate(Routes.systemPage(it)) }) }
+                pushed(Routes.SYSTEM_PAGE, "page") { a ->
+                    val page = app.truenascompanion.ui.system.SystemPage.parse(a["page"])
+                    if (page == null) LaunchedEffect(Unit) { nav.popBackStack() }
+                    else app.truenascompanion.ui.system.SystemPageScreen(page, onBack = { nav.popBackStack() })
+                }
                 pushed(Routes.SERVICES) {
                     app.truenascompanion.ui.services.ServicesScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.service(it)) })
                 }
@@ -445,7 +458,7 @@ private fun NavHostController.openTarget(container: app.truenascompanion.AppCont
         is app.truenascompanion.notify.AlertTarget.Snapshots -> { switchTab(Tab.STORAGE.route); navigate(Routes.snapshots(t.dataset)) }
         is app.truenascompanion.notify.AlertTarget.App -> { switchTab(Tab.APPS.route); navigate(Routes.app(t.name)) }
         app.truenascompanion.notify.AlertTarget.Apps -> switchTab(Tab.APPS.route)
-        app.truenascompanion.notify.AlertTarget.Update -> switchTab(Tab.SYSTEM.route)
+        app.truenascompanion.notify.AlertTarget.Update -> { switchTab(Tab.SYSTEM.route); navigate(Routes.systemPage(app.truenascompanion.ui.system.SystemPage.UPDATES)) }
         is app.truenascompanion.notify.AlertTarget.Certificate -> { switchTab(Tab.SYSTEM.route); navigate(Routes.certificates(t.name)) }
         app.truenascompanion.notify.AlertTarget.Alerts -> switchTab(Tab.ALERTS.route)
     }

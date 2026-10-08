@@ -42,7 +42,7 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 
 **Legacy REST fallback removed (1.1).** The app now only speaks the JSON-RPC WebSocket API.
 
-**Certificates (new in 1.2):** System › Manage › Certificates. All calls follow the 25.10 middleware (`api/v25_10_0/certificate.py`, `plugins/crypto_`) and the web UI's Credentials › Certificates pages.
+**Certificates (new in 1.2):** System › Certificates. All calls follow the 25.10 middleware (`api/v25_10_0/certificate.py`, `plugins/crypto_`) and the web UI's Credentials › Certificates pages.
 - **List:** `certificate.query` (certificates, CAs with `cert_type_CA`, CSRs with `cert_type_CSR`). `from` / `until` are UTC strings like `Tue Oct  6 10:00:00 2026` and are parsed as UTC. Days left are whole days rounded down (like the middleware's `(until - now).days`). The API has no issuer field, so the issuer CN (or O) and the self-signed flag are read on the phone from the certificate PEM. Badges: *N days left*, *expiring* (within the warning window), *expired*, *Web UI*, *ACME · auto-renew*, *Self-signed*. The web UI certificate comes from `system.general.config().ui_certificate.id`, the allowed choices from `system.general.ui_certificate_choices`.
 - **Import:** `certificate.create` job with `{name, create_type: CERTIFICATE_CREATE_IMPORTED, certificate, privatekey, passphrase?, add_to_trusted_store}`. Paste the PEMs or pick a file; a file with both blocks fills both fields. Names must match the middleware's `^[a-z0-9_-]+$` (max 120).
 - **ACME:** uses DNS authenticators that already exist (`acme.dns.authenticator.query`; create them in the web UI). Pick an existing CSR (its names come from `webui.crypto.get_certificate_domain_names`) or let the app create one first (`CERTIFICATE_CREATE_CSR`, RSA 2048, SHA256, common name + SANs, named `<name>_csr`). Then `certificate.create` with `{create_type: CERTIFICATE_CREATE_ACME, csr_id, tos: true, acme_directory_uri, dns_mapping: {domain: authenticator id}, renew_days}`; directories from `certificate.acme_server_choices` (Let's Encrypt production preselected). The job is awaited for up to 10 minutes.
@@ -58,7 +58,7 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 **Better alerts (new in 1.2):**
 - **Snooze:** every alert notification has *Snooze* (1 hour, 8 hours, 1 day, 1 week); the Alerts tab has the same menu and *Unsnooze*. Snoozes are stored on the phone per alert id (TrueNAS has no snooze), dropped when the alert goes away, and the alert is notified again by the first check after the snooze ends (respecting quiet hours).
 - **Grouping:** repeated alerts of the same class (`klass`) share one notification with a count (*SMART test failed · 3*), an inbox list and *Dismiss all*. When an alert clears, the group shrinks or disappears. Alert data is kept in the notification extras, so this works across checks without extra storage.
-- **Deep links:** tapping a notification, or the button on an alert card, opens the related screen when `klass`/`args` say what it's about: pools (`VolumeStatus`, `ZpoolCapacity*`, `Scrub*`, `PoolUSBDisks`, `PoolUpgraded`) → the pool's layout (1.3; a `VolumeStatus` alert listing unhealthy devices → the replace wizard); disks (`SMART*`, `DiskTemperature*`, `DiskNotDetected`) → the disk's detail screen (1.3); `AppUpdate` with one app → that app, other app alerts → Apps; `SnapshotCount` → the dataset's snapshots; `Quota*`, `EncryptedDataset`, `SnapshotTotalCount` → Storage › Datasets; `HasUpdate` → System (TrueNAS update); `Certificate*` → Certificates. Anything else opens Alerts. Severity channels and quiet hours are unchanged.
+- **Deep links:** tapping a notification, or the button on an alert card, opens the related screen when `klass`/`args` say what it's about: pools (`VolumeStatus`, `ZpoolCapacity*`, `Scrub*`, `PoolUSBDisks`, `PoolUpgraded`) → the pool's layout (1.3; a `VolumeStatus` alert listing unhealthy devices → the replace wizard); disks (`SMART*`, `DiskTemperature*`, `DiskNotDetected`) → the disk's detail screen (1.3); `AppUpdate` with one app → that app, other app alerts → Apps; `SnapshotCount` → the dataset's snapshots; `Quota*`, `EncryptedDataset`, `SnapshotTotalCount` → Storage › Datasets; `HasUpdate` → System › Updates; `Certificate*` → Certificates. Anything else opens Alerts. Severity channels and quiet hours are unchanged.
 
 **Storage:** pools with status, health, capacity bar, and scrub/resilver info (tap to expand). Disks show model, size, pool and temperature. Datasets show usage, compression, comments and encryption/lock state (system datasets are hidden by default).
 
@@ -98,7 +98,7 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 
 **Release signing (1.0):** release APKs are signed with a dedicated keystore kept only on the build machine (`/home/box/secure/…`, never in git). From **1.0.3** the updater’s **Update channel** (System › About) selects which APK asset and which expected signer fingerprint to use (Release vs Debug). Mixing channels or a different key than the installed app requires a one-time uninstall/reinstall.
 
-**System updates and boot environments (new in 0.9):** System › TrueNAS update / Boot environments.
+**System updates and boot environments (new in 0.9):** System › Updates (TrueNAS update and boot environments on one page since 1.4.1).
 - **Updates:** `update.status` (25.10; `update.check_available` was removed). Shows current train/profile, available version, release notes / changelog from the manifest, and download progress when present. **Download & update** starts the `update.run` job with `{reboot: true}` (same as the web UI) and follows job progress. Confirm + fingerprint when *Confirm dangerous actions* is on.
 - **Boot environments:** `boot.environment.query` list with active / next-boot / keep. Activate (`boot.environment.activate` `{id}`), clone (`{id,target}`), keep/unkeep (`{id,value}`), delete (`destroy` `{id}`). Activate and delete ask for confirmation + fingerprint when guarded.
 
@@ -111,7 +111,7 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - **Other services** (for example iSCSI or NVMe-oF) are listed with start / stop / restart and start on boot; their settings stay in the web UI.
 - **Cron jobs:** `cronjob.query` / `create` / `update` / `delete`. The list shows description, command, user, the schedule in words ("Every day at 03:00", "Every 15 minutes", "Weekdays at 06:30", "Every 30 minutes from 09:00 to 17:59 on weekdays"; anything else as the raw expression), an on/off switch (`cronjob.update(id, {enabled})`) and what gets emailed (`stdout` / `stderr` set to true means *hide*; TrueNAS defaults to hiding output and emailing errors). The editor has presets (hourly, daily, weekly, monthly; switching keeps the chosen time) and a custom mode with the five cron fields, each checked the way croniter reads them (`*`, steps, ranges, lists, month and weekday names). The user picker comes from `user.query` (`select: [username, builtin, locked]`, root first). **Run now** asks first, then calls `cronjob.run(id, false)` (it runs even when the job is off) and follows the job, showing progress and the end of the output (`logs_excerpt`). S.M.A.R.T. test schedules are cron jobs in 25.10 (`midclt call disk.smart_test …`); they are tagged in the list and easier to edit in Storage › Protection.
 - **Init/shutdown scripts:** `initshutdownscript.query` / `create` / `update` / `delete` with type `COMMAND` or `SCRIPT`, when `PREINIT` / `POSTINIT` / `SHUTDOWN`, timeout in seconds (default 10), enabled and comment (up to 255 characters). Only the field that matches the type is sent filled; the other is sent empty, like the web UI. A script file can be picked with the file browser (pick mode: tap a file in a pool); TrueNAS checks that it exists and is executable. Deleting asks first.
-- **Left out:** running an init/shutdown script on demand. TrueNAS 25.10 only has the private `initshutdownscript.execute_init_tasks`, which API clients can't call. There's no launcher shortcut or quick action for these screens; they are two taps away under System, and the existing shortcuts stay focused on quick checks.
+- **Left out:** running an init/shutdown script on demand. TrueNAS 25.10 only has the private `initshutdownscript.execute_init_tasks`, which API clients can't call. There's no launcher shortcut or quick action for these screens; they are one tap away on the System hub, and the existing shortcuts stay focused on quick checks.
 
 **Datasets and shares (new in 0.8):** Storage › Datasets / Shares.
 - **Datasets / ZVOLs:** tree list with used/available, compression and ratio. Create a child dataset or ZVOL (`pool.dataset.create` with `type` FILESYSTEM or VOLUME, optional `share_type`, `compression`, `volsize`/`sparse`). Rename (`pool.dataset.rename`) and delete (`pool.dataset.delete` with recursive/force). Delete and rename ask for confirmation, and for your fingerprint when *Confirm dangerous actions* is on.
@@ -153,7 +153,7 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - **Not logged:** the one-time token and every byte of terminal input and output stay out of the log. Copying from the terminal marks the clipboard entry as sensitive. A reverse proxy (for example Nginx Proxy Manager) has to have WebSockets turned on, or the shell connection never upgrades; the error screen says so when you're on the remote address.
 - The terminal widget is the Termux emulator and view (v0.118.0, Apache 2.0), vendored under `third_party/termux-terminal` with the local process/JNI parts removed. It only talks to the NAS socket.
 
-**Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from the System tab. Jobs started in the web UI show up too.
+**Tasks (new in 0.2):** a live list of TrueNAS jobs (`core.get_jobs` plus `core.subscribe("core.get_jobs")`) such as app upgrades, scrubs, catalog syncs, system updates and replication, with progress bars, errors, and **Abort** for abortable jobs (`core.job_abort`). Open it from the Apps top bar (a badge shows running jobs) or from System › Tasks. Jobs started in the web UI show up too.
 
 **Data protection (new in 0.5):** a **Protection** tab in Storage, a *Data protection* dashboard card (tap it to open the tab; existing dashboards get the card appended, and you can hide it) and a snapshots screen per dataset.
 - **Summary:** four lines, one each for snapshots, scrubs, SMART and backups: *OK*, *Running*, *Not set up*, *Overdue* or *Failed*. A snapshot or backup task counts as overdue when its last successful run is older than twice its schedule interval plus an hour. A pool counts as overdue when its last scrub is older than the scrub threshold (default 35 days) plus 7 days, or when it has never been scrubbed. Manual-only backup tasks are never overdue.
@@ -178,7 +178,7 @@ So the app does what's possible and says so in the UI:
   - **Release** (default on release builds) → `truenas-companion-release.apk` + release key (`BuildConfig.RELEASE_SIGNER_SHA256`).
   - **Debug** (default on debug builds) → `truenas-companion-debug.apk` + debug key (`BuildConfig.DEBUG_SIGNER_SHA256`).
   - Asset names are **unified across every tag** (not versioned). Pre-1.0.3 versioned names (`truenas-companion-vX.Y.Z*.apk`) are still accepted as a fallback while older releases remain latest. Mixing channels usually requires uninstall (different package id and/or signing key).
-- **Daily check:** a WorkManager job every 24 h (only with a network connection and when the battery isn't low; first run an hour after install). It posts one low-importance notification per new version on the *App updates* channel. Tapping it opens System. The worker uses the saved update channel.
+- **Daily check:** a WorkManager job every 24 h (only with a network connection and when the battery isn't low; first run an hour after install). It posts one low-importance notification per new version on the *App updates* channel. Tapping it opens System › About. The worker uses the saved update channel.
 - **Download & install:** the APK is downloaded to the app's cache and its **SHA-256 is checked** against the digest GitHub publishes for the release asset (or the `.sha256` file attached to the release as a fallback). A release without a checksum is refused. Then the app checks that the APK has the **same package name, a higher version code, the channel’s expected signing certificate, and the same signing certificate as the installed app**, and hands it to Android's package installer, where you confirm. The first time, Android asks you to allow *Install unknown apps* for TrueNAS Companion (the app explains this and opens the setting). The APK is shared with the installer through a `FileProvider`, and nothing is installed silently.
 - **Battery:** one small HTTPS request a day, batched by WorkManager. Turn the switch off to stop it completely.
 
@@ -196,7 +196,7 @@ So the app does what's possible and says so in the UI:
 
 **Pinned certificates (1.0.3):** after you trust a self-signed certificate, connection settings show the SHA-256 fingerprint **masked by default** (tap **Show** to reveal). **Forget** still clears the pin for the remote or local address.
 
-**App lock (new in 0.4):** in **System › Security**, lock the app with your **fingerprint, face or screen lock** (AndroidX Biometric: class-2 biometrics or device PIN/pattern/password).
+**App lock (new in 0.4):** in **System › App lock**, lock the app with your **fingerprint, face or screen lock** (AndroidX Biometric: class-2 biometrics or device PIN/pattern/password).
 - Relock right away, or after 1, 5 or 15 minutes in the background. The app always locks after a restart.
 - While locked, nothing behind the lock screen is composed, so no NAS data is drawn.
 - **Hide content in recents** blanks the app in the app switcher (`setRecentsScreenshotEnabled(false)` on Android 13+, `FLAG_SECURE` on older versions and while locked).
@@ -239,6 +239,19 @@ So the app does what's possible and says so in the UI:
 - **Security tip:** once a VPN route has worked, the VPN screen shows a one-time tip that TrueNAS doesn't need to be exposed publicly anymore and that you can keep the dynamic DNS address in the app as a backup. The app never changes that for you.
 
 **System:** Services and Scheduled tasks (1.4, see above), **reboot / shutdown** with confirmation dialogs, appearance settings, and a server switcher.
+
+**System hub (new in 1.4.1):** the System tab used to stack every setting inline (about 4,700 dp, roughly seven screens of scrolling). It is now a hub of about 930 dp:
+- **Header:** active server name, address, uptime and TrueNAS version (from `system.info`); tap it to switch servers.
+- **Groups of tiles**, two per row (one per row with large fonts, three on tablets), each with a live one-line hint:
+  - *Server:* Updates (TrueNAS update + boot environments), Power, Tasks, All servers
+  - *Services & tasks:* Services, Scheduled tasks
+  - *Security & access:* Users & groups, Certificates, Audit log, Shell
+  - *Monitoring:* Reports, Phone alerts
+  - *App:* App lock, Connection, Appearance, About (version, app update channel, daily check, open web UI)
+- **Pages:** Updates, Power, Phone alerts, App lock, Connection, Appearance and About open as pushed routes (`system_page/{page}`) with a back arrow. They sit inside the connection overlay host like every other screen, and the bottom tabs only show on tab routes.
+- **Live hints** come from one parallel refresh on resume (`system.info`, `update.status`, `service.query`, `cronjob.query`, `initshutdownscript.query`, `certificate.query`, the first `core.get_jobs` snapshot) plus local settings. Each lookup is optional; a failure keeps the plain description.
+- **Search** (top bar) filters tiles by title and keywords, e.g. *reboot*, *dark*, *cron*, *fingerprint*, *channel*.
+- **Deep links:** the app-update notification opens System › About, the instant-alerts notification opens System › Phone alerts, `HasUpdate` alerts open System › Updates, certificate alerts still open Certificates.
 
 **Connections**
 - Save **multiple servers** and switch between them

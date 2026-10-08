@@ -22,6 +22,7 @@
   <tr>
     <td><img src="docs/images/services-dark.png" width="200" alt="Services"></td>
     <td><img src="docs/images/scheduled-tasks-dark.png" width="200" alt="Scheduled tasks"></td>
+    <td><img src="docs/images/system-dark.png" width="200" alt="System hub"></td>
   </tr>
 </table>
 <sub>Screenshots use made-up example data.</sub>
@@ -64,6 +65,7 @@
 - **Do things faster.** Long-press the app icon for Shell, Alerts, Restart app… or Scrub pool…, or add the NAS status and TrueNAS action tiles to Quick Settings. Every action still asks first, with your fingerprint when the app lock is on.
 - **Calmer alerts.** Snooze an alert right from the notification, see repeated alerts as one notification with a count, and tap through to the pool, disk, app, dataset, update or certificate it's about (or straight into the disk replacement when a pool reports a failed disk).
 - **Handle everyday chores.** Check for TrueNAS updates and apply them, manage boot environments, follow running tasks, dismiss alerts, reboot or shut down.
+- **Find any setting fast.** The System tab fits on about one screen: your server at the top, then short groups (Server, Services & tasks, Security & access, Monitoring, App). Each tile shows a live hint such as "Update: 25.10.5", "3 running" or "2 jobs · 1 script", and the search button finds things by everyday words ("reboot", "dark", "cron").
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a modal blurred overlay blocks the UI underneath (including the bottom tabs, which are grayed out and not clickable) and offers **Quit**, **Check connection settings**, or **Try again**. System › Connection sets how long to keep retrying (10 s / 30 s / 1 min / 2 min) before that overlay.
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.

@@ -1,5 +1,15 @@
 package app.truenascompanion.ui.system
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.ButtonDefaults
@@ -7,12 +17,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Group
-import androidx.compose.material.icons.rounded.VerifiedUser
-import androidx.compose.material.icons.rounded.Insights
-import androidx.compose.material.icons.rounded.Policy
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.draw.clip
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -28,24 +32,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.automirrored.rounded.ListAlt
-import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.MiscellaneousServices
-import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -58,14 +53,13 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -77,7 +71,6 @@ import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
 import app.truenascompanion.BuildConfigInfo
 import app.truenascompanion.data.api.userMessage
-import app.truenascompanion.data.model.Health
 import app.truenascompanion.data.repository.ConnectionState
 import app.truenascompanion.data.store.AppearanceSettings
 import app.truenascompanion.data.store.ConnectionTimeoutPrefs
@@ -87,12 +80,9 @@ import app.truenascompanion.ui.components.ConfirmDialog
 import app.truenascompanion.ui.components.ElevatedSection
 import app.truenascompanion.ui.components.IconBadge
 import app.truenascompanion.ui.components.SectionTitle
-import app.truenascompanion.ui.components.StatusChip
-import app.truenascompanion.ui.components.UiState
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -126,7 +116,126 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
     fun setConnectionGiveUp(ms: Long) = viewModelScope.launch { c.settings.setConnectionGiveUpMs(ms) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/** Live facts for the hub's tile subtitles. Every remote lookup is optional: a failure just keeps the plain text. */
+class SystemHubViewModel(private val c: AppContainer) : ViewModel() {
+    data class Remote(
+        val info: app.truenascompanion.data.model.SystemInfo? = null,
+        val nasUpdate: app.truenascompanion.data.model.NasUpdateStatus? = null,
+        val runningJobs: Int? = null,
+        val servicesRunning: Int? = null,
+        val cronJobs: Int? = null,
+        val initScripts: Int? = null,
+        val certs: List<app.truenascompanion.data.model.NasCertificate>? = null,
+    )
+
+    private val remote = MutableStateFlow(Remote())
+    private val appVersion = BuildConfigInfo.versionName(c.context)
+    val server = c.repository.activeServer
+    val connection = c.repository.state
+
+    private data class Local(
+        val servers: Int,
+        val prefs: app.truenascompanion.data.store.NotificationPrefs?,
+        val lock: app.truenascompanion.data.security.LockSettings?,
+        val giveUpMs: Long,
+        val appearance: AppearanceSettings,
+    )
+
+    private val local = combine(
+        c.settings.servers.map { it.size },
+        c.settings.notificationPrefs.map<app.truenascompanion.data.store.NotificationPrefs, app.truenascompanion.data.store.NotificationPrefs?> { it },
+        c.settings.lockSettings.map<app.truenascompanion.data.security.LockSettings, app.truenascompanion.data.security.LockSettings?> { it },
+        c.settings.connectionGiveUpMs,
+        c.settings.appearance,
+    ) { n, p, l, g, a -> Local(n, p, l, g, a) }
+
+    val summary: StateFlow<HubSummary> = combine(local, remote, c.repository.state, c.repository.activeServer, c.updates.latest) { l, r, conn, server, appUpdate ->
+        val now = System.currentTimeMillis()
+        val warn = l.prefs?.certWarnDays ?: 14
+        val statuses = r.certs?.map { it.status(now, warn) }
+        HubSummary(
+            connected = conn is ConnectionState.Connected,
+            nasUpdate = r.nasUpdate,
+            runningJobs = r.runningJobs,
+            serverCount = l.servers,
+            servicesRunning = r.servicesRunning,
+            cronJobs = r.cronJobs,
+            initScripts = r.initScripts,
+            certsExpiring = statuses?.count { it == app.truenascompanion.data.model.CertStatus.EXPIRING },
+            certsExpired = statuses?.count { it == app.truenascompanion.data.model.CertStatus.EXPIRED },
+            alertsMode = l.prefs?.let { p ->
+                when {
+                    server == null -> HubSummary.AlertsMode.NO_SERVER
+                    !p.isEnabled(server.id) -> HubSummary.AlertsMode.OFF
+                    p.instant -> HubSummary.AlertsMode.INSTANT
+                    else -> HubSummary.AlertsMode.PERIODIC
+                }
+            },
+            alertsIntervalMinutes = l.prefs?.intervalMinutes ?: 15,
+            lockOn = l.lock?.enabled,
+            giveUpMs = l.giveUpMs,
+            themeMode = l.appearance.themeMode,
+            dynamicColor = l.appearance.dynamicColor,
+            appVersion = appVersion,
+            appUpdate = appUpdate,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HubSummary())
+
+    val header: StateFlow<HubHeader> = combine(c.repository.activeServer, c.repository.state, remote) { s, conn, r ->
+        val info = r.info ?: (conn as? ConnectionState.Connected)?.info
+        HubHeader(
+            name = s?.name,
+            host = s?.displayHost,
+            version = info?.version,
+            uptimeSeconds = if (conn is ConnectionState.Connected) info?.uptimeSeconds else null,
+            online = when (conn) { is ConnectionState.Connected -> true; is ConnectionState.Failed -> false; else -> null },
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HubHeader())
+
+    private var loading: kotlinx.coroutines.Job? = null
+    private var lastRefresh = 0L
+
+    init {
+        // A new server or session starts from scratch so another NAS's numbers never show up.
+        viewModelScope.launch {
+            c.repository.reloadKey.distinctUntilChanged().collect {
+                loading?.cancel(); remote.value = Remote(); lastRefresh = 0L; refresh()
+            }
+        }
+        // Fill in the hints as soon as the connection is up (the tab may already be open).
+        viewModelScope.launch {
+            c.repository.state.map { it is ConnectionState.Connected }.distinctUntilChanged().collect { if (it) refresh() }
+        }
+    }
+
+    /** Fetches the live facts in parallel (on resume, when connected, and when the session changes; at most every 30 s). */
+    fun refresh() {
+        if (c.repository.state.value !is ConnectionState.Connected) return
+        if (loading?.isActive == true) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (lastRefresh != 0L && now - lastRefresh < 30_000) return
+        lastRefresh = now
+        loading = viewModelScope.launch {
+            suspend fun <T> soft(block: suspend () -> T): T? =
+                runCatching { kotlinx.coroutines.withTimeoutOrNull(20_000) { block() } }.getOrNull()
+            kotlinx.coroutines.coroutineScope {
+                launch { soft { c.repository.call { it.systemInfo() } }?.let { v -> remote.update { it.copy(info = v) } } }
+                launch { soft { c.repository.call { app.truenascompanion.data.api.NasSystemApi(it).updateStatus() } }?.let { v -> remote.update { it.copy(nasUpdate = v) } } }
+                launch { soft { c.repository.call { app.truenascompanion.data.api.ServicesApi(it).services() } }?.let { v -> remote.update { it.copy(servicesRunning = v.count { s -> s.running }) } } }
+                launch { soft { c.repository.call { app.truenascompanion.data.api.TasksApi(it).cronJobs() } }?.let { v -> remote.update { it.copy(cronJobs = v.size) } } }
+                launch { soft { c.repository.call { app.truenascompanion.data.api.TasksApi(it).initScripts() } }?.let { v -> remote.update { it.copy(initScripts = v.size) } } }
+                launch { soft { c.repository.call { app.truenascompanion.data.api.CertificatesApi(it).certificates() } }?.let { v -> remote.update { it.copy(certs = v) } } }
+                launch { soft { c.repository.jobs().first() }?.let { v -> remote.update { it.copy(runningJobs = v.count { j -> j.state.active }) } } }
+            }
+        }
+    }
+}
+
+/**
+ * System tab (1.4.1): a compact hub. A header with the active server, then five groups of tiles with a live
+ * one-line status each. Settings that used to sit inline open as pages ([SystemPage]); everything is one tap away.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SystemScreen(
     onServers: () -> Unit,
@@ -139,171 +248,54 @@ fun SystemScreen(
     onCertificates: () -> Unit = {},
     onServices: () -> Unit = {},
     onScheduledTasks: () -> Unit = {},
+    onPage: (SystemPage) -> Unit = {},
 ) {
-    val vm = appViewModel { SystemViewModel(it) }
+    val vm = appViewModel { SystemHubViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
-    val appearance by vm.appearance.collectAsStateWithLifecycle()
-    val giveUpMs by vm.connectionGiveUpMs.collectAsStateWithLifecycle()
+    val summary by vm.summary.collectAsStateWithLifecycle()
+    val header by vm.header.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    var confirm by remember { mutableStateOf<String?>(null) }
     var confirmShell by remember { mutableStateOf(false) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
     val lockGuard = app.truenascompanion.ui.lock.LocalLockGuard.current
-    val context = LocalContext.current
-    val uiScope = androidx.compose.runtime.rememberCoroutineScope()
-    LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    val uiScope = rememberCoroutineScope()
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose { } }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("System") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
-                item {
-                    ElevatedSection(onClick = onServers) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconBadge(Icons.Rounded.Dns)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(server?.name ?: "No server", style = MaterialTheme.typography.titleMedium)
-                                Text(server?.displayHost ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                val c = connection
-                                if (c is ConnectionState.Connected) {
-                                    Spacer(Modifier.height(6.dp))
-                                    StatusChip(Health.HEALTHY, c.info?.version ?: "Connected")
-                                } else if (c is ConnectionState.Failed) {
-                                    Spacer(Modifier.height(6.dp))
-                                    StatusChip(Health.CRITICAL, "Offline")
-                                }
-                            }
-                            Text("Switch", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
+    val actions = HubActions(
+        onPage = onPage, onJobs = onJobs, onOverview = onOverview, onServices = onServices, onScheduledTasks = onScheduledTasks,
+        onAccounts = onAccounts, onCertificates = onCertificates, onAudit = onAudit, onReports = onReports,
+        onShell = {
+            if (connection is ConnectionState.Connected) confirmShell = true
+            else uiScope.launch { snackbar.showSnackbar("Connect to the NAS to open a shell") }
+        },
+    )
+    val open: (HubItem) -> Unit = { it.open(actions) }
 
-                item {
-                    ElevatedSection(onClick = onOverview) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconBadge(Icons.Rounded.Dns)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("All servers", style = MaterialTheme.typography.titleMedium)
-                                Text("Status and alerts for every saved NAS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-
-                item {
-                    ElevatedSection(onClick = onJobs) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconBadge(Icons.AutoMirrored.Rounded.ListAlt)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Tasks", style = MaterialTheme.typography.titleMedium)
-                                Text("Running and recent jobs with live progress", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-
-                item { ShellEntry(enabled = connection is ConnectionState.Connected) { confirmShell = true } }
-
-                item { SectionTitle("Manage") }
-                item {
-                    ElevatedSection(contentPadding = 6.dp) {
-                        ManageRow(Icons.Rounded.Group, "Users & groups", "Accounts, passwords, SSH keys and groups", onAccounts)
-                        ManageDivider()
-                        ManageRow(Icons.Rounded.Insights, "Reports", "CPU, memory, network, disks and temperatures over time", onReports)
-                        ManageDivider()
-                        ManageRow(Icons.Rounded.Policy, "Audit log", "Who signed in and what changed", onAudit)
-                        ManageDivider()
-                        ManageRow(Icons.Rounded.VerifiedUser, "Certificates", "Expiry, ACME, imports and the web UI certificate", onCertificates)
-                        ManageDivider()
-                        ManageRow(Icons.Rounded.MiscellaneousServices, "Services", "Start, stop and configure SSH, SMB, NFS, UPS, SNMP, FTP…", onServices)
-                        ManageDivider()
-                        ManageRow(Icons.Rounded.EventRepeat, "Scheduled tasks", "Cron jobs and init/shutdown scripts", onScheduledTasks)
-                    }
-                }
-
-                item { SectionTitle("TrueNAS update") }
-                item { NasUpdateSection() }
-
-                item { SectionTitle("Boot environments") }
-                item { BootEnvSection() }
-
-                item { SectionTitle("Power") }
-                item {
-                    ElevatedSection {
-                        Text("Restart or turn off the NAS. Apps, shares and VMs will be unavailable meanwhile.",
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(12.dp))
-                        PowerButtons(
-                            enabled = connection is ConnectionState.Connected,
-                            onReboot = { confirm = "reboot" }, onShutdown = { confirm = "shutdown" },
-                        )
-                    }
-                }
-
-                item { SectionTitle("Connection") }
-                item {
-                    ConnectionTimeoutSection(
-                        giveUpMs = giveUpMs,
-                        onSelect = vm::setConnectionGiveUp,
-                    )
-                }
-
-                item { SectionTitle("Security") }
-                item {
-                    app.truenascompanion.ui.lock.SecuritySettings { msg -> uiScope.launch { snackbar.showSnackbar(msg) } }
-                }
-                item { SectionTitle("Phone alerts") }
-                item {
-                    app.truenascompanion.ui.notifications.PhoneAlertsSettings(server) { msg -> uiScope.launch { snackbar.showSnackbar(msg) } }
-                }
-
-                item { SectionTitle("Appearance") }
-                item {
-                    ElevatedSection {
-                        SettingRow(Icons.Rounded.DarkMode, "Theme")
-                        Spacer(Modifier.height(10.dp))
-                        val modes = ThemeMode.entries
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                            modes.forEachIndexed { i, m ->
-                                SegmentedButton(
-                                    selected = appearance.themeMode == m, onClick = { vm.setTheme(m) },
-                                    shape = SegmentedButtonDefaults.itemShape(i, modes.size),
-                                    icon = {},
-                                ) { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }, maxLines = 1, softWrap = false) }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the TrueNAS Companion theme (Android 12+)") {
-                            Switch(checked = appearance.dynamicColor, onCheckedChange = vm::setDynamic)
-                        }
-                    }
-                }
-
-                item { SectionTitle("About") }
-                item {
-                    ElevatedSection {
-                        SettingRow(Icons.Rounded.Info, "TrueNAS Companion ${BuildConfigInfo.versionName(context)}", "Free & open source. No ads, no analytics, no tracking.")
-                        Spacer(Modifier.height(8.dp))
-                        UpdateSection()
-                        server?.let { s ->
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, s.url.toUri())) } },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Open TrueNAS web UI", maxLines = 1)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(24.dp))
-                }
-            }
-        }
+    BackHandler(enabled = searchOpen) { searchOpen = false; query = "" }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("System") },
+                actions = {
+                    if (!searchOpen) IconButton(onClick = { searchOpen = true }) { Icon(Icons.Rounded.Search, "Search System") }
+                },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        SystemHubContent(
+            header = header,
+            subtitles = hubSubtitles(summary),
+            onOpen = open,
+            onSwitchServer = onServers,
+            modifier = Modifier.padding(padding).fillMaxSize(),
+            searchOpen = searchOpen,
+            query = query,
+            onQuery = { query = it },
+            onCloseSearch = { searchOpen = false; query = "" },
+        )
     }
 
     if (confirmShell) ConfirmDialog(
@@ -313,6 +305,65 @@ fun SystemScreen(
         confirmLabel = "Open shell", icon = Icons.Rounded.Terminal, requireAuth = false,
         onConfirm = { confirmShell = false; lockGuard.guard("Open a shell on the NAS", onShell) }, onDismiss = { confirmShell = false },
     )
+}
+
+/** A settings page opened from the hub. Pushed on top of the System tab, so the connection overlay still covers it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SystemPageScreen(page: SystemPage, onBack: () -> Unit) {
+    val vm = appViewModel { SystemViewModel(it) }
+    val server by vm.server.collectAsStateWithLifecycle()
+    val connection by vm.connection.collectAsStateWithLifecycle()
+    val appearance by vm.appearance.collectAsStateWithLifecycle()
+    val giveUpMs by vm.connectionGiveUpMs.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    var confirm by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val uiScope = rememberCoroutineScope()
+    val say: (String) -> Unit = { msg -> uiScope.launch { snackbar.showSnackbar(msg) } }
+    LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(page.title) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(padding).fillMaxSize(),
+        ) {
+            when (page) {
+                SystemPage.UPDATES -> {
+                    item { SectionTitle("TrueNAS update") }
+                    item { NasUpdateSection() }
+                    item { SectionTitle("Boot environments") }
+                    item { BootEnvSection() }
+                }
+                SystemPage.POWER -> item {
+                    PowerSection(
+                        serverName = server?.name,
+                        enabled = connection is ConnectionState.Connected,
+                        onReboot = { confirm = "reboot" }, onShutdown = { confirm = "shutdown" },
+                    )
+                }
+                SystemPage.ALERTS -> item { app.truenascompanion.ui.notifications.PhoneAlertsSettings(server, say) }
+                SystemPage.SECURITY -> item { app.truenascompanion.ui.lock.SecuritySettings(say) }
+                SystemPage.CONNECTION -> item { ConnectionTimeoutSection(giveUpMs = giveUpMs, onSelect = vm::setConnectionGiveUp) }
+                SystemPage.APPEARANCE -> item { AppearanceSection(appearance, onTheme = vm::setTheme, onDynamic = vm::setDynamic) }
+                SystemPage.ABOUT -> item {
+                    AboutSection(
+                        versionName = BuildConfigInfo.versionName(context),
+                        onOpenWebUi = server?.let { s -> { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, s.url.toUri())) } } },
+                    ) { UpdateSection() }
+                }
+            }
+            item { Spacer(Modifier.height(16.dp)) }
+        }
+    }
 
     when (confirm) {
         "reboot" -> ConfirmDialog(
@@ -327,6 +378,60 @@ fun SystemScreen(
             confirmLabel = "Shut down", destructive = true, icon = Icons.Rounded.PowerSettingsNew,
             onConfirm = { confirm = null; vm.shutdown() }, onDismiss = { confirm = null },
         )
+    }
+}
+
+/** Power page body: what happens, then the two buttons (each asks for confirmation). */
+@Composable
+fun PowerSection(serverName: String?, enabled: Boolean, onReboot: () -> Unit, onShutdown: () -> Unit) {
+    ElevatedSection {
+        SettingRow(Icons.Rounded.PowerSettingsNew, serverName ?: "Server", if (enabled) "Connected" else "Connect to the NAS to use these")
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Restart or turn off the NAS. Apps, shares and VMs will be unavailable meanwhile. You'll be asked to confirm first.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        PowerButtons(enabled = enabled, onReboot = onReboot, onShutdown = onShutdown)
+    }
+}
+
+/** Theme and dynamic color. */
+@Composable
+fun AppearanceSection(appearance: AppearanceSettings, onTheme: (ThemeMode) -> Unit, onDynamic: (Boolean) -> Unit) {
+    ElevatedSection {
+        SettingRow(Icons.Rounded.DarkMode, "Theme")
+        Spacer(Modifier.height(10.dp))
+        val modes = ThemeMode.entries
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            modes.forEachIndexed { i, m ->
+                SegmentedButton(
+                    selected = appearance.themeMode == m, onClick = { onTheme(m) },
+                    shape = SegmentedButtonDefaults.itemShape(i, modes.size),
+                    icon = {},
+                ) { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }, maxLines = 1, softWrap = false) }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the TrueNAS Companion theme (Android 12+)") {
+            Switch(checked = appearance.dynamicColor, onCheckedChange = onDynamic)
+        }
+    }
+}
+
+/** App version, the app-update block ([updates]) and a shortcut to the NAS web UI. */
+@Composable
+fun AboutSection(versionName: String, onOpenWebUi: (() -> Unit)?, updates: @Composable () -> Unit) {
+    ElevatedSection {
+        SettingRow(Icons.Rounded.Info, "TrueNAS Companion $versionName", "Free & open source. No ads, no analytics, no tracking.")
+        Spacer(Modifier.height(8.dp))
+        updates()
+        onOpenWebUi?.let { open ->
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Open TrueNAS web UI", maxLines = 1)
+            }
+        }
     }
 }
 
@@ -406,22 +511,3 @@ fun ShellEntry(enabled: Boolean, onClick: () -> Unit) {
         }
     }
 }
-
-@Composable
-private fun ManageRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
-    ) {
-        IconBadge(icon, size = 36.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = MaterialTheme.colorScheme.primary)
-    }
-}
-
-@Composable
-private fun ManageDivider() = HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))

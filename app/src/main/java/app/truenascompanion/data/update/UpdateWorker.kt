@@ -75,6 +75,8 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(DeepLink.EXTRA_DESTINATION, DeepLink.DEST_SETTINGS)
+                // 1.4.1: open System › About (update channel and the update dialog) instead of the hub.
+                putExtra(DeepLink.EXTRA_ARG, app.truenascompanion.ui.system.SystemPage.ARG_APP_UPDATE)
             }
             val pi = PendingIntent.getActivity(context, 7001, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val n = NotificationCompat.Builder(context, CHANNEL)

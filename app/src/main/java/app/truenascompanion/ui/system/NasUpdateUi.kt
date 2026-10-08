@@ -132,6 +132,46 @@ fun NasUpdateSection() {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.refresh() }
     }
 
+    NasUpdateCard(status, checking, job, message, onCheck = { vm.refresh() }, onApply = { confirm = true }, onNotes = { showNotes = true })
+
+    if (confirm) {
+        val ver = (status as? UiState.Success)?.data?.newVersion ?: "the new version"
+        ConfirmDialog(
+            title = "Update TrueNAS to $ver?",
+            text = "The NAS downloads and installs the update, then reboots. Apps, shares and VMs will be unavailable for several minutes. Keep this phone on the same network until the job starts.",
+            confirmLabel = "Update & reboot",
+            destructive = true,
+            icon = Icons.Rounded.SystemUpdateAlt,
+            onConfirm = { confirm = false; vm.applyUpdate(reboot = true) },
+            onDismiss = { confirm = false },
+        )
+    }
+    if (showNotes) {
+        val d = (status as? UiState.Success)?.data
+        AlertDialog(
+            onDismissRequest = { showNotes = false },
+            title = { Text(d?.newVersion ?: "Release notes") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()).height(360.dp)) {
+                    Text(d?.releaseNotes?.takeIf { it.isNotBlank() } ?: d?.changelog ?: "No notes.", style = MaterialTheme.typography.bodyMedium)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showNotes = false }) { Text("Close") } },
+        )
+    }
+}
+
+/** Stateless TrueNAS update card (System › Updates & boot; also rendered by the screenshot tests). */
+@Composable
+fun NasUpdateCard(
+    status: UiState<NasUpdateStatus>,
+    checking: Boolean,
+    job: JobInfo?,
+    message: String?,
+    onCheck: () -> Unit,
+    onApply: () -> Unit,
+    onNotes: () -> Unit,
+) {
     ElevatedSection {
         SettingRow(
             Icons.Rounded.SystemUpdateAlt,
@@ -179,7 +219,7 @@ fun NasUpdateSection() {
                     summary?.takeIf { it.isNotBlank() }?.let {
                         Spacer(Modifier.height(4.dp))
                         Text(it.take(280) + if (it.length > 280) "…" else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 6, overflow = TextOverflow.Ellipsis)
-                        TextButton(onClick = { showNotes = true }) { Text("Full notes") }
+                        TextButton(onClick = onNotes) { Text("Full notes") }
                     }
                 }
                 d.downloadPercent?.let { pct ->
@@ -196,43 +236,17 @@ fun NasUpdateSection() {
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { vm.refresh() }, enabled = !checking && job == null) {
+            OutlinedButton(onClick = onCheck, enabled = !checking && job == null) {
                 if (checking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text("Check")
             }
             val canApply = (status as? UiState.Success)?.data?.updateAvailable == true && job == null
-            GlowButton(onClick = { confirm = true }, enabled = canApply) { Text("Download & update") }
+            GlowButton(onClick = onApply, enabled = canApply) { Text("Download & update") }
         }
         message?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             LaunchedEffect(it) { kotlinx.coroutines.delay(50); /* shown inline */ }
         }
-    }
-
-    if (confirm) {
-        val ver = (status as? UiState.Success)?.data?.newVersion ?: "the new version"
-        ConfirmDialog(
-            title = "Update TrueNAS to $ver?",
-            text = "The NAS downloads and installs the update, then reboots. Apps, shares and VMs will be unavailable for several minutes. Keep this phone on the same network until the job starts.",
-            confirmLabel = "Update & reboot",
-            destructive = true,
-            icon = Icons.Rounded.SystemUpdateAlt,
-            onConfirm = { confirm = false; vm.applyUpdate(reboot = true) },
-            onDismiss = { confirm = false },
-        )
-    }
-    if (showNotes) {
-        val d = (status as? UiState.Success)?.data
-        AlertDialog(
-            onDismissRequest = { showNotes = false },
-            title = { Text(d?.newVersion ?: "Release notes") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()).height(360.dp)) {
-                    Text(d?.releaseNotes?.takeIf { it.isNotBlank() } ?: d?.changelog ?: "No notes.", style = MaterialTheme.typography.bodyMedium)
-                }
-            },
-            confirmButton = { TextButton(onClick = { showNotes = false }) { Text("Close") } },
-        )
     }
 }

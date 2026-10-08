@@ -139,24 +139,7 @@ fun UpdateSection() {
     val download by vm.download.collectAsStateWithLifecycle()
     var showDialog by remember { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        UpdateStatusLine(result, checking)
-        val available = result as? UpdateResult.Available
-        if (available != null) {
-            GlowButton(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Rounded.SystemUpdate, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("View update ${available.release.version}", maxLines = 1)
-            }
-        } else {
-            OutlinedButton(onClick = vm::check, enabled = !checking, modifier = Modifier.fillMaxWidth()) {
-                if (checking) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
-                Text("Check for updates", maxLines = 1)
-            }
-        }
-        UpdateChannelRow(channel = channel, onSelect = vm::setChannel)
-        SettingRow(Icons.Rounded.SystemUpdate, "Check for updates daily", "Asks GitHub once a day and notifies you about new versions. Nothing else is sent.") {
-            Switch(checked = auto, onCheckedChange = { vm.setAutoCheck(it) })
-        }
-    }
+    AppUpdateContent(result, checking, auto, channel, onCheck = vm::check, onView = { showDialog = true }, onChannel = vm::setChannel, onAutoCheck = vm::setAutoCheck)
 
     val available = result as? UpdateResult.Available
     if (showDialog && available != null) {
@@ -190,6 +173,37 @@ fun UpdateChannelRow(channel: UpdateChannel, onSelect: (UpdateChannel) -> Unit) 
                     shape = SegmentedButtonDefaults.itemShape(index, UpdateChannel.entries.size),
                 ) { Text(ch.label, maxLines = 1) }
             }
+        }
+    }
+}
+/** Stateless app-update block: status, check / view button, update channel and daily check (also used by previews). */
+@Composable
+fun AppUpdateContent(
+    result: UpdateResult?,
+    checking: Boolean,
+    auto: Boolean,
+    channel: UpdateChannel,
+    onCheck: () -> Unit,
+    onView: () -> Unit,
+    onChannel: (UpdateChannel) -> Unit,
+    onAutoCheck: (Boolean) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        UpdateStatusLine(result, checking)
+        val available = result as? UpdateResult.Available
+        if (available != null) {
+            GlowButton(onClick = onView, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.SystemUpdate, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("View update ${available.release.version}", maxLines = 1)
+            }
+        } else {
+            OutlinedButton(onClick = onCheck, enabled = !checking, modifier = Modifier.fillMaxWidth()) {
+                if (checking) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
+                Text("Check for updates", maxLines = 1)
+            }
+        }
+        UpdateChannelRow(channel = channel, onSelect = onChannel)
+        SettingRow(Icons.Rounded.SystemUpdate, "Check for updates daily", "Asks GitHub once a day and notifies you about new versions. Nothing else is sent.") {
+            Switch(checked = auto, onCheckedChange = onAutoCheck)
         }
     }
 }
