@@ -22,7 +22,8 @@ sealed class TrueNasException(message: String, cause: Throwable? = null) : Excep
     class Forbidden(message: String = "The API key does not have permission for this action.") : TrueNasException(message)
     class MethodNotFound(val method: String) : TrueNasException("Not supported by this TrueNAS version: $method")
     class EndpointNotFound(message: String) : TrueNasException(message)
-    class Rpc(val code: Int, val errname: String?, message: String) : TrueNasException(message)
+    /** [fieldErrors]: the middleware's per-field validation errors (`error.data.extra`), e.g. `ssh_update.tcpport`. */
+    class Rpc(val code: Int, val errname: String?, message: String, val fieldErrors: List<FieldError> = emptyList()) : TrueNasException(message)
     class Http(val code: Int, message: String) : TrueNasException(message)
     class JobFailed(message: String) : TrueNasException(message)
     class Unsupported(message: String) : TrueNasException(message)
@@ -34,6 +35,16 @@ sealed class TrueNasException(message: String, cause: Throwable? = null) : Excep
     class OtpLockout : TrueNasException("Too many wrong two-factor codes. Please sign in again.")
     class TokenRejected : TrueNasException("The saved session has expired.")
 }
+
+/** One middleware validation error: [attribute] is the dotted path (`smb_update.netbiosname`, `data.tcpport`). */
+data class FieldError(val attribute: String, val message: String) {
+    /** The field name without the method/argument prefix (`netbiosname`); list items (`bindip.0`) map to the list. */
+    val field: String get() = attribute.split('.').filter { it.isNotEmpty() && it.toIntOrNull() == null }.lastOrNull() ?: attribute
+}
+
+/** Per-field validation messages of a failed call (field name -> message); empty for other errors. */
+fun Throwable.fieldErrors(): Map<String, String> =
+    (this as? TrueNasException.Rpc)?.fieldErrors?.groupBy { it.field }?.mapValues { (_, v) -> v.joinToString("\n") { it.message } } ?: emptyMap()
 
 /** True if the error means "this API method doesn't exist on this server" — used to try an older/newer method. */
 fun Throwable.isMethodMissing(): Boolean = when (this) {

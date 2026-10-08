@@ -158,8 +158,19 @@ class JsonRpcClient(
             code == -32601 -> TrueNasException.MethodNotFound(reason)
             errname == "EACCES" || errname == "EPERM" || reason.contains("Not authorized", true) ->
                 TrueNasException.Forbidden(reason.trim())
-            else -> TrueNasException.Rpc(code, errname, reason.trim())
+            else -> TrueNasException.Rpc(code, errname, reason.trim(), fieldErrors(data))
         }
+    }
+
+    companion object {
+        /** `data.extra` of a validation error: `[[attribute, message, errno], …]`. */
+        internal fun fieldErrors(data: JsonObject?): List<FieldError> =
+            data?.get("extra").arr()?.mapNotNull { e ->
+                val a = e.arr() ?: return@mapNotNull null
+                val attr = a.getOrNull(0).prim()?.contentOrNull ?: return@mapNotNull null
+                val msg = a.getOrNull(1).prim()?.contentOrNull ?: return@mapNotNull null
+                FieldError(attr, msg.trim())
+            } ?: emptyList()
     }
 
     private fun failAll(e: Throwable) {

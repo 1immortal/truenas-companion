@@ -439,6 +439,8 @@ data class ServiceInfo(
     val service: String,
     val running: Boolean,
     val enabledOnBoot: Boolean,
+    /** The middleware couldn't tell (state `UNKNOWN`, e.g. the state check timed out). */
+    val unknown: Boolean = false,
 ) {
     val displayName: String get() = SERVICE_NAMES[service] ?: service.uppercase()
 

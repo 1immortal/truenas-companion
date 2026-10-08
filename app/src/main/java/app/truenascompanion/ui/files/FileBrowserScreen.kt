@@ -136,9 +136,12 @@ import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
-/** File browser for pool datasets under /mnt (1.3.0). */
+/**
+ * File browser for pool datasets under /mnt (1.3.0). With [pickFile] (1.4.0) it becomes a file picker: tapping a file
+ * returns its path (used to choose an init/shutdown script); uploads and file actions are hidden.
+ */
 @Composable
-fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
+fun FileBrowserScreen(initialPath: String, onBack: () -> Unit, pickFile: ((String) -> Unit)? = null) {
     val vm = appViewModel(key = "files:$initialPath") { FileBrowserViewModel(it, initialPath) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -203,6 +206,7 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
                 when {
                     e.isDirectory -> vm.open(e.path)
                     e.isSymlink -> vm.openLink(e)
+                    pickFile != null -> pickFile(e.path)
                     FilePolicy.previewKind(e) != null -> vm.preview(e)
                     else -> vm.showDetails(e)
                 }
@@ -224,6 +228,7 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit) {
             onClosePreview = vm::closePreview,
             onConfirmUpload = vm::upload,
             onDismissUpload = vm::dismissUpload,
+            pickMode = pickFile != null,
         ),
     )
 }
@@ -251,6 +256,8 @@ class FileActions(
     val onClosePreview: () -> Unit = {},
     val onConfirmUpload: (PendingUpload) -> Unit = {},
     val onDismissUpload: () -> Unit = {},
+    /** 1.4.0 picker mode: tapping a file picks it; no uploads or per-file actions. */
+    val pickMode: Boolean = false,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -269,7 +276,7 @@ fun FileBrowserContent(
     var mkdirDialog by remember { mutableStateOf(false) }
     // Stopping an upload that is already streaming leaves a partial file on the NAS: ask first. Holds what to do on "Stop".
     var stopUpload by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val title = if (ui.atRoot) "Files" else ui.path.substringAfterLast('/')
+    val title = if (ui.atRoot) (if (actions.pickMode) "Choose a file" else "Files") else ui.path.substringAfterLast('/')
     val cancelTransfer = {
         if (ui.transfer?.cancelLeavesPartial == true) stopUpload = actions.onCancelTransfer else actions.onCancelTransfer()
     }
@@ -302,7 +309,7 @@ fun FileBrowserContent(
             )
         },
         floatingActionButton = {
-            if (!ui.atRoot && ui.transfer == null) Box {
+            if (!ui.atRoot && ui.transfer == null && !actions.pickMode) Box {
                 ExtendedFloatingActionButton(
                     onClick = { addMenu = true },
                     icon = { Icon(Icons.Rounded.Add, null) },
@@ -474,8 +481,8 @@ private fun EntryList(ui: FileBrowserUi, actions: FileActions) {
     LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
         // A refresh or "load more" that failed while older entries are still shown.
         ui.error?.let { err -> item(key = "error") { InfoBanner(err, health = Health.WARNING, modifier = Modifier.padding(vertical = 4.dp)) } }
-        if (ui.atRoot) item {
-            Text("Choose a pool to browse its datasets and files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+        if (ui.atRoot || actions.pickMode) item {
+            Text(if (actions.pickMode) "Tap the file to use. Only files in your pools can be picked." else "Choose a pool to browse its datasets and files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
         }
         items(list, key = { it.path }) { e -> EntryRow(e, ui.atRoot, actions, incomplete = e.path in ui.incomplete) }
         if (ui.hasMore) item {
@@ -533,7 +540,7 @@ private fun EntryRow(e: FileEntry, atRoot: Boolean, actions: FileActions, incomp
             )
         }
         if (FilePolicy.isSystemName(e.name)) Icon(Icons.Rounded.Lock, "System folder", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (!atRoot) Box {
+        if (!atRoot && !actions.pickMode) Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "Actions for ${e.name}") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (e.isFile) {

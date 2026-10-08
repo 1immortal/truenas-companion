@@ -109,6 +109,18 @@ private object Routes {
         val q = listOfNotNull(guid?.let { "guid=${enc(it)}" }, disk?.let { "disk=${enc(it)}" })
         return "replace/${enc(pool)}" + if (q.isEmpty()) "" else q.joinToString("&", prefix = "?")
     }
+    // 1.4.0: services and scheduled tasks
+    const val SERVICES = "services"
+    const val SERVICE = "service/{kind}"
+    const val TASKS = "scheduled_tasks"
+    const val CRON_JOB = "cron_job?id={id}"
+    const val INIT_SCRIPT = "init_script?id={id}"
+    const val PICK_FILE = "pick_file?path={path}"
+    const val PICKED_PATH = "picked_path"
+    fun service(kind: app.truenascompanion.data.services.ServiceKind) = "service/${kind.name}"
+    fun cronJob(id: Int?) = if (id == null) "cron_job" else "cron_job?id=$id"
+    fun initScript(id: Int?) = if (id == null) "init_script" else "init_script?id=$id"
+    fun pickFile(path: String?) = if (path == null) "pick_file" else "pick_file?path=${enc(path)}"
     const val VPN = "vpn/{id}"
     const val VPN_SETUP = "vpn_setup/{id}"
     const val SHELL = "shell/{kind}?app={app}&ctr={ctr}&cname={cname}&cmd={cmd}&id={id}"
@@ -325,7 +337,42 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onOverview = { nav.navigate(Routes.OVERVIEW) }, onJobs = { nav.navigate(Routes.JOBS) },
                     onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) },
                     onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) },
-                    onCertificates = { nav.navigate(Routes.certificates()) }) }
+                    onCertificates = { nav.navigate(Routes.certificates()) },
+                    onServices = { nav.navigate(Routes.SERVICES) }, onScheduledTasks = { nav.navigate(Routes.TASKS) }) }
+                pushed(Routes.SERVICES) {
+                    app.truenascompanion.ui.services.ServicesScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.service(it)) })
+                }
+                pushed(Routes.SERVICE, "kind") { a ->
+                    val kind = runCatching { app.truenascompanion.data.services.ServiceKind.valueOf(a.getValue("kind")) }.getOrNull()
+                    if (kind == null) LaunchedEffect(Unit) { nav.popBackStack() }
+                    else app.truenascompanion.ui.services.ServiceSettingsScreen(kind, onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.TASKS) {
+                    app.truenascompanion.ui.tasks.ScheduledTasksScreen(
+                        onBack = { nav.popBackStack() },
+                        onEditCron = { nav.navigate(Routes.cronJob(it)) },
+                        onEditScript = { nav.navigate(Routes.initScript(it)) },
+                    )
+                }
+                pushed(Routes.CRON_JOB, "id?") { a ->
+                    app.truenascompanion.ui.tasks.CronJobEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
+                }
+                pushedWithEntry(Routes.INIT_SCRIPT, "id?") { a, entry ->
+                    val picked by entry.savedStateHandle.getStateFlow<String?>(Routes.PICKED_PATH, null).collectAsStateWithLifecycle()
+                    app.truenascompanion.ui.tasks.InitScriptEditorScreen(
+                        a["id"]?.toIntOrNull(), picked,
+                        onPickConsumed = { entry.savedStateHandle[Routes.PICKED_PATH] = null },
+                        onBrowse = { nav.navigate(Routes.pickFile(it)) },
+                        onBack = { nav.popBackStack() },
+                    )
+                }
+                pushed(Routes.PICK_FILE, "path?") { a ->
+                    val start = a["path"]?.takeIf { app.truenascompanion.data.files.FilePolicy.normalize(it)?.startsWith(app.truenascompanion.data.files.FilePolicy.ROOT + "/") == true }
+                    app.truenascompanion.ui.files.FileBrowserScreen(
+                        start ?: app.truenascompanion.data.files.FilePolicy.ROOT, onBack = { nav.popBackStack() },
+                        pickFile = { path -> nav.previousBackStackEntry?.savedStateHandle?.set(Routes.PICKED_PATH, path); nav.popBackStack() },
+                    )
+                }
                 composable(Routes.JOBS) { JobsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.ACCOUNTS) { app.truenascompanion.ui.accounts.AccountsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.REPORTS) { app.truenascompanion.ui.reports.ReportsScreen(onBack = { nav.popBackStack() }) }
@@ -418,7 +465,15 @@ private fun NavHostController.backToApps() {
 }
 
 /** A pushed (non-tab) screen with string arguments; names ending in `?` are optional. */
-private fun androidx.navigation.NavGraphBuilder.pushed(route: String, vararg args: String, content: @Composable (Map<String, String>) -> Unit) {
+private fun androidx.navigation.NavGraphBuilder.pushed(route: String, vararg args: String, content: @Composable (Map<String, String>) -> Unit) =
+    pushedWithEntry(route, *args) { values, _ -> content(values) }
+
+/** [pushed] that also hands over the back stack entry (for results such as a picked file). */
+private fun androidx.navigation.NavGraphBuilder.pushedWithEntry(
+    route: String,
+    vararg args: String,
+    content: @Composable (Map<String, String>, androidx.navigation.NavBackStackEntry) -> Unit,
+) {
     composable(
         route,
         arguments = args.map { raw ->
@@ -429,7 +484,7 @@ private fun androidx.navigation.NavGraphBuilder.pushed(route: String, vararg arg
         popExitTransition = { slideOutHorizontally { it } + fadeOut() },
     ) { entry ->
         val values = args.map { it.removeSuffix("?") }.mapNotNull { k -> entry.arguments?.getString(k)?.let { k to it } }.toMap()
-        content(values)
+        content(values, entry)
     }
 }
 

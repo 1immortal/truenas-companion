@@ -481,5 +481,6 @@ object Parsers {
         service = o.str("service") ?: "?",
         running = o.str("state").equals("RUNNING", ignoreCase = true),
         enabledOnBoot = o.bool("enable") ?: false,
+        unknown = o.str("state").equals("UNKNOWN", ignoreCase = true),
     )
 }

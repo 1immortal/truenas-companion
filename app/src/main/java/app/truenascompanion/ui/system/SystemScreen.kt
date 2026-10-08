@@ -41,7 +41,8 @@ import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.rounded.MiscellaneousServices
+import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -59,7 +60,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,7 +78,6 @@ import app.truenascompanion.AppContainer
 import app.truenascompanion.BuildConfigInfo
 import app.truenascompanion.data.api.userMessage
 import app.truenascompanion.data.model.Health
-import app.truenascompanion.data.model.ServiceInfo
 import app.truenascompanion.data.repository.ConnectionState
 import app.truenascompanion.data.store.AppearanceSettings
 import app.truenascompanion.data.store.ConnectionTimeoutPrefs
@@ -88,7 +87,6 @@ import app.truenascompanion.ui.components.ConfirmDialog
 import app.truenascompanion.ui.components.ElevatedSection
 import app.truenascompanion.ui.components.IconBadge
 import app.truenascompanion.ui.components.SectionTitle
-import app.truenascompanion.ui.components.SkeletonCard
 import app.truenascompanion.ui.components.StatusChip
 import app.truenascompanion.ui.components.UiState
 import kotlinx.coroutines.channels.Channel
@@ -99,7 +97,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class SystemViewModel(private val c: AppContainer) : ViewModel() {
@@ -108,46 +105,8 @@ class SystemViewModel(private val c: AppContainer) : ViewModel() {
     val appearance = c.settings.appearance.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppearanceSettings())
     val connectionGiveUpMs = c.settings.connectionGiveUpMs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectionTimeoutPrefs.DEFAULT_MS)
 
-    private val _services = MutableStateFlow<UiState<List<ServiceInfo>>>(UiState.Loading)
-    val services = _services.asStateFlow()
-    private val _busy = MutableStateFlow<Set<String>>(emptySet())
-    val busy = _busy.asStateFlow()
-    private val _refreshing = MutableStateFlow(false)
-    val refreshing = _refreshing.asStateFlow()
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
-
-    init {
-        viewModelScope.launch {
-            c.repository.reloadKey.collect { if (it != null) { _services.value = UiState.Loading; load() } }
-        }
-    }
-
-    fun refresh() = viewModelScope.launch { _refreshing.value = true; load(); _refreshing.value = false }
-
-    private suspend fun load() {
-        try {
-            _services.value = UiState.Success(c.repository.call { it.services() })
-        } catch (e: Throwable) {
-            if (_services.value !is UiState.Success) _services.value = UiState.Error(e.userMessage(), e)
-        }
-    }
-
-    fun toggle(s: ServiceInfo) {
-        if (s.service in _busy.value) return
-        _busy.update { it + s.service }
-        viewModelScope.launch {
-            try {
-                c.repository.call { it.serviceAction(s.service, start = !s.running) }
-                _messages.trySend("${s.displayName} ${if (s.running) "stopped" else "started"}")
-            } catch (e: Throwable) {
-                _messages.trySend("${s.displayName}: ${e.userMessage()}")
-            } finally {
-                _busy.update { it - s.service }
-                load()
-            }
-        }
-    }
 
     fun reboot() = power(true)
     fun shutdown() = power(false)
@@ -178,18 +137,16 @@ fun SystemScreen(
     onReports: () -> Unit = {},
     onAudit: () -> Unit = {},
     onCertificates: () -> Unit = {},
+    onServices: () -> Unit = {},
+    onScheduledTasks: () -> Unit = {},
 ) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
-    val services by vm.services.collectAsStateWithLifecycle()
-    val busy by vm.busy.collectAsStateWithLifecycle()
-    val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val appearance by vm.appearance.collectAsStateWithLifecycle()
     val giveUpMs by vm.connectionGiveUpMs.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var confirm by remember { mutableStateOf<String?>(null) }
-    var confirmStop by remember { mutableStateOf<ServiceInfo?>(null) }
     var confirmShell by remember { mutableStateOf(false) }
     val lockGuard = app.truenascompanion.ui.lock.LocalLockGuard.current
     val context = LocalContext.current
@@ -197,7 +154,7 @@ fun SystemScreen(
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
 
     Scaffold(topBar = { TopAppBar(title = { Text("System") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
+        Box(Modifier.padding(padding).fillMaxSize()) {
             LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 item {
                     ElevatedSection(onClick = onServers) {
@@ -262,6 +219,10 @@ fun SystemScreen(
                         ManageRow(Icons.Rounded.Policy, "Audit log", "Who signed in and what changed", onAudit)
                         ManageDivider()
                         ManageRow(Icons.Rounded.VerifiedUser, "Certificates", "Expiry, ACME, imports and the web UI certificate", onCertificates)
+                        ManageDivider()
+                        ManageRow(Icons.Rounded.MiscellaneousServices, "Services", "Start, stop and configure SSH, SMB, NFS, UPS, SNMP, FTP…", onServices)
+                        ManageDivider()
+                        ManageRow(Icons.Rounded.EventRepeat, "Scheduled tasks", "Cron jobs and init/shutdown scripts", onScheduledTasks)
                     }
                 }
 
@@ -270,20 +231,6 @@ fun SystemScreen(
 
                 item { SectionTitle("Boot environments") }
                 item { BootEnvSection() }
-
-                item { SectionTitle("Services") }
-                when (val s = services) {
-                    UiState.Loading -> items(3) { SkeletonCard(height = 64.dp) }
-                    is UiState.Error -> item { Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-                    is UiState.Success -> item {
-                        ElevatedSection(contentPadding = 6.dp) {
-                            s.data.forEachIndexed { i, svc ->
-                                ServiceRow(svc, svc.service in busy) { if (svc.running) confirmStop = svc else vm.toggle(svc) }
-                                if (i < s.data.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                            }
-                        }
-                    }
-                }
 
                 item { SectionTitle("Power") }
                 item {
@@ -367,15 +314,6 @@ fun SystemScreen(
         onConfirm = { confirmShell = false; lockGuard.guard("Open a shell on the NAS", onShell) }, onDismiss = { confirmShell = false },
     )
 
-    confirmStop?.let { svc ->
-        ConfirmDialog(
-            title = "Stop ${svc.displayName}?",
-            text = "Clients using ${svc.displayName} will be disconnected until the service is started again.",
-            confirmLabel = "Stop", destructive = true,
-            onConfirm = { confirmStop = null; vm.toggle(svc) }, onDismiss = { confirmStop = null },
-        )
-    }
-
     when (confirm) {
         "reboot" -> ConfirmDialog(
             title = "Reboot ${server?.name ?: "server"}?",
@@ -389,21 +327,6 @@ fun SystemScreen(
             confirmLabel = "Shut down", destructive = true, icon = Icons.Rounded.PowerSettingsNew,
             onConfirm = { confirm = null; vm.shutdown() }, onDismiss = { confirm = null },
         )
-    }
-}
-
-@Composable
-private fun ServiceRow(s: ServiceInfo, busy: Boolean, onToggle: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(s.displayName, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                (if (s.running) "Running" else "Stopped") + if (s.enabledOnBoot) " · starts on boot" else "",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-        else Switch(checked = s.running, onCheckedChange = { onToggle() })
     }
 }
 
