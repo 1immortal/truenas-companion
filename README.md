@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/1immortal/truenas-companion/releases/latest"><b>Download the latest APK</b></a>
+  <a href="https://github.com/1immortal/ytn/releases/latest"><b>Download the latest APK</b></a>
 </p>
 
 <table>
@@ -87,7 +87,7 @@
 
 ## Get the app
 
-1. On your phone, open the [latest release](https://github.com/1immortal/truenas-companion/releases/latest) and download **`truenas-companion-release.apk`** (recommended) or **`truenas-companion-debug.apk`** (the *Debug (preview builds)* channel: a separate app id, `app.truenascompanion.debug`, with extra diagnostics; since 1.7.1 it is no longer a debuggable build, so other tools can't attach to it or read its data). Asset names are the same on every release.
+1. On your phone, open the [latest release](https://github.com/1immortal/ytn/releases/latest) and download **`truenas-companion-release.apk`** (recommended) or **`truenas-companion-debug.apk`** (the *Debug (preview builds)* channel: a separate app id, `app.truenascompanion.debug`, with extra diagnostics; since 1.7.1 it is no longer a debuggable build, so other tools can't attach to it or read its data). Asset names are the same on every release.
 2. Open the downloaded file. Android asks you to allow **Install unknown apps** for your browser or file manager. Allow it, go back, then tap **Install**.
 3. From then on the app lets you know about new versions (System › About › Check for updates) and installs them over the old one, keeping your settings.
 
@@ -103,7 +103,7 @@ Needs Android 8.0 or newer and TrueNAS 25.04 or newer (the app only uses the JSO
 
 
 > [!NOTE]
-> **Found a problem?** If you run into a bug or something doesn't work as expected, please [open an issue](https://github.com/1immortal/truenas-companion/issues) on this repo. It helps to include the app version (System › About), your Android version and what you were doing. Please never post passwords, 2FA/OTP codes, API keys or your server addresses.
+> **Found a problem?** If you run into a bug or something doesn't work as expected, please [open an issue](https://github.com/1immortal/ytn/issues) on this repo. It helps to include the app version (System › About), your Android version and what you were doing. Please never post passwords, 2FA/OTP codes, API keys or your server addresses.
 
 ## Getting started
 
@@ -121,7 +121,7 @@ The app talks only to the servers you add. There are no ads, analytics, tracking
 
 - [Technical details](docs/TECHNICAL.md): how every feature works, sign-in and sessions, supported TrueNAS versions, security notes and known limitations.
 - [Building from source](docs/BUILDING.md)
-- Found a bug or have an idea? [Open an issue](https://github.com/1immortal/truenas-companion/issues).
+- Found a bug or have an idea? [Open an issue](https://github.com/1immortal/ytn/issues).
 
 TrueNAS Companion is an independent project and is not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc.
 

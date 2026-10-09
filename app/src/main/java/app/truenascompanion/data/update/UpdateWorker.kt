@@ -63,7 +63,7 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
         fun createChannel(context: Context) {
             val m = context.getSystemService(NotificationManager::class.java) ?: return
             m.createNotificationChannel(NotificationChannel(CHANNEL, "App updates", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "A new version of TrueNAS Companion is available"
+                description = "A new version of YTN is available"
                 group = "app"
             })
         }
@@ -82,7 +82,7 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
             val pi = PendingIntent.getActivity(context, 7001, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val n = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat_notify)
-                .setContentTitle("TrueNAS Companion $version is available")
+                .setContentTitle("YTN $version is available")
                 .setContentText("Tap to see what's new and update.")
                 .setContentIntent(pi)
                 .setAutoCancel(true)

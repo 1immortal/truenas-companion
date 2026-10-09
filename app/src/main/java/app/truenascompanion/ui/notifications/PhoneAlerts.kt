@@ -162,7 +162,7 @@ fun rememberNotificationAccess(onReady: () -> Unit): () -> Unit {
     if (explain) {
         ConfirmDialog(
             title = "Get alerts on your phone",
-            text = "TrueNAS Companion checks your NAS in the background and notifies you when a new alert appears.\n\n" +
+            text = "YTN checks your NAS in the background and notifies you when a new alert appears.\n\n" +
                 "Your phone talks directly to your server: no cloud service, no ads, no tracking. " +
                 "Android will ask you to allow notifications next.",
             confirmLabel = "Continue",
@@ -177,7 +177,7 @@ fun rememberNotificationAccess(onReady: () -> Unit): () -> Unit {
     if (blocked) {
         ConfirmDialog(
             title = "Notifications are off",
-            text = "Notifications are turned off for TrueNAS Companion. Turn them on in Android settings to receive alerts.",
+            text = "Notifications are turned off for YTN. Turn them on in Android settings to receive alerts.",
             confirmLabel = "Open settings",
             icon = Icons.Rounded.NotificationsOff,
             onConfirm = { blocked = false; PhoneAlerts.openNotificationSettings(context) },

@@ -200,7 +200,7 @@ class VpnTest {
         assertFalse(VpnSetup.validPublicHost("https://homenas.example.org"))
         assertTrue(VpnSetup.validHostname("truenas-01"))
         assertFalse(VpnSetup.validHostname("true nas"))
-        assertEquals("TrueNAS Companion Pixel 8", VpnSetup.clientName("Pixel 8"))
+        assertEquals("YTN Pixel 8", VpnSetup.clientName("Pixel 8"))
     }
 
     @Test fun generatedPasswordsAreLongAndUnambiguous() {

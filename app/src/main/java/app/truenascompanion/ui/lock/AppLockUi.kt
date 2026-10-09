@@ -191,7 +191,7 @@ fun LockGate(content: @Composable () -> Unit) {
         val activity = context.findFragmentActivity() ?: return@unlock
         error = null
         lock.beginAuthentication()
-        Biometrics.authenticate(activity, "Unlock TrueNAS Companion", null) { r ->
+        Biometrics.authenticate(activity, "Unlock YTN", null) { r ->
             when (r) {
                 Biometrics.Result.Success -> lock.endAuthentication(true)
                 Biometrics.Result.Cancelled -> lock.endAuthentication(false)
@@ -233,7 +233,7 @@ fun LockScreen(error: String?, onUnlock: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Rounded.Lock, null, tint = accent, modifier = Modifier.size(40.dp)) }
             Spacer(Modifier.height(28.dp))
-            Text("TrueNAS Companion is locked", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            Text("YTN is locked", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Use your fingerprint, face or screen lock to continue.",

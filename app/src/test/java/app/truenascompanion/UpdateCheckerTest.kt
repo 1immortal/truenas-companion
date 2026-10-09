@@ -32,7 +32,7 @@ class UpdateCheckerTest {
             {"name":"${UpdateAssets.DEBUG_APK}.sha256","browser_download_url":"https://x/debug.sum"}
         """.trimIndent()
         return """
-        {"tag_name":"$tag","name":"TrueNAS Companion $tag","html_url":"https://github.com/1immortal/truenas-companion/releases/tag/$tag",
+        {"tag_name":"$tag","name":"TrueNAS Companion $tag","html_url":"https://github.com/1immortal/ytn/releases/tag/$tag",
          "body":"## What's new\n- **Protection** tab\n- Fixed `crash`\n\nSee [docs](https://example.com).",
          "assets":[$assets]}
         """.trimIndent()
@@ -111,14 +111,14 @@ class UpdateCheckerTest {
     private lateinit var server: MockWebServer
     @Before fun start() { server = MockWebServer(); server.start() }
     @After fun stop() { server.shutdown() }
-    private fun checker() = UpdateChecker("1immortal/truenas-companion", apiBase = server.url("/").toString().trimEnd('/'))
+    private fun checker() = UpdateChecker("1immortal/ytn", apiBase = server.url("/").toString().trimEnd('/'))
 
     @Test fun availableAndUpToDate() = runTest {
         server.enqueue(MockResponse().setBody(release("v1.0.3")))
         val r = checker().check("1.0.2", UpdateChannel.RELEASE)
         assertTrue(r is UpdateResult.Available)
         assertEquals(UpdateAssets.RELEASE_APK, (r as UpdateResult.Available).release.apkName)
-        assertEquals("/repos/1immortal/truenas-companion/releases/latest", server.takeRequest().requestUrl!!.encodedPath)
+        assertEquals("/repos/1immortal/ytn/releases/latest", server.takeRequest().requestUrl!!.encodedPath)
         server.enqueue(MockResponse().setBody(release("v1.0.3")))
         assertEquals(UpdateResult.UpToDate("1.0.3"), checker().check("1.0.3", UpdateChannel.RELEASE))
     }

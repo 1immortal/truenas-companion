@@ -182,8 +182,8 @@ class V05ScreenshotTest {
 
     private val release = ReleaseInfo(
         "0.5.1", "TrueNAS Companion v0.5.1", "## What's new\n- **Protection:** faster snapshot list\n- Fixed a crash when a pool has no disks\n- Update checker shows download size",
-        "https://github.com/1immortal/truenas-companion/releases/tag/v0.5.1", "truenas-companion-v0.5.1-debug.apk",
-        "https://github.com/1immortal/truenas-companion/releases/download/v0.5.1/truenas-companion-v0.5.1-debug.apk", 14_200_000, "a".repeat(64), null,
+        "https://github.com/1immortal/ytn/releases/tag/v0.5.1", "truenas-companion-v0.5.1-debug.apk",
+        "https://github.com/1immortal/ytn/releases/download/v0.5.1/truenas-companion-v0.5.1-debug.apk", 14_200_000, "a".repeat(64), null,
     )
     @Test fun updateDark() = dialogShot("preview-update-dark", true) { UpdateDialog("0.5.0", release, DownloadState.Idle, false, {}, {}, {}, {}) }
     @Test fun updateLight() = dialogShot("preview-update-light", false) { UpdateDialog("0.5.0", release, DownloadState.Downloading(0.62f), false, {}, {}, {}, {}) }

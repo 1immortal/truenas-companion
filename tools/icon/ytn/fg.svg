@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <defs>
+    <linearGradient id="arm" x1="0" y1="31" x2="0" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6AF3FF"/>
+      <stop offset="1" stop-color="#22C4FF"/>
+    </linearGradient>
+    <linearGradient id="bay" x1="0" y1="50" x2="0" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#C7D3FF"/>
+    </linearGradient>
+  </defs>
+  <!-- local mark spans y 31..78; scaled 0.9 about the centre -->
+  <g transform="translate(54 54) scale(0.9) translate(-54 -54.5)">
+    <!-- arms of the Y (uplink chevron) -->
+    <path d="M32.2 31 H43.2 L54 45.5 L64.8 31 H75.8 L64 50 H44 Z" fill="url(#arm)"/>
+    <!-- stem of the Y = two drive bays; the top bay is flush with the arms -->
+    <path d="M44 50 H64 V60.4 A2.6 2.6 0 0 1 61.4 63 H46.6 A2.6 2.6 0 0 1 44 60.4 Z" fill="url(#bay)"/>
+    <rect x="44" y="66" width="20" height="12" rx="2.6" fill="url(#bay)"/>
+    <rect x="54.5" y="55.3" width="7" height="2.4" rx="1.2" fill="#14C8F0"/>
+    <rect x="54.5" y="70.8" width="7" height="2.4" rx="1.2" fill="#14C8F0"/>
+  </g>
+</svg>

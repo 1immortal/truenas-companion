@@ -59,7 +59,7 @@ private fun WidgetContent(snap: WidgetSnapshot) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            snap.serverName ?: "TrueNAS Companion",
+            snap.serverName ?: "YTN",
             style = TextStyle(color = on, fontSize = 15.sp, fontWeight = FontWeight.Bold),
             maxLines = 1,
         )

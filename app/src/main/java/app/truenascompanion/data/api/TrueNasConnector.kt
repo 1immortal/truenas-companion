@@ -6,7 +6,7 @@ import app.truenascompanion.data.net.Keepalive
 
 /** Shown when a server has no JSON-RPC WebSocket API (`/api/current`), i.e. TrueNAS older than 25.04. */
 const val WEBSOCKET_API_REQUIRED_MESSAGE =
-    "This server doesn't offer the TrueNAS WebSocket API (/api/current). TrueNAS Companion needs TrueNAS 25.04 or newer. " +
+    "This server doesn't offer the TrueNAS WebSocket API (/api/current). YTN needs TrueNAS 25.04 or newer. " +
         "Update TrueNAS, or check that a reverse proxy in front of it forwards WebSocket connections."
 
 object TrueNasConnector {

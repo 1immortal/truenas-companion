@@ -271,7 +271,7 @@ private fun WireGuardCard(s: VpnUiState, tunnel: TunnelStatus, a: VpnActions) {
                 Icon(Icons.AutoMirrored.Rounded.CallSplit, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "Split tunnel: only TrueNAS Companion's connections to ${server.lanIp ?: "your NAS"} go through it. Other apps and everything else on the phone are not affected" +
+                    "Split tunnel: only YTN's connections to ${server.lanIp ?: "your NAS"} go through it. Other apps and everything else on the phone are not affected" +
                         (if (s.summary?.fullTunnel == true) ", even though the config says AllowedIPs = 0.0.0.0/0." else "."),
                     style = MaterialTheme.typography.bodySmall,
                 )

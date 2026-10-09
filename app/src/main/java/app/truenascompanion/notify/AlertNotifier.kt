@@ -207,7 +207,7 @@ class AlertNotifier(private val context: Context) {
         .setColor(BRAND_COLOR)
         .setAutoCancel(true)
         .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-        .setPublicVersion(publicVersion(channel, "TrueNAS Companion"))
+        .setPublicVersion(publicVersion(channel, "YTN"))
 
     // --- alerts ---
 

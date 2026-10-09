@@ -69,9 +69,9 @@ object VpnSetup {
         return (1..20).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("")
     }
 
-    /** Client name shown in wg-easy, e.g. "TrueNAS Companion Pixel 8". */
+    /** Client name shown in wg-easy, e.g. "YTN Pixel 8". */
     fun clientName(model: String): String =
-        ("TrueNAS Companion " + model.replace(Regex("[^A-Za-z0-9 ._-]"), "").trim()).trim().take(40)
+        ("YTN " + model.replace(Regex("[^A-Za-z0-9 ._-]"), "").trim()).trim().take(40)
 
     /** The NAS subnet that contains [ip], from `network.general.summary` (e.g. `192.168.1.0/24`). */
     fun lanSubnet(summary: JsonObject?, ip: String): String? {

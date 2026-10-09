@@ -253,7 +253,7 @@ fun UpdateDialog(
                         Text("Downloading… ${(download.progress * 100).toInt()}%", style = MaterialTheme.typography.bodySmall)
                     }
                     is DownloadState.Ready -> Text(
-                        if (needsPermission) "Downloaded and verified. Android asks you once to allow TrueNAS Companion to install updates; turn it on, come back and tap Install."
+                        if (needsPermission) "Downloaded and verified. Android asks you once to allow YTN to install updates; turn it on, come back and tap Install."
                         else "Downloaded and verified. Android asks you to confirm the update.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

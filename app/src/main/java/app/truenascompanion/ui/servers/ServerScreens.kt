@@ -121,7 +121,7 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
             list.isEmpty() -> Column(Modifier.padding(padding).fillMaxSize(), verticalArrangement = Arrangement.Center) {
                 EmptyState(
                     icon = Icons.Rounded.Storage,
-                    title = "Welcome to TrueNAS Companion",
+                    title = "Welcome to YTN",
                     message = "Add your TrueNAS SCALE server to monitor storage, apps, alerts and more — right from your phone.",
                     action = { Button(onClick = onAdd) { Text("Add your first server") } },
                 )

@@ -25,7 +25,7 @@ android {
         buildConfigField("String", "RELEASE_SIGNER_SHA256", "\"92fb06a9b958c4a08f0db43e1e4b9b2c6ee0a9cdf4a91ffd2421a11277f5e608\"")
         // Debug signer (Android default debug.keystore) — still accepted so 0.x debug builds can update among themselves.
         buildConfigField("String", "DEBUG_SIGNER_SHA256", "\"b613e16e8922015ac9cb2ddb0e3cddcb262f40a2c721b840ec7c976638c6db3c\"")
-        buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: "1immortal/truenas-companion"}\"")
+        buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: "1immortal/ytn"}\"")
     }
 
 

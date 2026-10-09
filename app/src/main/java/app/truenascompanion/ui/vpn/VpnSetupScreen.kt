@@ -155,7 +155,7 @@ fun VpnSetupScreen(serverId: String, onBack: () -> Unit) {
 
 private fun copy(context: Context, text: String, sensitive: Boolean) {
     val cm = context.getSystemService(ClipboardManager::class.java) ?: return
-    val clip = ClipData.newPlainText("TrueNAS Companion", text)
+    val clip = ClipData.newPlainText("YTN", text)
     if (sensitive) {
         clip.description.extras = PersistableBundle().apply {
             putBoolean(if (Build.VERSION.SDK_INT >= 33) ClipDescription.EXTRA_IS_SENSITIVE else "android.content.extra.IS_SENSITIVE", true)
@@ -441,7 +441,7 @@ private fun TsDone(ui: SetupUi, ts: TailscaleUi, installed: Boolean, a: SetupAct
     ElevatedSection {
         Text("2. Tailscale on this phone", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(6.dp))
-        Text("Install the Tailscale app, sign in with the same account and connect. TrueNAS Companion uses it whenever it's connected.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Install the Tailscale app, sign in with the same account and connect. YTN uses it whenever it's connected.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         GlowButton(onClick = a.openTailscale) { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(if (installed) "Open Tailscale" else "Get Tailscale") }
         if (ui.advertise) {

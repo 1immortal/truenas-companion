@@ -253,8 +253,8 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
         }
     }
 
-    override suspend fun reboot() = power("system.reboot", "Reboot requested from TrueNAS Companion (Android)")
-    override suspend fun shutdown() = power("system.shutdown", "Shutdown requested from TrueNAS Companion (Android)")
+    override suspend fun reboot() = power("system.reboot", "Reboot requested from YTN (Android)")
+    override suspend fun shutdown() = power("system.shutdown", "Shutdown requested from YTN (Android)")
 
     /**
      * `auth.generate_token(ttl, attrs, match_origin, single_use)`. We request a reusable (single_use=false) token that is

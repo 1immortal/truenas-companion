@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** Why the built-in tunnel couldn't be used. The app then falls back to the next address (Tailscale / remote). */
 sealed class TunnelFailure(val message: String) {
     /** The user hasn't allowed the app to create a VPN yet (Android asks once). */
-    data object NeedsConsent : TunnelFailure("Allow TrueNAS Companion to set up its VPN connection first (VPN settings of this server).")
+    data object NeedsConsent : TunnelFailure("Allow YTN to set up its VPN connection first (VPN settings of this server).")
     /** Another VPN app (Tailscale, a work VPN, …) is connected. Starting ours would disconnect it, so we don't. */
     data object ForeignVpn : TunnelFailure("Another VPN app is connected on this phone, so the built-in tunnel stays off (Android allows one VPN at a time). Using the remote address.")
     /** Android refused to create the tunnel: typically another app is set as Always-on VPN, or the permission was revoked. */

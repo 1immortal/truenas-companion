@@ -413,19 +413,28 @@ fun AppearanceSection(appearance: AppearanceSettings, onTheme: (ThemeMode) -> Un
             }
         }
         Spacer(Modifier.height(12.dp))
-        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the TrueNAS Companion theme (Android 12+)") {
+        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the YTN theme (Android 12+)") {
             Switch(checked = appearance.dynamicColor, onCheckedChange = onDynamic)
         }
     }
 }
 
+const val APP_TAGLINE = "Your TrueNAS companion"
+const val TRADEMARK_NOTE = "YTN is an independent project, not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc."
+
 /** App version, the app-update block ([updates]) and a shortcut to the NAS web UI. */
 @Composable
 fun AboutSection(versionName: String, onOpenWebUi: (() -> Unit)?, updates: @Composable () -> Unit) {
     ElevatedSection {
-        SettingRow(Icons.Rounded.Info, "TrueNAS Companion $versionName", "Free & open source. No ads, no analytics, no tracking.")
+        SettingRow(Icons.Rounded.Info, "YTN $versionName", "$APP_TAGLINE. Free & open source. No ads, no analytics, no tracking.")
         Spacer(Modifier.height(8.dp))
         updates()
+        Spacer(Modifier.height(12.dp))
+        Text(
+            TRADEMARK_NOTE,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         onOpenWebUi?.let { open ->
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {

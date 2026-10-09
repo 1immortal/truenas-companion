@@ -1,3 +1,5 @@
 <resources>
-    <color name="window_bg">#FFF8FAFD</color>
+    <color name="window_bg">#FFF3F6FF</color>
+    <!-- 1.8.0: launch screen and icon background (theme navy). -->
+    <color name="splash_bg">#FF0B1430</color>
 </resources>

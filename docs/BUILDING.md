@@ -3,8 +3,8 @@
 Requirements: JDK 17+ (21 recommended) and the Android SDK with platform 37 (Android Studio installs these for you).
 
 ```bash
-git clone https://github.com/1immortal/truenas-companion.git
-cd truenas-companion
+git clone https://github.com/1immortal/ytn.git
+cd ytn
 ./gradlew assembleDebug          # APK -> app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # unit tests
 ./gradlew testDebugUnitTest -Pscreenshots --tests '*ScreenshotTest*'   # render UI previews (Robolectric + Roborazzi) to ./screenshots
