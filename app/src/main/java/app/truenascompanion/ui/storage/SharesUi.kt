@@ -268,7 +268,7 @@ private fun NfsList(shares: List<NfsShare>, busy: Set<String>, onEdit: (NfsShare
 }
 
 @Composable
-private fun SmbShareDialog(
+internal fun SmbShareDialog(
     existing: SmbShare?,
     datasetPaths: List<String>,
     onDismiss: () -> Unit,

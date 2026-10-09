@@ -225,29 +225,7 @@ fun StorageScreen(
 
     Scaffold(topBar = { TopAppBar(title = { Text("Storage") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            val group = StorageTabs.groupOf(tab)
-            var lastInGroup by rememberSaveable { mutableStateOf(listOf(StorageTabs.POOLS, StorageTabs.DATASETS, StorageTabs.SHARES, StorageTabs.PROTECTION)) }
-            LaunchedEffect(tab) { lastInGroup = lastInGroup.toMutableList().also { it[group] = tab } }
-            androidx.compose.material3.PrimaryTabRow(selectedTabIndex = group) {
-                StorageTabs.groups.forEachIndexed { i, t ->
-                    Tab(selected = group == i, onClick = { tab = lastInGroup[i] }, text = { Text(t, maxLines = 1, softWrap = false) })
-                }
-            }
-            val subs = StorageTabs.subPanes(group)
-            if (subs.size > 1) {
-                androidx.compose.material3.SingleChoiceSegmentedButtonRow(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    subs.forEachIndexed { i, pane ->
-                        SegmentedButton(
-                            selected = tab == pane,
-                            onClick = { tab = pane },
-                            shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, subs.size),
-                            icon = {},
-                        ) { Text(tabs[pane], maxLines = 1) }
-                    }
-                }
-            }
+            StorageHeader(tab) { tab = it }
             if (tab == StorageTabs.PROTECTION) {
                 ProtectionPane(snackbar, onSnapshotTask, onCloudSync, onReplication)
                 return@Column
@@ -317,7 +295,7 @@ private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -
 private val listPadding = PaddingValues(16.dp)
 
 @Composable
-private fun PoolsList(pools: List<Pool>, onOpenPool: (String) -> Unit, onReplace: (String) -> Unit) {
+internal fun PoolsList(pools: List<Pool>, onOpenPool: (String) -> Unit, onReplace: (String) -> Unit) {
     if (pools.isEmpty()) {
         LazyColumn(Modifier.fillMaxSize()) { item { EmptyState(Icons.Rounded.Storage, "No pools", "Create a storage pool in the TrueNAS web UI to see it here.") } }
         return
@@ -337,7 +315,7 @@ private fun PoolCard(p: Pool, onOpenPool: (String) -> Unit, onReplace: (String) 
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${p.diskNames.size} disks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(p.diskNames.size.let { if (it == 1) "1 disk" else "$it disks" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.width(8.dp))
             StatusChip(p.health, p.status.lowercase().replaceFirstChar { it.uppercase() })
@@ -375,6 +353,36 @@ private fun PoolCard(p: Pool, onOpenPool: (String) -> Unit, onReplace: (String) 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             androidx.compose.material3.FilledTonalButton(onClick = { onOpenPool(p.name) }) { Text("Layout & disks") }
             if (!p.healthy) androidx.compose.material3.OutlinedButton(onClick = { onReplace(p.name) }) { Text("Replace a disk") }
+        }
+    }
+}
+
+/** The four Storage tabs plus the sub-pane switch (Pools | Disks, Datasets | Files) under them (1.8.0, fits 360 dp). */
+@Composable
+internal fun StorageHeader(tab: Int, onTab: (Int) -> Unit) {
+    Column {
+        val group = StorageTabs.groupOf(tab)
+        var lastInGroup by rememberSaveable { mutableStateOf(listOf(StorageTabs.POOLS, StorageTabs.DATASETS, StorageTabs.SHARES, StorageTabs.PROTECTION)) }
+        LaunchedEffect(tab) { lastInGroup = lastInGroup.toMutableList().also { it[group] = tab } }
+        androidx.compose.material3.PrimaryTabRow(selectedTabIndex = group) {
+            StorageTabs.groups.forEachIndexed { i, t ->
+                Tab(selected = group == i, onClick = { onTab(lastInGroup[i]) }, text = { Text(t, maxLines = 1, softWrap = false) })
+            }
+        }
+        val subs = StorageTabs.subPanes(group)
+        if (subs.size > 1) {
+            androidx.compose.material3.SingleChoiceSegmentedButtonRow(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                subs.forEachIndexed { i, pane ->
+                    SegmentedButton(
+                        selected = tab == pane,
+                        onClick = { onTab(pane) },
+                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, subs.size),
+                        icon = {},
+                    ) { Text(StorageTabs.labels[pane], maxLines = 1) }
+                }
+            }
         }
     }
 }

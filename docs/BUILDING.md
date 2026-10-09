@@ -1,4 +1,4 @@
-# Building TrueNAS Companion
+# Building YTN
 
 Requirements: JDK 17+ (21 recommended) and the Android SDK with platform 37 (Android Studio installs these for you).
 
@@ -12,11 +12,13 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 Or open the folder in **Android Studio** and press *Run*.
 
-Debug builds use the application id `app.truenascompanion.debug` and are signed with the standard Android debug key. A release build needs your own signing config.
+Debug builds use the application id `app.truenascompanion.debug` (launcher label "YTN Preview") and are signed with the standard Android debug key. A release build needs your own signing config. The package ids stay `app.truenascompanion[.debug]` after the rename to YTN, so updates install in place.
 
 ## Continuous integration
 
-Every push to `main` runs `.github/workflows/android.yml`: `./gradlew assembleDebug testDebugUnitTest lintDebug`, and uploads the debug APK and the test/lint reports as artifacts. CI builds are signed with the runner's own debug key, so they can't be installed over release APKs.
+Every push to `main` runs `.github/workflows/android.yml`: it validates the Gradle wrapper, then runs `./gradlew assembleDebug testDebugUnitTest lintDebug` and uploads the debug APK and the test/lint reports as artifacts. CI builds are signed with the runner's own debug key, so they can't be installed over release APKs.
+
+Supply-chain hygiene (1.8.0): every GitHub Action is pinned to a full commit SHA (the tag is kept as a comment), checkout doesn't keep the token (`persist-credentials: false`), the workflow only has `contents: read`, `gradle-wrapper.properties` carries `distributionSha256Sum` so the wrapper refuses a tampered Gradle download, and Dependabot (`.github/dependabot.yml`) proposes weekly updates for the actions and the Gradle dependencies.
 
 ## UI previews
 
@@ -51,12 +53,12 @@ adb shell am instrument -w -e wgConf $(base64 -w0 cli.conf) -e badConf $(base64 
 Make sure the emulator has a working network first (`adb shell ping 10.0.2.2`; `adb shell svc data enable` if not).
 
 ## App icon
-The adaptive launcher icon (foreground, background and monochrome layers for themed icons) is generated from `tools/icon/gen.py`.
-It writes the vector drawables to `app/src/main/res/drawable/ic_launcher_*.xml` (a preview needs `cairosvg` and `pillow`).
 
+The YTN "Bay-Y" icon is an adaptive icon made of three vector layers: `ic_launcher_background.xml` (navy), `ic_launcher_foreground.xml` (the Y and drive bays) and `ic_launcher_monochrome.xml` (Android 13+ themed icons), wired up in `mipmap-anydpi-v26/`. The source SVGs are in `tools/icon/ytn/`. The launch (splash) screen uses the same foreground on the theme navy, so a cold start doesn't flash grey.
 
-The README icon is `docs/images/icon.png` (rendered from the same spec).
+Debug builds add a small badge through a debug-only layer (`app/src/debug/res/drawable/ic_launcher_foreground_debug.xml` and `mipmap-anydpi-v26/`), so the release resources stay untouched.
 
+`V180IconTest` renders the real icon from the built resources (round, squircle and themed shapes, a home-screen mock-up, the 512 px README icon `docs/images/ytn-icon-512.png` / `icon.png`) and the widget preview image, with `-Pscreenshots`.
 
 ## Release signing
 
