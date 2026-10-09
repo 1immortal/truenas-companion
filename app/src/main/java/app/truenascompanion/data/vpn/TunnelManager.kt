@@ -63,8 +63,11 @@ data class TunnelStatus(
     val txBytes: Long = 0,
     val lastFailure: TunnelFailure? = null,
     val failedServerId: String? = null,
-    val holders: Set<TunnelHolder> = emptySet(),
-)
+    /** 1.7.1 (review P1-2): leases per holder, so two background checks holding it at once don't drop it for each other. */
+    val leases: Map<TunnelHolder, Int> = emptyMap(),
+) {
+    val holders: Set<TunnelHolder> get() = leases.filterValues { it > 0 }.keys
+}
 
 /**
  * The app's single WireGuard tunnel (wireguard-android's userspace [GoBackend] on Android's [VpnService]).
@@ -115,6 +118,23 @@ class TunnelManager(
             .getOrDefault(false)
     }
 
+    /**
+     * 1.7.1: true only if a connected VPN looks like the Tailscale app's: one of its addresses is in Tailscale's ranges
+     * (100.64.0.0/10 or fd7a:115c:a1e0::/48). Any other VPN (a work VPN, an ad blocker…) no longer counts as Tailscale.
+     * The Tailscale route additionally needs HTTPS with a pinned or valid certificate, so a look-alike VPN still can't
+     * receive credentials.
+     */
+    fun tailscaleVpnActive(): Boolean {
+        val cm = ContextCompat.getSystemService(context, ConnectivityManager::class.java) ?: return false
+        @Suppress("DEPRECATION")
+        return runCatching {
+            cm.allNetworks.any { n ->
+                cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true &&
+                    cm.getLinkProperties(n)?.linkAddresses.orEmpty().any { isTailscaleAddress(it.address) }
+            }
+        }.getOrDefault(false)
+    }
+
     /** True if the tunnel is up for [serverId]. */
     fun isUpFor(serverId: String): Boolean = _status.value.let { it.serverId == serverId && it.state == Tunnel.State.UP }
 
@@ -126,12 +146,18 @@ class TunnelManager(
         mutex.withLock {
             val st = _status.value
             if (st.state == Tunnel.State.UP && st.serverId == server.id) {
-                _status.update { it.copy(holders = it.holders + holder) }
+                _status.update { it.copy(leases = it.leases + (holder to (it.leases[holder] ?: 0) + 1)) }
                 return@withLock null
             }
             if (st.state == Tunnel.State.UP && st.holders.isNotEmpty()) return@withLock TunnelFailure.Busy
-            val failure = bringUp(server, handshakeTimeoutMs)
-            if (failure == null) _status.update { it.copy(holders = setOf(holder), lastFailure = null, failedServerId = null) }
+            val failure = try {
+                bringUp(server, handshakeTimeoutMs)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 1.7.1 (review P1-3): a cancelled bring-up must not leave a half-up tunnel nobody holds.
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { bringDown() }
+                throw e
+            }
+            if (failure == null) _status.update { it.copy(leases = mapOf(holder to 1), lastFailure = null, failedServerId = null) }
             else _status.update { it.copy(lastFailure = failure, failedServerId = server.id) }
             failure
         }
@@ -141,8 +167,9 @@ class TunnelManager(
         mutex.withLock {
             val st = _status.value
             if (st.serverId != serverId || holder !in st.holders) return@withLock
-            val left = st.holders - holder
-            _status.update { it.copy(holders = left) }
+            val n = (st.leases[holder] ?: 0) - 1
+            val left = if (n > 0) st.leases + (holder to n) else st.leases - holder
+            _status.update { it.copy(leases = left) }
             if (left.isEmpty()) bringDown()
         }
     }
@@ -244,29 +271,38 @@ class TunnelManager(
     private fun markDown() {
         if (ownActiveSince != 0L) ownDownAt = SystemClock.elapsedRealtime()
         ownActiveSince = 0L
-        _status.update { it.copy(state = Tunnel.State.DOWN, connecting = false, holders = emptySet(), rxBytes = 0, txBytes = 0) }
+        _status.update { it.copy(state = Tunnel.State.DOWN, connecting = false, leases = emptyMap(), rxBytes = 0, txBytes = 0) }
     }
 
+    /**
+     * Binds GoBackend's VpnService so it is created (startService is blocked in the background) and waits until it is
+     * up. 1.7.1 (review P0-1): readiness comes from the binding callback (onServiceConnected / onNullBinding run after the
+     * service's onCreate, which is where GoBackend publishes it), not from reflection on a private field that R8 renames
+     * in release builds. The field is also kept by a proguard rule, and still read as a second signal.
+     */
     private fun bindService() {
         if (bound != null) return
+        val ready = java.util.concurrent.CountDownLatch(1)
         val conn = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, service: IBinder?) = Unit
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) = ready.countDown()
             override fun onServiceDisconnected(name: ComponentName?) = Unit
-            override fun onNullBinding(name: ComponentName?) = Unit
+            override fun onNullBinding(name: ComponentName?) = ready.countDown()
         }
         val ok = runCatching {
             context.applicationContext.bindService(Intent(context, GoBackend.VpnService::class.java), conn, Context.BIND_AUTO_CREATE)
         }.getOrDefault(false)
-        if (ok) bound = conn
-        // Give onCreate a moment so GoBackend finds its service without startService (blocked in the background).
+        if (!ok) return
+        bound = conn
         val deadline = SystemClock.elapsedRealtime() + 1_500
-        while (SystemClock.elapsedRealtime() < deadline && !serviceReady()) Thread.sleep(20)
+        runCatching { ready.await(1_500, java.util.concurrent.TimeUnit.MILLISECONDS) }
+        while (SystemClock.elapsedRealtime() < deadline && serviceReady() == false) Thread.sleep(20)
     }
 
-    private fun serviceReady(): Boolean = runCatching {
+    /** null = can't tell (field missing), true/false = GoBackend's service future state. */
+    private fun serviceReady(): Boolean? = runCatching {
         val f = GoBackend::class.java.getDeclaredField("vpnService").apply { isAccessible = true }
         (f.get(null) as java.util.concurrent.CompletableFuture<*>).isDone
-    }.getOrDefault(true)
+    }.getOrNull()
 
     private fun unbindService() {
         val conn = bound ?: return
@@ -275,4 +311,15 @@ class TunnelManager(
     }
 
     private companion object { const val TAG = "TunnelManager" }
+}
+
+/** Tailscale assigns node addresses from 100.64.0.0/10 (CGNAT) and fd7a:115c:a1e0::/48. Pure, unit tested. */
+fun isTailscaleAddress(a: java.net.InetAddress): Boolean {
+    val b = a.address
+    return when (b.size) {
+        4 -> (b[0].toInt() and 0xFF) == 100 && (b[1].toInt() and 0xC0) == 0x40
+        16 -> (b[0].toInt() and 0xFF) == 0xFD && (b[1].toInt() and 0xFF) == 0x7A && (b[2].toInt() and 0xFF) == 0x11 &&
+            (b[3].toInt() and 0xFF) == 0x5C && (b[4].toInt() and 0xFF) == 0xA1 && (b[5].toInt() and 0xFF) == 0xE0
+        else -> false
+    }
 }

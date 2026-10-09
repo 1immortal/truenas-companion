@@ -114,8 +114,10 @@ class InstantAlertService : Service() {
             wanted.values.forEach { server ->
                 val existing = watchers[server.id]
                 if (existing == null || existing.first != server) {
-                    existing?.second?.cancel()
-                    watchers[server.id] = server to scope.launch { watch(server) }
+                    val previous = existing?.second
+                    previous?.cancel()
+                    // 1.7.1 (review P1-2): the old watcher releases its connection and tunnel lease before the new one starts.
+                    watchers[server.id] = server to scope.launch { previous?.join(); watch(server) }
                 }
             }
         }
@@ -141,7 +143,7 @@ class InstantAlertService : Service() {
                     container.backgroundConnector.connect(target, Keepalive.LONG_LIVED)
                 } catch (e: TrueNasException) {
                     // Local / Tailscale / tunnel unreachable after all: skip it on this network, retry with the next route.
-                    if ((e is TrueNasException.Unreachable || e is TrueNasException.Timeout) &&
+                    if ((e is TrueNasException.Unreachable || e is TrueNasException.Timeout || e is TrueNasException.SessionNotOnThisRoute) &&
                         target.activeRoute != app.truenascompanion.data.model.Route.REMOTE &&
                         server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO) container.routes.fail(server.id, target.activeRoute)
                     throw e

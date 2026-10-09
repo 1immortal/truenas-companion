@@ -70,6 +70,11 @@ class BackgroundConnector(
         val ttl = server.sessionTtlSeconds()
         sessions.connect(server.id, ttl) { token -> WebSocketAuth.tokenConnection(server, token, keepalive) }
             ?.let { return it }
+        // 1.7.1 (security C-1): never send the remembered password to the local / Tailscale / VPN address.
+        if (server.activeRoute != app.truenascompanion.data.model.Route.REMOTE) {
+            if (server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO) throw TrueNasException.SessionNotOnThisRoute()
+            throw TrueNasException.LoginRequired()
+        }
         val remembered = settings.password(server.id)
         if (remembered != null && server.username.isNotBlank()) {
             try {
@@ -287,7 +292,7 @@ class AlertChecker(
             } catch (e: Throwable) {
                 resolver.release(target, TunnelHolder.CHECK)
                 onTarget(server.forRoute(app.truenascompanion.data.model.Route.REMOTE))
-                val retry = (e is TrueNasException.Unreachable || e is TrueNasException.Timeout) &&
+                val retry = (e is TrueNasException.Unreachable || e is TrueNasException.Timeout || e is TrueNasException.SessionNotOnThisRoute) &&
                     target.activeRoute != app.truenascompanion.data.model.Route.REMOTE &&
                     server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO && ++attempts <= 3
                 if (!retry) throw e

@@ -34,7 +34,19 @@ sealed class TrueNasException(message: String, cause: Throwable? = null) : Excep
     class PasswordRejected(message: String = "Wrong username or password.") : TrueNasException(message)
     class OtpLockout : TrueNasException("Too many wrong two-factor codes. Please sign in again.")
     class TokenRejected : TrueNasException("The saved session has expired.")
+    /** 1.7.1: the address is plain http://; credentials are never sent over it. */
+    class InsecureAddress(val address: String) : TrueNasException(INSECURE_ADDRESS_MESSAGE)
+    /**
+     * 1.7.1: no saved session worked on the local / Tailscale / VPN address. The remembered password is only ever used
+     * on the remote address, so the caller moves on to the next route (or asks the user).
+     */
+    class SessionNotOnThisRoute : TrueNasException("The saved session didn't work on this address.")
 }
+
+const val INSECURE_ADDRESS_MESSAGE =
+    "This address uses http://, which isn't encrypted. To protect your password, API key and sessions, TrueNAS " +
+        "Companion only signs in over HTTPS. Edit the server and use its https:// address (a self-signed certificate is fine: " +
+        "you'll be asked to trust it once)."
 
 /** One middleware validation error: [attribute] is the dotted path (`smb_update.netbiosname`, `data.tcpport`). */
 data class FieldError(val attribute: String, val message: String) {
@@ -65,14 +77,14 @@ fun mapNetworkError(t: Throwable, certificate: () -> CertificateInfo?): TrueNasE
             TrueNasException.UntrustedCertificate(certificate(), t)
         chain.any { it is SSLHandshakeException || it is SSLException } ->
             TrueNasException.Tls("Secure connection failed: ${t.message ?: "TLS error"}. " +
-                "If the server only speaks HTTP, use an http:// URL.", t)
+                "Check the address and port: TrueNAS's HTTPS port is usually 443.", t)
         chain.any { it is UnknownHostException } ->
             TrueNasException.Unreachable("Host not found. Check the address and that your phone is on the right network (or VPN).", t)
         chain.any { it is ConnectException || it is NoRouteToHostException } ->
             TrueNasException.Unreachable("Could not connect to the server. Is it online and reachable on this port?", t)
         chain.any { it is SocketTimeoutException } -> TrueNasException.Timeout("Connection timed out.")
         chain.any { it is EOFException } ->
-            TrueNasException.Unreachable("The connection was closed unexpectedly. If you used https://, the server may only speak http (or vice-versa).", t)
+            TrueNasException.Unreachable("The connection was closed unexpectedly. Check that this port serves HTTPS (TrueNAS uses 443 by default).", t)
         else -> TrueNasException.Unreachable(t.message ?: t.javaClass.simpleName, t)
     }
 }

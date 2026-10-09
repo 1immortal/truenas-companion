@@ -142,7 +142,7 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
                                 Spacer(Modifier.height(6.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     if (active) StatusChip(Health.HEALTHY, "Active")
-                                    if (!server.isHttps) StatusChip(Health.WARNING, "HTTP")
+                                    if (!server.isHttps) StatusChip(Health.CRITICAL, "HTTP: off")
                                     else if (server.pinnedCertSha256 != null) StatusChip(Health.UNKNOWN, "Pinned cert", showIcon = false)
                                 }
                             }
@@ -226,9 +226,8 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
             }
             AnimatedVisibility(s.isHttp) {
                 InfoBanner(
-                    if (s.authMethod == AuthMethod.API_KEY)
-                        "Plain HTTP sends your API key unencrypted. TrueNAS 25.04+ automatically revokes API keys used over HTTP, so use https:// whenever possible."
-                    else "Plain HTTP sends your password unencrypted. Use https:// whenever possible.",
+                    "http:// isn't encrypted, so the app won't sign in over it. Use the https:// address: TrueNAS serves HTTPS on port 443 " +
+                        "by default, and a self-signed certificate is fine (you'll review and trust it once).",
                     health = Health.CRITICAL,
                 )
             }

@@ -69,6 +69,10 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
             }
             NasStatusWidget().updateAll(applicationContext)
             Result.success()
+        } catch (e: TrueNasException.SessionNotOnThisRoute) {
+            // 1.7.1: the saved session didn't work on the local/VPN address; the next attempt uses the remote one.
+            c.routes.fail(server.id, target.activeRoute)
+            if (runAttemptCount < 3) Result.retry() else Result.success()
         } catch (e: TrueNasException.LoginRequired) {
             WidgetStore.save(applicationContext, WidgetSnapshot(serverName = server.name, error = "Sign in again in the app"))
             NasStatusWidget().updateAll(applicationContext)

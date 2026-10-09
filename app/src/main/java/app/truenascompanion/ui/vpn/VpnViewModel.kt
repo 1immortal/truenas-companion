@@ -60,7 +60,7 @@ class TailscaleAddressController(private val c: AppContainer, private val server
             val pin = _ui.value.pin ?: server.tailscalePinnedCertSha256
             val cfg = server.copy(tailscaleUrl = url, tailscalePinnedCertSha256 = pin).forRoute(Route.TAILSCALE)
             if (cfg.activeRoute != Route.TAILSCALE) {
-                _ui.update { it.copy(checking = false, result = CheckResult(false, "TrueNAS revokes API keys sent over plain http: use an https:// address.")) }
+                _ui.update { it.copy(checking = false, result = CheckResult(false, "Use an https:// address. The app only signs in over HTTPS (a self-signed certificate is fine).")) }
                 return@launch
             }
             try {
@@ -162,7 +162,7 @@ class VpnViewModel(private val c: AppContainer, val serverId: String) : ViewMode
         val problem = when {
             conf == null -> null
             s.lanIp == null -> "The tunnel connects to the NAS's local IP. Set the local address (Home network, e.g. https://192.168.1.10) in the server settings."
-            !s.localUsable -> "The local address is plain http, which TrueNAS doesn't allow with an API key. Turn on HTTPS or use password sign-in."
+            !s.localUsable -> "The local address is plain http://, which the app doesn't use. Set its https:// address in the server settings (Home network › Auto-detect)."
             else -> runCatching { WgConf.forApp(conf, s.lanIp!!, "x"); null }.getOrElse { it.message }
         }
         _state.update { it.copy(summary = summary, configProblem = problem) }

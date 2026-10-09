@@ -12,7 +12,6 @@ import app.truenascompanion.data.net.RouteOptions
 import app.truenascompanion.data.net.RouteResolver
 import app.truenascompanion.data.vpn.VpnSetup
 import app.truenascompanion.data.vpn.WgConf
-import app.truenascompanion.data.vpn.WgEasyClient
 import app.truenascompanion.util.UrlUtils
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -256,56 +255,5 @@ class VpnTest {
         val api = fakeApi { m, args -> assertEquals("app.query", m); filter = args[0]; JsonArray(listOf(JsonObject(emptyMap()))) }
         assertTrue(VpnSetup.appExists(api, "wg-easy"))
         assertEquals("""[["name","=","wg-easy"]]""", filter.toString())
-    }
-
-    // --- wg-easy v15 API ---
-
-    @Test fun wgEasyFirstRunSetupAndClientCreation() = runBlocking {
-        val server = MockWebServer()
-        server.enqueue(MockResponse().setBody("""{"success":true}"""))
-        server.enqueue(MockResponse().setBody("""{"success":true}"""))
-        server.enqueue(MockResponse().setBody("""{"success":true,"clientId":3}"""))
-        server.enqueue(MockResponse().setBody(wgEasyConf))
-        server.start()
-        try {
-            val c = WgEasyClient(server.url("/").toString())
-            c.setupAdmin("admin", "correct-horse-battery")
-            c.setupHost("homenas.example.org", 51820)
-            val id = c.createClient("admin", "correct-horse-battery", "TrueNAS Companion Pixel 8")
-            assertEquals("3", id)
-            assertEquals(wgEasyConf, c.clientConfig("admin", "correct-horse-battery", id))
-
-            val r1 = server.takeRequest()
-            assertEquals("/api/setup/2", r1.requestUrl!!.encodedPath)
-            assertEquals("""{"username":"admin","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}""", r1.body.readUtf8())
-            assertNull("setup is unauthenticated", r1.getHeader("Authorization"))
-            val r2 = server.takeRequest()
-            assertEquals("/api/setup/4", r2.requestUrl!!.encodedPath)
-            assertEquals("""{"host":"homenas.example.org","port":51820}""", r2.body.readUtf8())
-            val r3 = server.takeRequest()
-            assertEquals("/api/client", r3.requestUrl!!.encodedPath)
-            assertEquals("""{"name":"TrueNAS Companion Pixel 8","expiresAt":null}""", r3.body.readUtf8())
-            assertEquals(okhttp3.Credentials.basic("admin", "correct-horse-battery"), r3.getHeader("Authorization"))
-            val r4 = server.takeRequest()
-            assertEquals("/api/client/3/configuration", r4.requestUrl!!.encodedPath)
-        } finally {
-            server.shutdown()
-        }
-    }
-
-    @Test fun wgEasyErrorsAreMapped() = runBlocking {
-        val server = MockWebServer()
-        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"statusCode":400,"statusMessage":"Invalid state","message":"Invalid state"}"""))
-        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"statusCode":401,"message":"Session failed"}"""))
-        server.enqueue(MockResponse().setResponseCode(500).setBody("""{"statusCode":500,"message":"boom"}"""))
-        server.start()
-        try {
-            val c = WgEasyClient(server.url("/").toString())
-            try { c.setupAdmin("admin", "correct-horse-battery"); fail() } catch (e: WgEasyClient.Failure.AlreadySetUp) { }
-            try { c.createClient("admin", "wrong-password-123", "x"); fail() } catch (e: WgEasyClient.Failure.AuthFailed) { }
-            try { c.createClient("admin", "correct-horse-battery", "x"); fail() } catch (e: WgEasyClient.Failure.Http) { assertTrue(e.message!!.contains("boom")) }
-        } finally {
-            server.shutdown()
-        }
     }
 }

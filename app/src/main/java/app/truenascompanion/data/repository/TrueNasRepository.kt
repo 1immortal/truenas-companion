@@ -203,10 +203,21 @@ class TrueNasRepository(
                 var target = resolver.acquire(raw, TunnelHolder.APP)
                 var newApi: TrueNasApi? = null
                 var attempts = 0
+                /** A non-remote route that needs the password: asked there if the remote address doesn't answer either. */
+                var promptOn: ServerConfig? = null
                 while (newApi == null) {
                     try {
                         newApi = open(target)
                     } catch (e: TrueNasException) {
+                        if (e is TrueNasException.SessionNotOnThisRoute && promptOn == null &&
+                            target.activeRoute != app.truenascompanion.data.model.Route.VPN) promptOn = target
+                        val p = promptOn
+                        if (p != null && target.activeRoute == app.truenascompanion.data.model.Route.REMOTE &&
+                            (e is TrueNasException.Unreachable || e is TrueNasException.Timeout)) {
+                            resolver.release(target, TunnelHolder.APP)
+                            _prompt.value = AuthPrompt.Password(p, rememberDefault = false)
+                            throw TrueNasException.LoginRequired()
+                        }
                         if (e is TrueNasException.LoginRequired && target.activeRoute == app.truenascompanion.data.model.Route.VPN) {
                             // The sign-in dialog will talk to the NAS through the tunnel: keep it up for the prompt.
                             if (promptTunnel != null && promptTunnel != target) resolver.release(promptTunnel, TunnelHolder.APP)
@@ -216,7 +227,8 @@ class TrueNasRepository(
                         // The local address / Tailscale / tunnel answered the decision but not the connection (e.g. just
                         // left Wi-Fi): in Auto mode move on to the next route right away instead of failing.
                         resolver.release(target, TunnelHolder.APP)
-                        val unreachable = e is TrueNasException.Unreachable || e is TrueNasException.Timeout
+                        val unreachable = e is TrueNasException.Unreachable || e is TrueNasException.Timeout ||
+                            e is TrueNasException.SessionNotOnThisRoute
                         if (!unreachable || target.activeRoute == app.truenascompanion.data.model.Route.REMOTE ||
                             raw.routeMode != app.truenascompanion.data.model.RouteMode.AUTO || ++attempts > 3) throw e
                         resolver.fail(raw.id, target.activeRoute)
@@ -256,7 +268,11 @@ class TrueNasRepository(
         sessions.connect(server.id, ttl) { token -> WebSocketAuth.tokenConnection(server, token, Keepalive.FOREGROUND) }
             ?.let { return it }
 
-        val remembered = settings.password(server.id)
+        // 1.7.1 (security C-1): the remembered password is only ever sent to the remote address. On the local /
+        // Tailscale / VPN address, Auto mode moves on to the next route; the fixed modes ask the user.
+        val nonRemote = server.activeRoute != app.truenascompanion.data.model.Route.REMOTE
+        if (nonRemote && server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO) throw TrueNasException.SessionNotOnThisRoute()
+        val remembered = if (nonRemote) null else settings.password(server.id)
         if (remembered != null && server.username.isNotBlank()) {
             try {
                 when (val step = WebSocketAuth.login(server, Credentials.Password(server.username, remembered), ttl)) {

@@ -8,3 +8,8 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# 1.7.1: TunnelManager also reads GoBackend's static service future by name as a readiness signal.
+-keepclassmembers class com.wireguard.android.backend.GoBackend {
+    static java.util.concurrent.CompletableFuture vpnService;
+}

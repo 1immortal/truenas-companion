@@ -81,6 +81,24 @@ object VpnSetup {
         return WgConf.networkOf("$ip/24")
     }
 
+    /**
+     * 1.7.1: waits until something listens on [host]:[port] with a bare TCP connect (nothing is sent; wg-easy's page is
+     * plain http, which the app no longer talks to). Polls every 2 s up to [timeoutMs].
+     */
+    suspend fun waitForPort(host: String, port: Int, timeoutMs: Long, pollMs: Long = 2_000): Boolean =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val end = System.currentTimeMillis() + timeoutMs
+            while (System.currentTimeMillis() < end) {
+                val open = runCatching {
+                    java.net.Socket().use { it.connect(java.net.InetSocketAddress(host, port), 2_000) }
+                    true
+                }.getOrDefault(false)
+                if (open) return@withContext true
+                kotlinx.coroutines.delay(pollMs)
+            }
+            false
+        }
+
     suspend fun appExists(api: TrueNasApi, name: String): Boolean {
         val filter = buildJsonArray { add(buildJsonArray { add(JsonPrimitive("name")); add(JsonPrimitive("=")); add(JsonPrimitive(name)) }) }
         return (api.rpc("app.query", filter) as? JsonArray)?.isNotEmpty() == true

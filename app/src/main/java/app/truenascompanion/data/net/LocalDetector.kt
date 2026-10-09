@@ -32,9 +32,9 @@ object LocalDetector {
         }
     }
 
+    /** 1.7.1: HTTPS only (the app no longer signs in over http, and cleartext traffic is disabled app-wide). */
     val CANDIDATES = listOf(
         Candidate("https", 443), Candidate("https", 444), Candidate("https", 8443), Candidate("https", 9443),
-        Candidate("http", 80), Candidate("http", 81), Candidate("http", 8080), Candidate("http", 8000),
     )
 
     data class Found(val url: String, val https: Boolean)

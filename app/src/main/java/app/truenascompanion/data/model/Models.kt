@@ -42,6 +42,13 @@ data class ServerConfig(
     val certReviewRequired: Boolean = false,
     /** 1.2.0: `system.general.checkin` is due once a connection with the new web UI certificate works (else TrueNAS rolls back). */
     val uiCertCheckinPending: Boolean = false,
+    /**
+     * 1.7.1 HTTPS upgrade: the automatic one-time attempt to move http:// addresses to https:// ran (see
+     * `HttpsUpgrade`). Afterwards the remaining http addresses stay off and a banner explains it until dismissed.
+     */
+    val httpsUpgradeTried: Boolean = false,
+    /** 1.7.1: the user dismissed the "home address turned off" banner (the address stays off until fixed). */
+    val httpsBannerDismissed: Boolean = false,
     /** Which address this (resolved) copy connects to. Never stored: see [forRoute]. */
     @kotlinx.serialization.Transient val activeRoute: Route = Route.REMOTE,
 ) {
@@ -52,14 +59,24 @@ data class ServerConfig(
     val isLocalHttps: Boolean get() = localUrl?.startsWith("https://", ignoreCase = true) == true
 
     /**
-     * The local address may be used. TrueNAS revokes an API key that arrives over plain http, so an http local
-     * address is only ever used with password sign-in.
+     * The local address may be used. 1.7.1: credentials (API keys, passwords, session tokens) only ever travel over
+     * HTTPS with a verified certificate (CA-valid or pinned), so an http:// local address is never used, whatever the
+     * sign-in method. See [insecureAddresses] and the HTTPS upgrade in `data/net/HttpsUpgrade.kt`.
      */
-    val localUsable: Boolean get() = hasLocal && (isLocalHttps || authMethod == AuthMethod.PASSWORD)
+    val localUsable: Boolean get() = hasLocal && isLocalHttps
 
     val hasTailscale: Boolean get() = !tailscaleUrl.isNullOrBlank()
-    /** Same rule as [localUsable]: never send an API key over plain http. */
-    val tailscaleUsable: Boolean get() = hasTailscale && (tailscaleUrl!!.startsWith("https://", true) || authMethod == AuthMethod.PASSWORD)
+    val isTailscaleHttps: Boolean get() = tailscaleUrl?.startsWith("https://", ignoreCase = true) == true
+    /** Same rule as [localUsable]: HTTPS only. */
+    val tailscaleUsable: Boolean get() = hasTailscale && isTailscaleHttps
+
+    /** Saved addresses that still use plain http:// (never used for sign-in since 1.7.1). */
+    val insecureAddresses: List<Route>
+        get() = buildList {
+            if (!isHttps) add(Route.REMOTE)
+            if (hasLocal && !isLocalHttps) add(Route.LOCAL)
+            if (hasTailscale && !isTailscaleHttps) add(Route.TAILSCALE)
+        }
 
     /**
      * The NAS's LAN IP from [localUrl] when it is an IP literal: the built-in tunnel only routes this one address

@@ -255,8 +255,8 @@ private fun WgForm(ui: SetupUi, a: SetupActions) {
         Spacer(Modifier.height(6.dp))
         Steps(
             "Installs wg-easy from the TrueNAS catalog (takes a minute or two).",
-            "Creates the wg-easy admin account with the password above.",
-            "Creates a VPN client for this phone and imports it into the app.",
+            "You create the wg-easy admin account in its web page with the password above, and add a client for this phone.",
+            "You scan that client's QR code here, and the app imports it.",
             "Shows you the one router setting you need to add.",
         )
     }

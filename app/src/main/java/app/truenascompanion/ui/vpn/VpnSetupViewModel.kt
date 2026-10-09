@@ -9,7 +9,6 @@ import app.truenascompanion.data.model.ServerConfig
 import app.truenascompanion.data.model.VpnMode
 import app.truenascompanion.data.vpn.VpnSetup
 import app.truenascompanion.data.vpn.WgConf
-import app.truenascompanion.data.vpn.WgEasyClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,7 +91,8 @@ class VpnSetupViewModel(private val c: AppContainer, private val serverId: Strin
                 _ui.update {
                     it.copy(
                         busy = false,
-                        step = if (exists) SetupStep.WG_EXISTING else SetupStep.WG_FORM,
+                        step = if (exists) SetupStep.WG_MANUAL else SetupStep.WG_FORM,
+                        manualReason = if (exists) "wg-easy is already installed. Sign in to its web page, add a client for this phone, then scan its QR code." else it.manualReason,
                         password = if (exists) "" else it.password.ifEmpty { VpnSetup.generatePassword() },
                     )
                 }
@@ -121,59 +121,20 @@ class VpnSetupViewModel(private val c: AppContainer, private val serverId: Strin
                 _ui.update { it.copy(step = SetupStep.WG_FORM, error = msg + (VpnSetup.installHint(msg, VpnSetup.WG_TRAIN)?.let { h -> "\n\n$h" } ?: "")) }
                 return@launch
             }
-            val client = WgEasyClient("http://$lanIp:${VpnSetup.WG_WEB_PORT}")
             _ui.update { it.copy(progress = "Waiting for wg-easy to start…", percent = null) }
-            if (!client.waitUntilUp(180_000)) {
-                manual("wg-easy is installed, but the app couldn't reach it at http://$lanIp:${VpnSetup.WG_WEB_PORT}. Is this phone on your home Wi-Fi? Is the app running in TrueNAS › Apps?")
-                return@launch
-            }
-            try {
-                _ui.update { it.copy(progress = "Creating the wg-easy admin account…") }
-                client.setupAdmin(VpnSetup.WG_ADMIN, u.password)
-                client.setupHost(host, port)
-            } catch (e: WgEasyClient.Failure.AlreadySetUp) {
-                _ui.update { it.copy(step = SetupStep.WG_EXISTING, error = "wg-easy already has an admin account. Sign in with it to create this phone's client.") }
-                return@launch
-            } catch (e: Throwable) {
-                manual("Couldn't finish wg-easy's first-run setup: ${e.message ?: e.javaClass.simpleName}")
-                return@launch
-            }
-            createAndImport(client, VpnSetup.WG_ADMIN, u.password)
+            // 1.7.1 (security H-2): wg-easy's web page is plain http, so the app no longer sends a wg-easy password to it.
+            // It only waits until the port answers (a bare TCP connect, nothing sent); the admin account and this phone's
+            // client are created in wg-easy's page, and its QR code is scanned here.
+            val up = VpnSetup.waitForPort(lanIp, VpnSetup.WG_WEB_PORT, 180_000)
+            manual(
+                if (up) "wg-easy is installed and running. Create its admin account with the password below, add a client for this phone, then scan its QR code."
+                else "wg-easy is installed, but it didn't answer at http://$lanIp:${VpnSetup.WG_WEB_PORT} yet. Is this phone on your home Wi-Fi? Is the app running in TrueNAS › Apps?",
+            )
         }
     }
 
-    /** wg-easy was installed before: create the client with the user's wg-easy login (kept in memory only). */
-    fun useExisting() {
-        val u = _ui.value
-        val lanIp = u.lanIp ?: return
-        if (u.existingUser.isBlank() || u.existingPassword.isEmpty()) return
-        work = viewModelScope.launch {
-            _ui.update { it.copy(step = SetupStep.WORKING, progress = "Connecting to wg-easy…", percent = null) }
-            val client = WgEasyClient("http://$lanIp:${VpnSetup.WG_WEB_PORT}")
-            if (!client.isUp()) {
-                manual("Couldn't reach wg-easy at http://$lanIp:${VpnSetup.WG_WEB_PORT}. If it uses another port, open its web UI and scan the QR code instead.")
-                return@launch
-            }
-            createAndImport(client, u.existingUser.trim(), u.existingPassword)
-        }
-    }
-
-    private suspend fun createAndImport(client: WgEasyClient, user: String, password: String) {
-        val s = _ui.value.server ?: return
-        try {
-            _ui.update { it.copy(progress = "Creating a VPN client for this phone…") }
-            val id = client.createClient(user, password, VpnSetup.clientName(Build.MODEL ?: "phone"))
-            val conf = client.clientConfig(user, password, id)
-            WgConf.forApp(conf, s.lanIp!!, "check") // validates and checks the NAS IP is covered
-            c.settings.saveWireGuard(serverId, conf.trim(), VpnMode.AUTO)
-            c.routes.reset(serverId)
-            _ui.update { it.copy(step = SetupStep.WG_DONE, existingPassword = "", progress = "") }
-        } catch (e: WgEasyClient.Failure.AuthFailed) {
-            _ui.update { it.copy(step = SetupStep.WG_EXISTING, existingPassword = "", error = e.message) }
-        } catch (e: Throwable) {
-            manual("Couldn't create the client automatically: ${e.message ?: e.javaClass.simpleName}")
-        }
-    }
+    /** wg-easy was installed before: add this phone in its web page and scan the QR code (1.7.1: no password over http). */
+    fun useExisting() = manual("wg-easy is already installed. Sign in to its web page, add a client for this phone, then scan its QR code.")
 
     private fun manual(reason: String) = _ui.update { it.copy(step = SetupStep.WG_MANUAL, manualReason = reason, progress = "") }
 

@@ -106,14 +106,10 @@ fun LocalAddressSection(
             LocalStatusLine(s.localStatus)
 
             AnimatedVisibility(s.localIsHttp) {
-                if (s.localBlocked) InfoBanner(
-                    "TrueNAS rejects (and revokes) API keys sent over plain http, so this local address won't be used with an API key. " +
-                        "Turn on HTTPS in TrueNAS (System › General › GUI), or switch to password sign-in.",
+                InfoBanner(
+                    "http:// isn't encrypted, so this address won't be used (the app signs in only over HTTPS). Tap Auto-detect to " +
+                        "find the NAS's HTTPS address; a self-signed certificate is fine, you'll review and trust it once.",
                     health = Health.CRITICAL,
-                ) else InfoBanner(
-                    "Plain http: your password would cross your home network unencrypted. Turning on HTTPS in TrueNAS " +
-                        "(System › General › GUI) is recommended.",
-                    health = Health.WARNING,
                 )
             }
 

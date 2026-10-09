@@ -76,8 +76,8 @@ data class ServerEditState(
 ) {
     val normalizedLocalUrl: String? get() = localUrl.takeIf { it.isNotBlank() }?.let { UrlUtils.normalize(it) }
     val localIsHttp: Boolean get() = normalizedLocalUrl?.startsWith("http://") == true
-    /** TrueNAS revokes API keys sent over http, so an http local address is never used with an API key. */
-    val localBlocked: Boolean get() = localIsHttp && authMethod == AuthMethod.API_KEY
+    /** 1.7.1: an http local address is never used (credentials only travel over HTTPS). */
+    val localBlocked: Boolean get() = localIsHttp
     val normalizedUrl: String? get() = UrlUtils.normalize(url)
     val isHttp: Boolean get() = normalizedUrl?.startsWith("http://") == true
     val canTest: Boolean
@@ -165,8 +165,8 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
                 else it.copy(
                     detecting = false,
                     localStatus = LocalStatus.Failed(
-                        "No TrueNAS found on $host. Tried https on ports 443, 444, 8443 and 9443 and http on 80, 81, 8080 and 8000. " +
-                            "Check that your phone is on the home Wi-Fi, or type the full address.",
+                        "No TrueNAS found on $host. Tried https on ports 443, 444, 8443 and 9443. " +
+                            "Check that your phone is on the home Wi-Fi and that HTTPS is on in TrueNAS, or type the full https:// address.",
                     ),
                 )
             }
@@ -222,6 +222,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
     fun test() {
         val s = _state.value
         val url = s.normalizedUrl ?: run { _state.update { it.copy(urlError = "Enter a valid address, e.g. https://truenas.local") }; return }
+        if (s.isHttp) { _state.update { it.copy(urlError = HTTP_URL_ERROR) }; return }
         if (s.id == null) _state.update { it.copy(id = UUID.randomUUID().toString()) } // stable id for the tested config
         _state.update { it.copy(testing = true, outcome = null) }
         viewModelScope.launch {
@@ -320,6 +321,8 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
     fun save() {
         val s = _state.value
         val url = s.normalizedUrl ?: run { _state.update { it.copy(urlError = "Enter a valid address") }; return }
+        if (s.isHttp) { _state.update { it.copy(urlError = HTTP_URL_ERROR) }; return }
+        if (s.localIsHttp) { _state.update { it.copy(localStatus = LocalStatus.Failed(HTTP_LOCAL_ERROR)) }; return }
         viewModelScope.launch {
             val built = buildConfig(s, url)
             val previous = c.settings.servers.first().firstOrNull { it.id == built.id }
@@ -359,6 +362,9 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
     }
 
     companion object {
+        const val HTTP_URL_ERROR = "Use the https:// address. The app doesn't sign in over unencrypted http://."
+        const val HTTP_LOCAL_ERROR = "Use the https:// local address (tap Auto-detect), or clear the field. http:// isn't used."
+
         /** The review stays required until the user trusted the (new) certificate of the main address. */
         fun reviewStillRequired(s: ServerEditState): Boolean = s.certReviewRequired && s.pinnedCert == null && s.normalizedUrl?.startsWith("https://") == true
     }

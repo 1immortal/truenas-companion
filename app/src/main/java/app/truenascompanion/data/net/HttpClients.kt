@@ -2,7 +2,12 @@ package app.truenascompanion.data.net
 
 import android.annotation.SuppressLint
 import app.truenascompanion.data.model.ServerConfig
+import app.truenascompanion.data.api.TrueNasException
+import app.truenascompanion.data.model.Route
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Response
+import java.io.IOException
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateException
@@ -88,6 +93,19 @@ enum class Keepalive(val seconds: Long) {
     NONE(0),
 }
 
+/**
+ * 1.7.1 (security C-1/H-2): every request of a NAS client must be HTTPS. Credentials (API key, password, session
+ * token) travel inside the WebSocket or as headers/query of file transfers, so refusing any non-TLS request on these
+ * clients (including a redirect to http) means they can never leave the phone in cleartext.
+ */
+class HttpsOnlyInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val url = chain.request().url
+        if (!url.isHttps) throw IOException("Refused to send a request over cleartext http to ${url.host}")
+        return chain.proceed(chain.request())
+    }
+}
+
 object HttpClients {
     private val base: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -95,11 +113,24 @@ object HttpClients {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .followSslRedirects(false)
+            .addNetworkInterceptor(HttpsOnlyInterceptor())
             .build()
     }
 
+    /**
+     * Pins are exclusive on the local, Tailscale and VPN addresses: when a certificate is pinned there, only that exact
+     * certificate is accepted (a CA-signed certificate of some other machine on the network is not enough). On the
+     * remote address a pin is additive (pinned leaf or normal CA validation), so a server that moved to a CA-signed
+     * certificate keeps working.
+     */
+    fun requirePin(server: ServerConfig): Boolean =
+        server.certReviewRequired || (server.activeRoute != Route.REMOTE && server.pinnedCertSha256 != null)
+
+    /** @throws TrueNasException.InsecureAddress for an http:// address: NAS connections are HTTPS only. */
     fun create(server: ServerConfig, keepalive: Keepalive = Keepalive.FOREGROUND): Pair<OkHttpClient, PinningTrustManager> {
-        val tm = PinningTrustManager(server.pinnedCertSha256, requirePin = server.certReviewRequired)
+        if (!server.url.startsWith("https://", ignoreCase = true)) throw TrueNasException.InsecureAddress(server.url)
+        val tm = PinningTrustManager(server.pinnedCertSha256, requirePin = requirePin(server))
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
         val defaultVerifier = HttpsURLConnection.getDefaultHostnameVerifier()
         val verifier = HostnameVerifier { host, session ->

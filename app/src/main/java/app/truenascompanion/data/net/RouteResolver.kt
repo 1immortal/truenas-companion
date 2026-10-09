@@ -119,13 +119,14 @@ class RouteResolver(
     suspend fun route(server: ServerConfig): Route {
         val net = _network.value
         val foreignVpn = tunnels?.foreignVpnActive() == true
+        val tailscaleVpn = foreignVpn && tunnels?.tailscaleVpnActive() == true
         val skip = failed[server.id].orEmpty()
         val key = "${net?.id}|${server.id}|${server.localUrl}|${server.localPinnedCertSha256}|${server.routeMode}|${server.authMethod}|" +
-            "${server.tailscaleUrl}|${server.tailscalePinnedCertSha256}|${server.vpnMode}|${server.wireGuardConfigured}|$foreignVpn|$skip"
+            "${server.tailscaleUrl}|${server.tailscalePinnedCertSha256}|${server.vpnMode}|${server.wireGuardConfigured}|$foreignVpn|$tailscaleVpn|$skip"
         cache[key]?.let { return it.also { remember(server.id, it) } }
         val mutex = locks.getOrPut(server.id) { Mutex() }
         return mutex.withLock {
-            cache[key] ?: decide(RouteOptions.of(server), net?.kind, foreignVpn, skip,
+            cache[key] ?: decide(RouteOptions.of(server), net?.kind, foreignVpn, skip, tailscaleVpn = tailscaleVpn,
                 probeLocal = { probe(server.forRoute(Route.LOCAL)) },
                 probeTailscale = { probe(server.forRoute(Route.TAILSCALE)) },
             ).also { r -> cache[key] = r }
@@ -198,7 +199,9 @@ class RouteResolver(
          * - Auto, in this order:
          *   1. WireGuard "Always on": the tunnel.
          *   2. Local, when on Wi-Fi/Ethernet/VPN (or unknown) and the local address answered.
-         *   3. Tailscale, when another VPN is connected (the Tailscale app) and the Tailscale address answered.
+         *   3. Tailscale, when the Tailscale app's VPN is connected (an address in 100.64.0.0/10 or fd7a:115c:a1e0::/48,
+         *      see [app.truenascompanion.data.vpn.TunnelManager.tailscaleVpnActive]) and the Tailscale address answered
+         *      over HTTPS with its pinned/valid certificate.
          *   4. WireGuard "Auto": the tunnel, unless another VPN is connected (starting ours would disconnect it).
          *   5. Remote.
          * Routes in [skip] failed on this network and are passed over.
@@ -210,13 +213,15 @@ class RouteResolver(
             skip: Set<Route>,
             probeLocal: suspend () -> Boolean,
             probeTailscale: suspend () -> Boolean,
+            /** 1.7.1: the connected VPN is Tailscale's (not just any VPN). */
+            tailscaleVpn: Boolean = foreignVpn,
         ): Route {
             if (o.mode == RouteMode.REMOTE) return Route.REMOTE
             if (o.mode == RouteMode.LOCAL) return if (o.localUsable) Route.LOCAL else Route.REMOTE
             val wireGuard = o.wireGuardUsable && o.vpnMode != app.truenascompanion.data.model.VpnMode.OFF && !foreignVpn && Route.VPN !in skip
             if (wireGuard && o.vpnMode == app.truenascompanion.data.model.VpnMode.ALWAYS) return Route.VPN
             if (o.localUsable && Route.LOCAL !in skip && network != NetState.Kind.MOBILE && probeLocal()) return Route.LOCAL
-            if (o.tailscaleUsable && Route.TAILSCALE !in skip && (foreignVpn || network == NetState.Kind.VPN) && probeTailscale()) return Route.TAILSCALE
+            if (o.tailscaleUsable && Route.TAILSCALE !in skip && tailscaleVpn && probeTailscale()) return Route.TAILSCALE
             if (wireGuard) return Route.VPN
             return Route.REMOTE
         }
@@ -224,7 +229,9 @@ class RouteResolver(
         /** Any HTTP answer over a trusted (or pinned) connection means the address is usable. */
         suspend fun probeLocal(server: ServerConfig): Boolean = withContext(Dispatchers.IO) {
             if (server.activeRoute == Route.REMOTE) return@withContext false
-            val (client, _) = HttpClients.create(server, Keepalive.NONE)
+            // HTTPS only, and with a pin the TLS handshake accepts only the pinned certificate: the route is chosen
+            // (and a session token later sent) only after the NAS proved it holds that certificate.
+            val (client, _) = runCatching { HttpClients.create(server, Keepalive.NONE) }.getOrNull() ?: return@withContext false
             val quick = client.newBuilder()
                 .connectTimeout(1500, TimeUnit.MILLISECONDS)
                 .readTimeout(2500, TimeUnit.MILLISECONDS)

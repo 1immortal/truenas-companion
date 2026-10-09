@@ -142,7 +142,7 @@ class NoRestAuthTest {
             val authCode = if (f.name == "CloudProviders.kt") code.replace("CredField(\"auth_token\"", "CredField(") else code
             assertFalse("${f.name} sends auth_token", authCode.contains("auth_token"))
             if (f.name == "CloudProviders.kt") assertFalse(code.contains("okhttp") || code.contains("http.Request"))
-            // wg-easy (a separate app on its own port, not the TrueNAS middleware) is the only HTTP API with credentials.
+            // 1.7.1: the wg-easy HTTP client was removed (it sent a password over plain http); no file sends credentials over HTTP.
             // 1.3.0: the file browser's upload goes to TrueNAS's file application (`/_upload`, audited as "REST", not
             // LEGACY_REST) with a single-use `Token` from auth.generate_token; nothing else, no Basic/Bearer.
             if (f.name == "FileTransfers.kt") {
@@ -150,7 +150,7 @@ class NoRestAuthTest {
                 assertTrue(code.contains("/_upload"))
                 assertFalse(code.contains("Basic "))
                 assertFalse(code.contains("/api/"))
-            } else if (f.name != "WgEasyClient.kt") {
+            } else {
                 assertFalse("${f.name} sets an Authorization header", code.contains("\"Authorization\""))
             }
         }
