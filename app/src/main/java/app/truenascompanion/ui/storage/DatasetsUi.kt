@@ -191,7 +191,7 @@ private fun DatasetCard(
                 if (!d.isVolume && !d.locked) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse() }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })
                 if (!d.isVolume) DropdownMenuItem(text = { Text("Create child") }, onClick = { menu = false; onCreateChild() }, leadingIcon = { Icon(Icons.Rounded.Add, null) })
                 if (d.depth > 0) DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() }, leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, null) })
-                if (d.depth > 0) DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
+                if (d.depth > 0) app.truenascompanion.ui.components.DestructiveMenuItem("Delete", Icons.Rounded.Delete) { menu = false; onDelete() }
             }
         }
         Spacer(Modifier.height(10.dp))

@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.shell
 
+import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -100,7 +101,7 @@ fun ShellStartDialog(
                 )
             }
         },
-        confirmButton = { TextButton(enabled = valid, onClick = { onOpen(container, command) }) { Text("Open shell") } },
+        confirmButton = { GlowButton(enabled = valid, onClick = { onOpen(container, command) }) { Text("Open shell") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

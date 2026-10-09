@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.protection
 
+import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,7 +66,7 @@ fun ScrubScheduleDialog(pool: Pool, task: ScrubTask?, onDismiss: () -> Unit, onS
                 if (task != null) SwitchRow("Enabled", enabled) { enabled = it }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(schedule, th ?: 35, enabled) }, enabled = th != null) { Text("Save") } },
+        confirmButton = { GlowButton(onClick = { onSave(schedule, th ?: 35, enabled) }, enabled = th != null) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -156,7 +157,7 @@ fun SmartRunDialog(disks: List<Disk>, onDismiss: () -> Unit, onRun: (SmartTestTy
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = { onRun(type, selected) }, enabled = selected.isNotEmpty()) { Text("Start test") } },
+        confirmButton = { GlowButton(onClick = { onRun(type, selected) }, enabled = selected.isNotEmpty()) { Text("Start test") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -180,7 +181,7 @@ fun SmartScheduleDialog(existing: SmartSchedule?, disks: List<Disk>, onDismiss: 
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(type, selected, schedule, enabled) }, enabled = selected.isNotEmpty()) { Text("Save") } },
+        confirmButton = { GlowButton(onClick = { onSave(type, selected, schedule, enabled) }, enabled = selected.isNotEmpty()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

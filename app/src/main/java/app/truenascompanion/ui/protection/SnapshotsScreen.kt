@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.protection
 
+import app.truenascompanion.ui.components.GlowButton
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -45,12 +46,12 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -398,7 +399,7 @@ private fun CloneDialog(dataset: String, s: Snapshot, onDismiss: () -> Unit, onC
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onClone(target) }, enabled = ok) { Text("Clone") } },
+        confirmButton = { GlowButton(onClick = { onClone(target) }, enabled = ok) { Text("Clone") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -423,7 +424,7 @@ private fun TakeSnapshotDialog(dataset: String, onDismiss: () -> Unit, onTake: (
                 SwitchRow("Include child datasets", recursive) { recursive = it }
             }
         },
-        confirmButton = { TextButton(onClick = { onTake(name, recursive) }, enabled = ok) { Text("Take") } },
+        confirmButton = { GlowButton(onClick = { onTake(name, recursive) }, enabled = ok) { Text("Take") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

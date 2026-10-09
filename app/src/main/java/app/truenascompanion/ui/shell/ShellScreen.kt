@@ -156,7 +156,7 @@ fun ShellScreen(target: ShellTarget, key: String, onBack: () -> Unit) {
         icon = { Icon(Icons.Rounded.WarningAmber, null) },
         title = { Text("Close the shell?") },
         text = { Text("The shell session ends when you leave, and anything still running in it is stopped.") },
-        confirmButton = { TextButton(onClick = { confirmLeave = false; vm.disconnect(); onBack() }) { Text("Close shell") } },
+        confirmButton = { app.truenascompanion.ui.components.DestructiveButton(onClick = { confirmLeave = false; vm.disconnect(); onBack() }) { Text("Close shell") } },
         dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Stay") } },
     )
 }

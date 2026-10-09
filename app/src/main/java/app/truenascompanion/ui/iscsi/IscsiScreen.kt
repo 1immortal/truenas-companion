@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.iscsi
 
+import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,13 +46,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryScrollableTabRow
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -584,7 +585,7 @@ private fun LunDialog(target: IscsiTarget, d: IscsiData, serverErrors: Map<Strin
                     "Empty: next free" + if (used.isNotEmpty()) " (taken: ${used.joinToString()})" else "", number = true)
             }
         },
-        confirmButton = { Button(onClick = { onSave(f) }, enabled = errors.isEmpty() && !busy) { Text("Add") } },
+        confirmButton = { GlowButton(onClick = { onSave(f) }, enabled = errors.isEmpty() && !busy) { Text("Add") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

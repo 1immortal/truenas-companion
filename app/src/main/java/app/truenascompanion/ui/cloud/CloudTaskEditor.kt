@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.cloud
 
+import app.truenascompanion.ui.components.GlowButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,10 +43,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -364,7 +365,7 @@ fun RemoteBrowserDialog(
                 }
             }
         },
-        confirmButton = { if (!b.buckets) TextButton(onClick = onChoose, enabled = !b.loading && b.error == null) { Text("Use this folder") } },
+        confirmButton = { if (!b.buckets) GlowButton(onClick = onChoose, enabled = !b.loading && b.error == null) { Text("Use this folder") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

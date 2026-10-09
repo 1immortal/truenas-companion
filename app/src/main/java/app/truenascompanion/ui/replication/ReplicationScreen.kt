@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.replication
 
+import androidx.compose.material.icons.rounded.Delete
+import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,14 +47,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -432,7 +434,7 @@ fun ReplRestoreDialog(draft: ReplRestoreDraft, onChange: ((ReplRestoreDraft) -> 
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onConfirm, enabled = errors.isEmpty()) { Text("Create task") } },
+        confirmButton = { GlowButton(onClick = onConfirm, enabled = errors.isEmpty()) { Text("Create task") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -552,7 +554,7 @@ private fun TaskMenu(t: ReplicationTask, busy: Boolean, actions: ReplicationActi
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("Edit") }, onClick = { open = false; actions.edit(t) })
             DropdownMenuItem(text = { Text("Restore…") }, onClick = { open = false; actions.restore(t) })
-            DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { open = false; actions.delete(t) })
+            app.truenascompanion.ui.components.DestructiveMenuItem("Delete", Icons.Rounded.Delete) { open = false; actions.delete(t) }
         }
     }
 }

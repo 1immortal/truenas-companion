@@ -21,6 +21,8 @@ import app.truenascompanion.data.model.NasGroup
 import app.truenascompanion.data.model.NasUser
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.*
+import app.truenascompanion.ui.components.Scaffold
+import app.truenascompanion.ui.components.TopAppBar
 
 /** Actions the lists can request; the screen turns them into confirmations / editors. */
 sealed interface AccountAction {

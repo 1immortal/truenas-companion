@@ -69,7 +69,7 @@ import app.truenascompanion.util.Format
 enum class HubItem(val title: String, val keywords: String) {
     UPDATES("Updates", "truenas update upgrade version release notes boot environments boot pool activate clone train"),
     POWER("Power", "reboot restart shutdown shut down power off turn off"),
-    TASKS("Tasks", "jobs running progress activity"),
+    TASKS("Running jobs", "tasks jobs running progress activity"),
     ALL_SERVERS("All servers", "servers overview saved nas switch status alerts multiple"),
     SERVICES("Services", "ssh smb nfs ups snmp ftp iscsi cifs start stop autostart"),
     SCHEDULED("Scheduled tasks", "cron jobs init shutdown scripts startup schedule"),
@@ -79,8 +79,8 @@ enum class HubItem(val title: String, val keywords: String) {
     SHELL("Shell", "terminal console command line ssh root"),
     REPORTS("Reports", "reporting charts cpu memory network disks temperature graphs history"),
     ALERTS("Phone alerts", "notifications alerts instant severity quiet hours battery certificate expiry"),
-    SECURITY("App lock", "security privacy lock fingerprint biometric pin recents confirm dangerous"),
-    CONNECTION("Connection", "timeout retry give up overlay offline network"),
+    SECURITY("App lock & privacy", "security privacy lock fingerprint biometric pin recents confirm dangerous"),
+    CONNECTION("Connection", "timeout retry give up overlay offline network address local remote auto-switch vpn wireguard tailscale https certificate"),
     APPEARANCE("Appearance", "theme dark light dynamic color colour wallpaper"),
     ABOUT("About", "version app update channel release debug github check daily web ui open source"),
     ;
@@ -399,7 +399,7 @@ fun HubHeaderCard(header: HubHeader, onSwitchServer: () -> Unit) {
 fun HubTile(item: HubItem, subtitle: HubSubtitle, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val warn = LocalStatusColors.current.warning
     // Titles and subtitles may wrap to a second line (long names, large fonts); the row keeps both tiles the same height.
-    ElevatedSection(onClick = onClick, contentPadding = 10.dp, modifier = modifier.heightIn(min = 60.dp).testTag(hubTileTag(item))) {
+    ElevatedSection(onClick = onClick, contentPadding = 10.dp, modifier = modifier.heightIn(min = 64.dp).testTag(hubTileTag(item))) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             if (subtitle.attention) IconBadge(item.icon, tint = warn, size = 32.dp) else IconBadge(item.icon, size = 32.dp)
             Spacer(Modifier.width(8.dp))

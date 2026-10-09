@@ -399,6 +399,30 @@ fun ScrollableErrorState(message: String, loginRequired: Boolean = false, onRetr
 
 val UiState.Error.isLoginRequired: Boolean get() = cause is app.truenascompanion.data.api.TrueNasException.LoginRequired
 
+/**
+ * 1.8.0 (UI review): the one confirm style for destructive or disruptive actions — a filled red button. Everyday
+ * confirmations use [GlowButton]; information-only dialogs close with a text button.
+ */
+@Composable
+fun DestructiveButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
+    Button(
+        onClick = onClick, modifier = modifier, enabled = enabled,
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+        content = content,
+    )
+}
+
+/** A red "Delete…"/"Stop…" overflow-menu entry (1.8.0: destructive menu items look the same everywhere). */
+@Composable
+fun DestructiveMenuItem(text: String, icon: ImageVector? = null, onClick: () -> Unit) {
+    val red = MaterialTheme.colorScheme.error
+    androidx.compose.material3.DropdownMenuItem(
+        text = { Text(text, color = red) },
+        leadingIcon = icon?.let { { Icon(it, null, tint = red) } },
+        onClick = onClick,
+    )
+}
+
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -434,10 +458,7 @@ fun ConfirmDialog(
         },
         confirmButton = {
             if (destructive) {
-                Button(
-                    onClick = confirm,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
-                ) { Text(confirmLabel, maxLines = 1) }
+                DestructiveButton(onClick = confirm) { Text(confirmLabel, maxLines = 1) }
             } else {
                 GlowButton(onClick = confirm) { Text(confirmLabel, maxLines = 1) }
             }

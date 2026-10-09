@@ -23,18 +23,18 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -109,6 +109,14 @@ object StorageTabs {
     const val SHARES = 4
     const val PROTECTION = 5
     val labels = listOf("Pools", "Disks", "Datasets", "Files", "Shares", "Protection")
+
+    /**
+     * 1.8.0 (UI review P0-3): four fixed tabs that fit a 360 dp phone. Pools/Disks and Datasets/Files share a tab with
+     * a two-way switch; the six panes (and deep links to them) stay the same.
+     */
+    val groups = listOf("Pools", "Data", "Shares", "Backup")
+    fun groupOf(pane: Int): Int = when (pane) { POOLS, DISKS -> 0; DATASETS, FILES -> 1; SHARES -> 2; else -> 3 }
+    fun subPanes(group: Int): List<Int> = when (group) { 0 -> listOf(POOLS, DISKS); 1 -> listOf(DATASETS, FILES); 2 -> listOf(SHARES); else -> listOf(PROTECTION) }
 }
 
 class StorageViewModel(private val c: AppContainer) : ViewModel() {
@@ -215,8 +223,28 @@ fun StorageScreen(
 
     Scaffold(topBar = { TopAppBar(title = { Text("Storage") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-                tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
+            val group = StorageTabs.groupOf(tab)
+            var lastInGroup by rememberSaveable { mutableStateOf(listOf(StorageTabs.POOLS, StorageTabs.DATASETS, StorageTabs.SHARES, StorageTabs.PROTECTION)) }
+            LaunchedEffect(tab) { lastInGroup = lastInGroup.toMutableList().also { it[group] = tab } }
+            androidx.compose.material3.PrimaryTabRow(selectedTabIndex = group) {
+                StorageTabs.groups.forEachIndexed { i, t ->
+                    Tab(selected = group == i, onClick = { tab = lastInGroup[i] }, text = { Text(t, maxLines = 1, softWrap = false) })
+                }
+            }
+            val subs = StorageTabs.subPanes(group)
+            if (subs.size > 1) {
+                androidx.compose.material3.SingleChoiceSegmentedButtonRow(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    subs.forEachIndexed { i, pane ->
+                        SegmentedButton(
+                            selected = tab == pane,
+                            onClick = { tab = pane },
+                            shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, subs.size),
+                            icon = {},
+                        ) { Text(tabs[pane], maxLines = 1) }
+                    }
+                }
             }
             if (tab == StorageTabs.PROTECTION) {
                 ProtectionPane(snackbar, onSnapshotTask, onCloudSync, onReplication)

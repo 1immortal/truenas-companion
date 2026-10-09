@@ -1,5 +1,16 @@
 package app.truenascompanion.ui.alerts
 
+import kotlinx.coroutines.flow.first
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.Error
+import androidx.compose.foundation.shape.CircleShape
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -26,12 +37,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +90,24 @@ import app.truenascompanion.ui.notifications.PhoneAlertsPromptCard
 import app.truenascompanion.ui.notifications.rememberNotificationAccess
 import androidx.compose.ui.platform.LocalContext
 
+/** Count shown on the Alerts tab (1.8.0, UX review): open alerts, minus dismissed and locally snoozed ones. */
+data class AlertBadge(val serverId: String, val count: Int) {
+    companion object {
+        fun count(alerts: List<AlertItem>, snoozes: Map<String, Long>, now: Long): Int =
+            alerts.count { !it.dismissed && (snoozes[it.uuid] ?: 0L) <= now }
+
+        /** Badge text: nothing for 0, the number up to 99, then "99+". */
+        fun label(count: Int): String? = when { count <= 0 -> null; count > 99 -> "99+"; else -> count.toString() }
+    }
+}
+
+/** Publishes the Alerts-tab badge for [serverId] (used by the Alerts and Home screens, which both load alerts). */
+internal suspend fun AppContainer.publishAlertBadge(serverId: String?, alerts: List<AlertItem>) {
+    if (serverId == null) return
+    val snoozes = runCatching { settings.snoozesFlow(serverId).first() }.getOrDefault(emptyMap())
+    alertBadge.value = AlertBadge(serverId, AlertBadge.count(alerts, snoozes, System.currentTimeMillis()))
+}
+
 class AlertsViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<AlertItem>>>(UiState.Loading)
     val state = _state.asStateFlow()
@@ -109,7 +138,9 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
 
     private suspend fun load() {
         try {
-            _state.value = UiState.Success(c.repository.call { it.alerts() })
+            val list = c.repository.call { it.alerts() }
+            _state.value = UiState.Success(list)
+            c.publishAlertBadge(server.value?.id, list)
         } catch (e: Throwable) {
             if (_state.value !is UiState.Success) _state.value = UiState.Error(e.userMessage(), e) else _messages.trySend(e.userMessage())
         }
@@ -126,12 +157,14 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
         val until = System.currentTimeMillis() + option.millis
         c.settings.updateSnoozes(id) { it + (alert.uuid to until) }
         c.notifier.removeFromShade(id, setOf(alert.uuid))
+        (state.value as? UiState.Success)?.let { c.publishAlertBadge(id, it.data) }
         _messages.trySend("Snoozed for ${option.label} on this phone")
     }
 
     fun unsnooze(alert: AlertItem) = viewModelScope.launch {
         val id = server.value?.id ?: return@launch
         c.settings.updateSnoozes(id) { it - alert.uuid }
+        (state.value as? UiState.Success)?.let { c.publishAlertBadge(id, it.data) }
     }
 
     fun dismiss(alert: AlertItem) = viewModelScope.launch {
@@ -148,7 +181,7 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}) {
+fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}, onPhoneAlertSettings: () -> Unit = {}) {
     val vm = appViewModel { AlertsViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -163,7 +196,12 @@ fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}) {
     val enableAlerts = rememberNotificationAccess { vm.enablePhoneAlerts(context) }
     val showPrompt = server != null && prefs?.let { !it.promptDismissed && !it.isEnabled(server?.id) } == true
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Alerts") }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    Scaffold(topBar = {
+        TopAppBar(title = { Text("Alerts") }, actions = {
+            // 1.8.0 (UX review): phone-alert settings are one tap away from the alert list.
+            IconButton(onClick = onPhoneAlertSettings) { Icon(Icons.Rounded.NotificationsActive, contentDescription = "Phone alert settings") }
+        })
+    }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
             when (val s = state) {
                 UiState.Loading -> SkeletonList(5, 90.dp)
@@ -211,47 +249,66 @@ fun AlertCard(
 ) {
     var expanded by rememberSaveable(a.uuid) { mutableStateOf(false) }
     var snoozeMenu by remember { mutableStateOf(false) }
-    val color = LocalStatusColors.current.of(a.health)
+    val status = LocalStatusColors.current
     val target = remember(a.uuid, a.klass) { AlertTarget.of(a) }
-    Card(
+    // 1.8.0 (UI review P1-14): built on the shared card; snoozed/dismissed alerts mute their text (not the buttons).
+    val quiet = a.dismissed || snoozedUntil != null
+    val textColor = if (quiet) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+    app.truenascompanion.ui.components.ElevatedSection(
+        modifier = modifier.fillMaxWidth().animateContentSize().semantics {
+            stateDescription = if (expanded) "Expanded" else "Collapsed"
+        },
         onClick = { expanded = !expanded },
-        modifier = modifier.fillMaxWidth().animateContentSize().alpha(if (a.dismissed || snoozedUntil != null) 0.6f else 1f),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        contentPadding = 14.dp,
     ) {
-        Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(color, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)))
-            Column(Modifier.padding(14.dp).weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.Top) {
+            Box(
+                Modifier.size(36.dp).background(if (quiet) MaterialTheme.colorScheme.surfaceContainerHighest else status.containerOf(a.health), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    when (a.health) {
+                        app.truenascompanion.data.model.Health.CRITICAL -> Icons.Rounded.Error
+                        app.truenascompanion.data.model.Health.WARNING -> Icons.Rounded.Warning
+                        else -> Icons.Rounded.Info
+                    },
+                    null, tint = if (quiet) MaterialTheme.colorScheme.onSurfaceVariant else status.of(a.health), modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     StatusChip(a.health, a.level.lowercase().replaceFirstChar { it.uppercase() })
-                    if (snoozedUntil != null) {
-                        Spacer(Modifier.width(6.dp))
-                        Tag("Snoozed until ${snoozeText(snoozedUntil)}")
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Text(Format.relativeTime(a.datetimeMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (snoozedUntil != null) Tag("Snoozed until ${snoozeText(snoozedUntil)}")
+                    if (a.dismissed) Tag("Dismissed")
+                    Text(Format.relativeTime(a.datetimeMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(a.text, style = MaterialTheme.typography.bodyMedium, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
-                if (!a.dismissed) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                        if (target !is AlertTarget.Alerts) {
-                            TextButton(onClick = { onOpen(target) }) { Text(target.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                            Spacer(Modifier.weight(1f))
-                        }
-                        if (snoozedUntil != null) TextButton(onClick = onUnsnooze) { Text("Unsnooze") }
-                        else Box {
-                            TextButton(onClick = { snoozeMenu = true }) { Text("Snooze") }
-                            DropdownMenu(snoozeMenu, onDismissRequest = { snoozeMenu = false }) {
-                                Snooze.OPTIONS.forEach { o -> DropdownMenuItem(text = { Text("For ${o.label}") }, onClick = { snoozeMenu = false; onSnooze(o) }) }
-                            }
-                        }
-                        TextButton(onClick = onDismiss) { Text("Dismiss") }
-                    }
-                } else {
-                    Spacer(Modifier.height(6.dp))
-                    Text("Dismissed", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(a.text, style = MaterialTheme.typography.bodyMedium, color = textColor, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (!a.dismissed) {
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (target !is AlertTarget.Alerts) {
+                    TextButton(onClick = { onOpen(target) }) { Text(target.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
+                if (snoozedUntil != null) TextButton(onClick = onUnsnooze) { Text("Unsnooze") }
+                else Box {
+                    TextButton(onClick = { snoozeMenu = true }) { Text("Snooze") }
+                    DropdownMenu(snoozeMenu, onDismissRequest = { snoozeMenu = false }) {
+                        Snooze.OPTIONS.forEach { o -> DropdownMenuItem(text = { Text("For ${o.label}") }, onClick = { snoozeMenu = false; onSnooze(o) }) }
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Dismiss") }
             }
         }
     }

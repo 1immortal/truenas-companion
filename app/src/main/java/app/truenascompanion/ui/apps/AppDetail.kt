@@ -51,13 +51,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
+import app.truenascompanion.ui.components.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import app.truenascompanion.ui.components.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -179,7 +179,7 @@ fun AppDetailScreen(
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             if (!app.customApp) DropdownMenuItem(text = { Text("Roll back…") }, leadingIcon = { Icon(Icons.Rounded.History, null) },
                                 onClick = { menu = false; vm.loadRollbackVersions() })
-                            DropdownMenuItem(text = { Text("Delete…") }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                            DropdownMenuItem(text = { Text("Delete…", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
                                 onClick = { menu = false; confirmDelete = true })
                         }
                     }

@@ -134,11 +134,11 @@ data class StatusColors(
 }
 
 internal val LightStatus = StatusColors(
-    healthy = Color(0xFF1B7F4B), healthyContainer = Color(0xFFD3F5E0),
+    healthy = Color(0xFF16703F), healthyContainer = Color(0xFFD3F5E0),
     warning = Color(0xFF8A5A00), warningContainer = Color(0xFFFFE8BF),
     critical = Color(0xFFB3261E), criticalContainer = Color(0xFFFFDAD6),
     neutral = Color(0xFF55618A), neutralContainer = Color(0xFFE3E9FA),
-    info = Royal, infoContainer = Color(0xFFDCE4FF),
+    info = Color(0xFF2449CC), infoContainer = Color(0xFFDCE4FF),
     healthyFill = Color(0xFF22A06B), warningFill = Color(0xFFF5A524), criticalFill = Color(0xFFE5484D), infoFill = Royal,
 )
 internal val DarkStatus = StatusColors(

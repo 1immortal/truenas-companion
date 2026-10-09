@@ -203,7 +203,7 @@ private fun SmbList(shares: List<SmbShare>, busy: Set<String>, onEdit: (SmbShare
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (s.path.startsWith("/mnt/") && s.locked != true) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse(s.path) }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })
                         DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit(s) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
-                        DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete(s) }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
+                        app.truenascompanion.ui.components.DestructiveMenuItem("Delete", Icons.Rounded.Delete) { menu = false; onDelete(s) }
                     }
                 }
             }
@@ -254,7 +254,7 @@ private fun NfsList(shares: List<NfsShare>, busy: Set<String>, onEdit: (NfsShare
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (s.path.startsWith("/mnt/") && s.locked != true) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse(s.path) }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })
                         DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit(s) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
-                        DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete(s) }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
+                        app.truenascompanion.ui.components.DestructiveMenuItem("Delete", Icons.Rounded.Delete) { menu = false; onDelete(s) }
                     }
                 }
             }

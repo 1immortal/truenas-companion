@@ -1,5 +1,7 @@
 package app.truenascompanion.ui
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import app.truenascompanion.ui.components.glow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
@@ -230,7 +232,9 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (showBar) {
-                AppNavBar(route, enabled = !overlayActive) { nav.switchTab(it) }
+                val badge by container.alertBadge.collectAsStateWithLifecycle()
+                val active by container.repository.activeServer.collectAsStateWithLifecycle()
+                AppNavBar(route, enabled = !overlayActive, alertCount = badge?.takeIf { it.serverId == active?.id }?.count ?: 0) { nav.switchTab(it) }
             }
         },
     ) { padding ->
@@ -440,7 +444,12 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 pushed(Routes.LOGS, "name", "container?") { a ->
                     LogsScreen(a.getValue("name"), a["container"], onBack = { nav.popBackStack() })
                 }
-                composable(Tab.ALERTS.route) { AlertsScreen(onOpenTarget = { nav.openTarget(container, it) }) }
+                composable(Tab.ALERTS.route) {
+                    AlertsScreen(
+                        onOpenTarget = { nav.openTarget(container, it) },
+                        onPhoneAlertSettings = { nav.navigate(Routes.systemPage(app.truenascompanion.ui.system.SystemPage.ALERTS)) },
+                    )
+                }
                 composable(Tab.SYSTEM.route) { SystemScreen(onServers = { nav.navigate(Routes.SERVERS) }, onOverview = { nav.navigate(Routes.OVERVIEW) }, onJobs = { nav.navigate(Routes.JOBS) },
                     onShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) },
                     onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) },
@@ -614,7 +623,7 @@ private fun NavHostController.backToDashboard() {
 /** Bottom navigation with single-line labels and a glowing selected icon.
  *  When [enabled] is false (connection overlay up), tabs look grayed out and ignore taps. */
 @Composable
-internal fun AppNavBar(route: String?, enabled: Boolean = true, onTab: (String) -> Unit) {
+internal fun AppNavBar(route: String?, enabled: Boolean = true, alertCount: Int = 0, onTab: (String) -> Unit) {
     val brand = app.truenascompanion.ui.theme.LocalBrandColors.current
     val scheme = MaterialTheme.colorScheme
     NavigationBar(
@@ -630,20 +639,41 @@ internal fun AppNavBar(route: String?, enabled: Boolean = true, onTab: (String) 
                 enabled = enabled,
                 onClick = { if (enabled) onTab(tab.route) },
                 icon = {
-                    Icon(
-                        if (selected) tab.selected else tab.unselected, null,
-                        modifier = if (selected && enabled) Modifier.glow(brand.glow, 8.dp, androidx.compose.foundation.shape.CircleShape, alpha = if (brand.dark) 0.7f else 0.35f) else Modifier,
+                    val badge = if (tab == Tab.ALERTS) app.truenascompanion.ui.alerts.AlertBadge.label(alertCount) else null
+                    androidx.compose.material3.BadgedBox(badge = {
+                        if (badge != null) androidx.compose.material3.Badge { Text(badge) }
+                    }) {
+                        Icon(
+                            if (selected) tab.selected else tab.unselected, null,
+                            modifier = if (selected && enabled) Modifier.glow(brand.glow, 8.dp, androidx.compose.foundation.shape.CircleShape, alpha = if (brand.dark) 0.7f else 0.35f) else Modifier,
+                        )
+                    }
+                },
+                // 1.8.0 (UX review, 200 % font): the label grows to at most 1.3x so five tabs still fit.
+                label = {
+                    // The item hides its icon (and badge) from TalkBack, so the label carries the count.
+                    val spoken = if (tab == Tab.ALERTS && alertCount > 0) "${tab.label}, $alertCount open alerts" else null
+                    Text(
+                        tab.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = cappedSp(12f, 1.3f)),
+                        modifier = if (spoken != null) Modifier.semantics { contentDescription = spoken } else Modifier,
                     )
                 },
-                label = { Text(tab.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, style = MaterialTheme.typography.labelMedium) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = if (brand.dark) brand.accent else scheme.primary,
                     selectedTextColor = if (brand.dark) brand.accent else scheme.primary,
-                    indicatorColor = scheme.primary.copy(alpha = if (brand.dark) 0.22f else 0.12f),
+                    indicatorColor = if (brand.dark) scheme.primary.copy(alpha = 0.22f) else scheme.secondaryContainer,
                     disabledIconColor = scheme.onSurface.copy(alpha = 0.38f),
                     disabledTextColor = scheme.onSurface.copy(alpha = 0.38f),
                 ),
             )
         }
     }
+}
+
+/** A font size that follows the user's font scale up to [maxScale] (1.8.0: nav labels and other fixed-width text). */
+@Composable
+internal fun cappedSp(base: Float, maxScale: Float): androidx.compose.ui.unit.TextUnit {
+    val scale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    return androidx.compose.ui.unit.TextUnit(base * minOf(scale, maxScale) / scale, androidx.compose.ui.unit.TextUnitType.Sp)
 }

@@ -35,6 +35,8 @@ import app.truenascompanion.data.model.Health
 import app.truenascompanion.data.model.NasCertificate
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.*
+import app.truenascompanion.ui.components.Scaffold
+import app.truenascompanion.ui.components.TopAppBar
 import java.text.DateFormat
 import java.util.Date
 

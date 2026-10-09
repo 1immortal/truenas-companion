@@ -191,7 +191,7 @@ private fun BootEnvRow(
                 leadingIcon = { Icon(if (be.keep) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, null) },
             )
             DropdownMenuItem(text = { Text("Clone") }, onClick = { menu = false; onClone() }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
-            if (!be.active && !be.activated) DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Rounded.Delete, null) })
+            if (!be.active && !be.activated) app.truenascompanion.ui.components.DestructiveMenuItem("Delete", Icons.Rounded.Delete) { menu = false; onDelete() }
         }
     }
 }

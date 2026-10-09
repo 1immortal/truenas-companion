@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.dashboard
 
+import app.truenascompanion.ui.alerts.publishAlertBadge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
@@ -148,6 +149,7 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                 val system = sys.await()
                 val appList = apps.await()
                 val alertList = alerts.await()?.filter { !it.dismissed }
+                alertList?.let { c.publishAlertBadge(server.value?.id, it) }
                 _data.value = DashboardData(
                     loading = false,
                     system = system,

@@ -53,6 +53,8 @@ class AppContainer(app: Application) {
     val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections, routes)
     val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes, sessions = sessions)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
+    /** 1.8.0: open (not dismissed, not snoozed) alerts of the active server, shown as a badge on the Alerts tab. */
+    val alertBadge = MutableStateFlow<app.truenascompanion.ui.alerts.AlertBadge?>(null)
     val appLock = AppLock()
     /** In-app update check state (GitHub Releases of BuildConfig.UPDATE_REPO). */
     val updates = UpdateCenter()
