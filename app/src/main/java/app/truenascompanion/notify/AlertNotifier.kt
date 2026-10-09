@@ -54,6 +54,12 @@ class AlertNotifier(private val context: Context) {
     private val nm = NotificationManagerCompat.from(context)
 
     companion object {
+        /** Lock-screen (public) title: severity and count only, no NAS name or alert text (pure, unit tested). */
+        fun publicAlertTitle(level: AlertLevel, count: Int): String {
+            val sev = when (level.group) { SeverityGroup.CRITICAL -> "critical"; SeverityGroup.WARNING -> "warning"; SeverityGroup.INFO -> "info" }
+            return "TrueNAS: $count $sev alert" + if (count == 1) "" else "s"
+        }
+
         const val CH_CRITICAL = "alerts_critical"
         const val CH_WARNING = "alerts_warning"
         const val CH_INFO = "alerts_info"
@@ -206,10 +212,6 @@ class AlertNotifier(private val context: Context) {
     // --- alerts ---
 
     /** Lock-screen title of a hidden alert, e.g. "TrueNAS: 1 critical alert" (pure, unit tested). */
-    fun publicAlertTitle(level: AlertLevel, count: Int): String {
-        val sev = when (level.group) { SeverityGroup.CRITICAL -> "critical"; SeverityGroup.WARNING -> "warning"; SeverityGroup.INFO -> "info" }
-        return "TrueNAS: $count $sev alert" + if (count == 1) "" else "s"
-    }
 
     fun buildAlert(server: ServerConfig, alert: AlertItem, title: String, silent: Boolean = false): NotificationCompat.Builder =
         buildGroup(server.id, server.name, listOf(alert), title, alertTag(server.id, alert.uuid), silent)

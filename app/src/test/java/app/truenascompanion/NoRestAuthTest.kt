@@ -1,5 +1,6 @@
 package app.truenascompanion
 
+import app.truenascompanion.TestTls.https
 import app.truenascompanion.data.api.Credentials
 import app.truenascompanion.data.api.TrueNasConnector
 import app.truenascompanion.data.api.TrueNasException
@@ -46,6 +47,7 @@ class NoRestAuthTest {
 
     private fun config(method: AuthMethod = AuthMethod.API_KEY, route: Route = Route.REMOTE) = ServerConfig(
         id = "s1", name = "nas", url = server.url("/").toString().trimEnd('/'), username = "admin", authMethod = method,
+        pinnedCertSha256 = TestTls.pin,
         activeRoute = route,
     )
 
@@ -59,7 +61,7 @@ class NoRestAuthTest {
         }
     }
 
-    @Before fun setUp() { server = MockWebServer().apply { start() } }
+    @Before fun setUp() { server = MockWebServer().https().apply { start() } }
 
     @After fun tearDown() { server.shutdown() }
 
@@ -120,7 +122,7 @@ class NoRestAuthTest {
         }
         assertEquals(true, LocalCheck.check(config(route = Route.LOCAL), config()))
         assertTrue(RouteResolver.probeLocal(config(route = Route.LOCAL)))
-        val found = LocalDetector.detect(server.hostName, LocalDetector.detectionClient(), listOf(LocalDetector.Candidate("http", server.port)))
+        val found = LocalDetector.detect(server.hostName, LocalDetector.detectionClient(), listOf(LocalDetector.Candidate("https", server.port)))
         assertTrue(found != null)
         assertTrue(requests.isNotEmpty())
         assertTrue(requests.all { it.path in setOf("/api/boot_id", "/api/versions", "/") })

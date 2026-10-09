@@ -1,5 +1,6 @@
 package app.truenascompanion
 
+import app.truenascompanion.TestTls.https
 import app.truenascompanion.data.api.Credentials
 import app.truenascompanion.data.api.LoginStep
 import app.truenascompanion.data.api.Parsers
@@ -122,7 +123,7 @@ class VirtTest {
 
     @Before
     fun setUp() {
-        server = MockWebServer()
+        server = MockWebServer().https()
         repeat(3) {
             server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) = Unit
@@ -149,7 +150,7 @@ class VirtTest {
     fun tearDown() = runCatching { server.shutdown() }.let { }
 
     private fun api(): TrueNasApi = runBlocking {
-        val cfg = ServerConfig(id = "t", name = "t", url = "http://127.0.0.1:${server.port}", username = "admin", authMethod = AuthMethod.PASSWORD, sessionDays = 7)
+        val cfg = ServerConfig(id = "t", name = "t", url = "https://127.0.0.1:${server.port}", pinnedCertSha256 = TestTls.pin, username = "admin", authMethod = AuthMethod.PASSWORD, sessionDays = 7)
         (WebSocketAuth.login(cfg, Credentials.Token("tok-1"), 604800) as LoginStep.Success).api
     }
 

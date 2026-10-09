@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.servers
 
+import app.truenascompanion.util.Format
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -88,7 +89,7 @@ fun HttpsTrustDialog(request: HttpsTrustRequest, onTrust: () -> Unit, onNotNow: 
                     "To keep your password and sessions safe, the app no longer signs in over unencrypted http:// " +
                         "(${o.from.substringAfter("://")}). ${request.serverName} also answers securely at:",
                 )
-                Text(o.url.substringAfter("://"), style = MaterialTheme.typography.titleMedium)
+                Text(Format.ltr(o.url), style = MaterialTheme.typography.titleMedium)
                 when (o.sameNas) {
                     true -> Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.CheckCircle, null, tint = LocalStatusColors.current.of(Health.HEALTHY), modifier = Modifier.size(18.dp))

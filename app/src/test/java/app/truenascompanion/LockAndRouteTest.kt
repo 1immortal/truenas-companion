@@ -88,11 +88,12 @@ class LockAndRouteTest {
         assertEquals(nas.copy(activeRoute = Route.REMOTE), nas.forRoute(Route.REMOTE))
     }
 
-    @Test fun httpLocalNeverUsedWithApiKey() {
+    @Test fun httpLocalNeverUsed() {
         val http = nas.copy(localUrl = "http://192.168.1.10")
         assertFalse(http.localUsable)
         assertEquals(Route.REMOTE, http.forRoute(Route.LOCAL).activeRoute)
-        assertTrue(http.copy(authMethod = AuthMethod.PASSWORD).localUsable)
+        // 1.7.1 (security C-1): not with a password either; credentials never go over cleartext.
+        assertFalse(http.copy(authMethod = AuthMethod.PASSWORD).localUsable)
     }
 
     @Test fun routingRules() = runBlocking {
@@ -153,9 +154,12 @@ class LockAndRouteTest {
     @Test fun prefersHttpsThenPortOrder() {
         val c = LocalDetector.CANDIDATES
         assertEquals(LocalDetector.Candidate("https", 444), LocalDetector.pick(listOf(LocalDetector.Candidate("http", 80), LocalDetector.Candidate("https", 444))))
-        assertEquals(LocalDetector.Candidate("http", 81), LocalDetector.pick(listOf(LocalDetector.Candidate("http", 8080), LocalDetector.Candidate("http", 81))))
+        assertEquals(LocalDetector.Candidate("https", 8443), LocalDetector.pick(listOf(LocalDetector.Candidate("https", 9443), LocalDetector.Candidate("https", 8443))))
+        assertNull(LocalDetector.pick(listOf(LocalDetector.Candidate("http", 80))))
         assertNull(LocalDetector.pick(emptyList()))
-        assertEquals(8, c.size)
+        // 1.7.1: HTTPS ports only (443, 444, 8443, 9443).
+        assertEquals(4, c.size)
+        assertTrue(c.all { it.scheme == "https" })
     }
 
     @Test fun detectsAgainstRealHttp() = runBlocking {

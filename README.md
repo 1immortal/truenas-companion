@@ -82,16 +82,19 @@
 - **Works at home and away.** Add a local address and the app uses it on your home Wi-Fi, then switches to your remote address everywhere else. If a saved server can’t be reached, a modal blurred overlay blocks the UI underneath (including the bottom tabs, which are grayed out and not clickable) and offers **Quit**, **Check connection settings**, or **Try again**. System › Connection sets how long to keep retrying (10 s / 30 s / 1 min / 2 min) before that overlay.
 - **Reach your NAS safely from anywhere.** The app has WireGuard built in and can set up a VPN on your TrueNAS for you (wg-easy or Tailscale), so you don't have to open TrueNAS to the internet. Only the app's own traffic to your NAS uses the tunnel, and it only switches on when it's needed.
 - **Stays secure.** Sign in with your TrueNAS username, password and two-factor code (or an API key), lock the app with your fingerprint, and keep all credentials encrypted on the device.
-- **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine. In **System › About** you can pick the **Release** or **Debug** update channel (default matches the build you installed). Mixing channels usually requires uninstalling first.
+- **Stays up to date.** The app tells you when a new version is out and installs it for you after checking that it's genuine. In **System › About** you can pick the **Release** or **Debug (preview builds)** update channel (default matches the build you installed). Mixing channels usually requires uninstalling first.
 - **Looks good.** Material You design with light and dark themes.
 
 ## Get the app
 
-1. On your phone, open the [latest release](https://github.com/1immortal/truenas-companion/releases/latest) and download **`truenas-companion-release.apk`** (recommended) or **`truenas-companion-debug.apk`** for developers. Asset names are the same on every release.
+1. On your phone, open the [latest release](https://github.com/1immortal/truenas-companion/releases/latest) and download **`truenas-companion-release.apk`** (recommended) or **`truenas-companion-debug.apk`** (the *Debug (preview builds)* channel: a separate app id, `app.truenascompanion.debug`, with extra diagnostics; since 1.7.1 it is no longer a debuggable build, so other tools can't attach to it or read its data). Asset names are the same on every release.
 2. Open the downloaded file. Android asks you to allow **Install unknown apps** for your browser or file manager. Allow it, go back, then tap **Install**.
 3. From then on the app lets you know about new versions (System › About › Check for updates) and installs them over the old one, keeping your settings.
 
 Needs Android 8.0 or newer and TrueNAS 25.04 or newer (the app only uses the JSON-RPC WebSocket API, never the deprecated REST API).
+
+> [!IMPORTANT]
+> **HTTPS only (1.7.1).** The app never sends a password, API key or session token over plain `http://` any more, on any address (remote, home, Tailscale or VPN). TrueNAS serves HTTPS out of the box (with a self-signed certificate), so this normally just means using `https://`. When you update from an older version with an `http://` home address, the app looks for HTTPS on the same NAS once. If it finds it with TrueNAS's self-signed certificate it asks you once to **Trust and use HTTPS**; if it can't find it (for example you're not at home), the home address is turned off with a banner on the dashboard and a **Set up HTTPS** button, and the app keeps using your remote address.
 
 > [!IMPORTANT]
 > **Signing key change in 1.0.0.** Release APKs from 1.0.0 onwards are signed with a new key. If you installed 0.x (debug-signed) builds, Android will not let the in-app updater replace them — uninstall once, then install the release APK. Add your server again afterwards. From then on, updates install normally.
@@ -104,11 +107,11 @@ Needs Android 8.0 or newer and TrueNAS 25.04 or newer (the app only uses the JSO
 
 ## Getting started
 
-1. **Add your server.** Tap *Add server* and enter the address you use for the TrueNAS web UI, for example `https://truenas.local` or `https://nas.example.com`. If your NAS uses its own self-signed certificate, the app shows its fingerprint and asks you to trust it once. After that, the saved pin is **masked** in connection settings (tap **Show** to reveal); **Forget** still clears it.
+1. **Add your server.** Tap *Add server* and enter the address you use for the TrueNAS web UI, for example `https://truenas.local` or `https://nas.example.com` (it must start with `https://`). If your NAS uses its own self-signed certificate, the app shows its fingerprint and asks you to trust it once. After that, the saved pin is **masked** in connection settings (tap **Show** to reveal); **Forget** still clears it.
 2. **Sign in.** Use your TrueNAS username and password, and enter your two-factor code if you have 2FA on. The app then stays signed in for the period you choose (1, 7 or 30 days).
 3. **Optional: add a local address.** If you reach your NAS through a reverse proxy or domain from outside, add its home address too (the app can find it for you). At home the app connects directly for extra speed.
 4. **Optional: turn on phone alerts** in the app's settings, and pick which alerts matter to you.
-5. **Optional: set up a VPN.** In the server's settings tap *VPN › Set up VPN* while you're at home. The app installs WireGuard (or Tailscale) on your NAS and sets up your phone. For WireGuard you add one setting on your router yourself: forward UDP port 51820 to your NAS. [Details](docs/TECHNICAL.md#features-in-detail).
+5. **Optional: set up a VPN.** In the server's settings tap *VPN › Set up VPN* while you're at home. The app installs WireGuard (wg-easy) or Tailscale on your NAS. For wg-easy you then create its admin account and a client in wg-easy's own page and scan the client's QR code in the app (since 1.7.1 the app no longer signs in to wg-easy for you, because its page is plain http). For WireGuard you add one setting on your router yourself: forward UDP port 51820 to your NAS. [Details](docs/TECHNICAL.md#features-in-detail).
 
 ## Privacy
 

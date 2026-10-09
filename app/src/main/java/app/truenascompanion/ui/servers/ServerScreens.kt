@@ -22,9 +22,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
@@ -429,7 +429,7 @@ fun VpnEntryCard(onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Icon(Icons.Rounded.ChevronRight, null)
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null)
         }
     }
 }

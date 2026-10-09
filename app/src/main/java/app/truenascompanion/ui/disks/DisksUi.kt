@@ -18,9 +18,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.LinkOff
@@ -420,7 +420,7 @@ private fun MemberRow(n: VdevNode, data: DisksData, onOpenDisk: (String) -> Unit
             Spacer(Modifier.height(2.dp))
             ErrorCounts(n)
         }
-        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -553,7 +553,7 @@ fun DiskDetailContent(
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Icon(Icons.Rounded.ChevronRight, null)
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null)
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth()) {

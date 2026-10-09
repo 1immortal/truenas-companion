@@ -1,5 +1,6 @@
 package app.truenascompanion
 
+import app.truenascompanion.TestTls.https
 import app.truenascompanion.data.api.Credentials
 import app.truenascompanion.data.api.LoginStep
 import app.truenascompanion.data.api.TrueNasException
@@ -300,8 +301,9 @@ class WebShellTest {
                 webSocket.send(JsonObject(mapOf("jsonrpc" to JsonPrimitive("2.0"), "id" to req["id"]!!, "result" to rpc(method, params))).toString())
             }
         }))
+        server.https()
         server.start()
-        val cfg = ServerConfig(id = "t", name = "t", url = "http://127.0.0.1:${server.port}", username = "admin", authMethod = AuthMethod.PASSWORD, sessionDays = 7)
+        val cfg = ServerConfig(id = "t", name = "t", url = "https://127.0.0.1:${server.port}", pinnedCertSha256 = TestTls.pin, username = "admin", authMethod = AuthMethod.PASSWORD, sessionDays = 7)
         val api = (WebSocketAuth.login(cfg, Credentials.Token("tok-1"), 604800) as LoginStep.Success).api
         val token = api.shellToken()
         assertNotNull(token)

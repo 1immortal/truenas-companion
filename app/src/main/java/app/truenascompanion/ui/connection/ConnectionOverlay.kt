@@ -159,6 +159,24 @@ fun Modifier.blockUnderlyingPointerInput(): Modifier = pointerInput(Unit) {
     }
 }
 
+/**
+ * Everything under the connection overlay while it's up: no touch, scroll or focus, and (1.7.1, a11y P0-2) nothing
+ * for TalkBack / Switch Access either, so the blurred screen can't be read or double-tapped through the overlay.
+ */
+fun Modifier.connectionUnderlay(obscure: Boolean): Modifier =
+    if (!obscure) this
+    else this
+        .clearAndSetSemantics { }
+        .focusProperties { canFocus = false }
+        .nestedScroll(BlockingNestedScrollConnection)
+        .blockUnderlyingPointerInput()
+
+/** Swallows only what children didn't use, so scrollable content inside the overlay still scrolls. */
+internal val LeftoverScrollSink = object : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
+}
+
 /** Nested-scroll sink: any scroll/fling that reaches this connection is fully consumed. */
 internal val BlockingNestedScrollConnection = object : NestedScrollConnection {
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = available
@@ -198,7 +216,8 @@ fun ConnectionModalBarrier(
                 // 1.7.1 (a11y P0-2): announced as its own pane.
                 paneTitle = "Connection"
             }
-            .nestedScroll(BlockingNestedScrollConnection)
+            // Post-only: the failure card's own scrolling (1.7.1) works; only leftover scroll/fling stops here.
+            .nestedScroll(LeftoverScrollSink)
             .focusRequester(focusRequester)
             .focusProperties { canFocus = true }
             .clickable(
@@ -313,19 +332,7 @@ fun ConnectionOverlayHost(
             Modifier
                 .fillMaxSize()
                 .obscureBackdrop(obscure)
-                .then(
-                    if (obscure) {
-                        Modifier
-                            // 1.7.1 (a11y P0-2): TalkBack / Switch Access can't reach (or click) anything under the
-                            // overlay either; before, only touch, scroll and focus were blocked.
-                            .clearAndSetSemantics { }
-                            .focusProperties { canFocus = false }
-                            .nestedScroll(BlockingNestedScrollConnection)
-                            .blockUnderlyingPointerInput()
-                    } else {
-                        Modifier
-                    },
-                ),
+                .connectionUnderlay(obscure),
         ) { content() }
 
         val context = LocalContext.current

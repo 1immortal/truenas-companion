@@ -51,13 +51,13 @@ class Realtime2510Test {
 
     @Test
     fun formats() {
-        assertEquals("7.2 KB/s", Format.rate(7200.0))
-        assertEquals("850 B/s", Format.rate(850.0))
-        assertEquals("118 MB/s", Format.rate(118_000_000.0))
-        assertEquals("<1%", Format.cpuPercent(0.0))
-        assertEquals("3%", Format.cpuPercent(3.0))
-        assertEquals("2.5%", Format.cpuPercent(2.5))
-        assertEquals("42%", Format.cpuPercent(42.4))
+        assertEquals("7.2 KB/s", Format.plain(Format.rate(7200.0)))
+        assertEquals("850 B/s", Format.plain(Format.rate(850.0)))
+        assertEquals("118 MB/s", Format.plain(Format.rate(118_000_000.0)))
+        assertEquals("<1%", Format.plain(Format.cpuPercent(0.0)))
+        assertEquals("3%", Format.plain(Format.cpuPercent(3.0)))
+        assertEquals("2.5%", Format.plain(Format.cpuPercent(2.5)))
+        assertEquals("42%", Format.plain(Format.cpuPercent(42.4)))
         assertNull(null)
     }
 }

@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Storage
@@ -59,7 +59,7 @@ fun FilesLauncher(pools: List<Pool>, datasets: List<Dataset>, onBrowse: (String)
                         Text(p.name, style = MaterialTheme.typography.titleMedium)
                         Text("${FilePolicy.ROOT}/${p.name} · ${Format.bytes(p.free)} free", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Icon(Icons.Rounded.ChevronRight, null)
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null)
                 }
             }
         }
@@ -75,7 +75,7 @@ fun FilesLauncher(pools: List<Pool>, datasets: List<Dataset>, onBrowse: (String)
                             Text(d.shortName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(if (d.locked) "Locked: unlock it in TrueNAS first" else path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        if (!d.locked) Icon(Icons.Rounded.ChevronRight, null)
+                        if (!d.locked) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null)
                     }
                 }
             }

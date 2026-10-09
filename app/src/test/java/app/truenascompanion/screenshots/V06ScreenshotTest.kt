@@ -84,7 +84,7 @@ class V06ScreenshotTest {
     )
     private val up = TunnelStatus(
         serverId = "s1", state = Tunnel.State.UP, lastHandshakeMs = System.currentTimeMillis() - 18_000,
-        rxBytes = 184_320, txBytes = 61_440, holders = setOf(TunnelHolder.APP),
+        rxBytes = 184_320, txBytes = 61_440, leases = mapOf(TunnelHolder.APP to 1),
     )
 
     @Test fun vpnNotConfigured() = shot("v06_vpn_empty", dark = true, height = 1500) {

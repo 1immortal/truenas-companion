@@ -14,9 +14,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BatteryChargingFull
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DriveFolderUpload
 import androidx.compose.material.icons.rounded.FolderShared
 import androidx.compose.material.icons.rounded.Lan
@@ -246,7 +246,7 @@ private fun ServiceCard(
                 }
                 kind?.let { Text(it.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            if (kind != null) Icon(Icons.Rounded.ChevronRight, "${s.displayName} settings", tint = MaterialTheme.colorScheme.primary)
+            if (kind != null) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "${s.displayName} settings", tint = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.height(10.dp))
         if (busy?.verb != null) {

@@ -29,7 +29,7 @@ private val RoyalLight = Color(0xFF4169E1)
 private val Cyan = Color(0xFF22D3EE)
 private val CyanBright = Color(0xFF00E5FF)
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Royal, onPrimary = Color.White,
     primaryContainer = Color(0xFFDCE4FF), onPrimaryContainer = Color(0xFF0A1F66),
     secondary = Color(0xFF0E7490), onSecondary = Color.White,
@@ -46,7 +46,7 @@ private val LightColors = lightColorScheme(
     surfaceTint = Royal,
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     // 1.7.1 (contrast): dark-blue text on the light-blue filled buttons, 4.9:1 (white was 3.1:1).
     primary = Color(0xFF6F8CFF), onPrimary = Color(0xFF0A1F66),
     primaryContainer = Color(0xFF1E3A8A), onPrimaryContainer = Color(0xFFDCE4FF),

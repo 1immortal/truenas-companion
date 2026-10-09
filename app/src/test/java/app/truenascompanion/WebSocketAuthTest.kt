@@ -1,5 +1,6 @@
 package app.truenascompanion
 
+import app.truenascompanion.TestTls.https
 import app.truenascompanion.data.api.Credentials
 import app.truenascompanion.data.api.LoginStep
 import app.truenascompanion.data.api.SessionTokenManager
@@ -72,7 +73,7 @@ class WebSocketAuthTest {
 
     @Before
     fun setUp() {
-        server = MockWebServer()
+        server = MockWebServer().https()
         repeat(8) {
             val conn = Conn()
             server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
@@ -100,7 +101,7 @@ class WebSocketAuthTest {
     fun tearDown() = runCatching { server.shutdown() }.let { }
 
     private fun config() = ServerConfig(
-        id = "t", name = "test", url = "http://127.0.0.1:${server.port}", username = "admin",
+        id = "t", name = "test", url = "https://127.0.0.1:${server.port}", pinnedCertSha256 = TestTls.pin, username = "admin",
         authMethod = AuthMethod.PASSWORD, sessionDays = 7,
     )
 

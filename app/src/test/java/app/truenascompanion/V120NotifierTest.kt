@@ -1,5 +1,6 @@
 package app.truenascompanion
 
+import app.truenascompanion.notify.DeepLinkGuard
 import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
@@ -14,6 +15,7 @@ import app.truenascompanion.data.model.CertKind
 import app.truenascompanion.data.model.NasCertificate
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,9 +41,28 @@ class V120NotifierTest {
         notifier.createChannels()
     }
 
+    /** 1.7.1 (security M-3): with the app lock on there's no Dismiss action; alert details stay off the lock screen. */
+    @Test fun appLockRemovesDismissAndLockScreenShowsOnlyCount() {
+        notifier.appLockOn = true
+        notifier.postAlerts(server, listOf(alert("u1", "SMARTTestFailed", "SMART test failed on sda", """{"name":"sda"}""")), mapOf("u1" to "SMART test failed"))
+        val n = alertNotifications().single().notification
+        assertEquals(listOf("Snooze", "Open"), n.actions.map { it.title.toString() })
+        assertEquals(android.app.Notification.VISIBILITY_PRIVATE, n.visibility)
+        val pub = n.publicVersion!!
+        val title = pub.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString()
+        assertEquals("TrueNAS: 1 warning alert", title)
+        assertFalse(pub.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.contains("sda") == true)
+        // M-2: the app's own intents are signed, so they may preselect the server and screen.
+        val link = DeepLinkGuard.parse(app, shadowOf(n.contentIntent).savedIntent)
+        assertEquals("s1", link?.serverId)
+        val forged = android.content.Intent(shadowOf(n.contentIntent).savedIntent).putExtra(DeepLink.EXTRA_SERVER_ID, "s2")
+        assertEquals(null, DeepLinkGuard.parse(app, forged)?.serverId)
+    }
+
     private fun alertNotifications() = nm.activeNotifications.filter { it.tag?.startsWith("alert/s1/") == true }
 
     @Test fun repeatedAlertsShareOneNotificationWithCount() {
+        notifier.appLockOn = false
         notifier.postAlerts(server, listOf(alert("u1", "SMARTTestFailed", "SMART test failed on sda", """{"name":"sda"}""")), mapOf("u1" to "SMART test failed"))
         assertEquals(listOf("alert/s1/u1"), alertNotifications().map { it.tag })
         val single = alertNotifications().single().notification

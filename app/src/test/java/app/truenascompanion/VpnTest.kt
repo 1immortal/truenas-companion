@@ -173,7 +173,8 @@ class VpnTest {
         val http = server.copy(tailscaleUrl = "http://100.101.102.103")
         assertFalse(http.tailscaleUsable)
         assertEquals(Route.REMOTE, http.forRoute(Route.TAILSCALE).activeRoute)
-        assertTrue(http.copy(authMethod = AuthMethod.PASSWORD).tailscaleUsable)
+        // 1.7.1 (security C-1): an http Tailscale address is off for password sign-in too.
+        assertFalse(http.copy(authMethod = AuthMethod.PASSWORD).tailscaleUsable)
     }
 
     @Test fun wireGuardNeedsAnIpLocalAddress() {

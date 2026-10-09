@@ -19,7 +19,6 @@ import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.rounded.Layers
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -41,6 +40,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AddCircleOutline
@@ -713,7 +713,7 @@ fun ImageUpdateBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f, fill = false),
             )
             Spacer(Modifier.width(2.dp))
-            Icon(Icons.Rounded.ChevronRight, "What does this mean?", Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "What does this mean?", Modifier.size(18.dp))
         }
     }
 }
