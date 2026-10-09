@@ -302,7 +302,7 @@ fun WizardFormContent(f: WizardForm, d: IscsiData, errors: Map<String, String>, 
         }
         SectionTitle("Will create")
         ElevatedSection(contentPadding = 14.dp, modifier = Modifier.testTag("wizard-plan")) {
-            WizardPlan.steps(f).forEach { s -> Text("• " + s.label, style = MaterialTheme.typography.bodyMedium) }
+            Column(Modifier.fillMaxWidth()) { WizardPlan.steps(f).forEach { s -> Text("• " + s.label, style = MaterialTheme.typography.bodyMedium) } }
         }
         if (showErrors && errors.isNotEmpty()) InfoBanner("Fix the highlighted fields first.", health = Health.WARNING)
         Button(onClick = onCreate, enabled = !showErrors || errors.isEmpty(), modifier = Modifier.fillMaxWidth().testTag("wizard-create")) { Text("Create") }
@@ -331,8 +331,8 @@ fun WizardProgress(run: WizardRun, f: WizardForm, d: IscsiData, service: String?
             r.undoErrors.isEmpty() -> InfoBanner("${r.error}\n\nEverything created so far was removed again.", health = Health.CRITICAL)
             else -> InfoBanner("${r.error}\n\nSome steps couldn't be undone; remove these by hand:\n" + r.undoErrors.joinToString("\n") { "• $it" }, health = Health.CRITICAL)
         }
-        ElevatedSection(contentPadding = 14.dp) {
-            run.steps.forEach { (s, st) ->
+        ElevatedSection(contentPadding = 14.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) { run.steps.forEach { (s, st) ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp).testTag("step-${s.name}")) {
                     when (st) {
                         StepState.RUNNING -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -346,7 +346,7 @@ fun WizardProgress(run: WizardRun, f: WizardForm, d: IscsiData, service: String?
                     Text(s.label + when (st) { StepState.UNDONE -> " (undone)"; StepState.UNDO_FAILED -> " (undo failed)"; StepState.FAILED -> " (failed)"; else -> "" },
                         style = MaterialTheme.typography.bodyMedium, color = if (st == StepState.UNDONE) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified)
                 }
-            }
+            } }
         }
         if (r?.ok == true) {
             SectionTitle("Connect from the initiator")

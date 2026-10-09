@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -345,7 +347,7 @@ fun IscsiContent(
 @Composable
 internal fun StartServiceDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) = ConfirmDialog(
     title = "Start the iSCSI service?", text = "TrueNAS starts the iSCSI service now and at every boot. Initiators can then connect to the enabled targets.",
-    confirmLabel = "Start", icon = Icons.Rounded.PlayArrow, onConfirm = onConfirm, onDismiss = onDismiss,
+    confirmLabel = "Start service", icon = Icons.Rounded.PlayArrow, onConfirm = onConfirm, onDismiss = onDismiss,
 )
 
 @Composable
@@ -557,8 +559,8 @@ fun DeleteDialog(plan: DeletePlan, onDismiss: () -> Unit, onConfirm: (DeleteOpti
 
 @Composable
 private fun CheckRow(text: String, checked: Boolean, tag: String, danger: Boolean = false, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp).testTag(tag)) {
-        Checkbox(checked, onChange)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp).toggleable(checked, role = Role.Checkbox, onValueChange = onChange).testTag(tag)) {
+        Checkbox(checked, null)
         Text(text, style = MaterialTheme.typography.bodyMedium, color = if (danger && checked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
 }

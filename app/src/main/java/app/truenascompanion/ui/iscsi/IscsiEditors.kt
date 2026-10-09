@@ -269,6 +269,8 @@ private fun FormColumn(general: String?, content: @Composable ColumnScope.() -> 
     }
 }
 
+/** Outlined text field used by the iSCSI forms; full width unless [modifier] says otherwise (e.g. a weighted size field). */
+@Suppress("ModifierParameter")
 @Composable
 internal fun Field(
     value: String, onValue: (String) -> Unit, label: String, error: String?, help: String? = null, placeholder: String? = null,
