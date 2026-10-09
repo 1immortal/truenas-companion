@@ -81,6 +81,8 @@ fun SharesPane(
     onUpdateNfs: (Int, NfsShareInput) -> Unit,
     onDeleteNfs: (Int) -> Unit,
     onBrowse: (String) -> Unit = {},
+    /** Third sub-tab (iSCSI block shares), loaded separately; null hides the tab. */
+    iscsiContent: (@Composable () -> Unit)? = null,
 ) {
     var sub by rememberSaveable { mutableIntStateOf(0) }
     var editingSmb by remember { mutableStateOf<SmbShare?>(null) }
@@ -95,13 +97,15 @@ fun SharesPane(
         PrimaryTabRow(selectedTabIndex = sub) {
             Tab(selected = sub == 0, onClick = { sub = 0 }, text = { Text("SMB (${data.smb.size})") })
             Tab(selected = sub == 1, onClick = { sub = 1 }, text = { Text("NFS (${data.nfs.size})") })
+            if (iscsiContent != null) Tab(selected = sub == 2, onClick = { sub = 2 }, text = { Text("iSCSI") })
         }
         Box(Modifier.fillMaxSize()) {
             when (sub) {
                 0 -> SmbList(data.smb, busy, onEdit = { editingSmb = it }, onDelete = { deleteSmb = it }, onBrowse = onBrowse)
-                else -> NfsList(data.nfs, busy, onEdit = { editingNfs = it }, onDelete = { deleteNfs = it }, onBrowse = onBrowse)
+                1 -> NfsList(data.nfs, busy, onEdit = { editingNfs = it }, onDelete = { deleteNfs = it }, onBrowse = onBrowse)
+                else -> iscsiContent?.invoke()
             }
-            FloatingActionButton(
+            if (sub < 2) FloatingActionButton(
                 onClick = { if (sub == 0) creatingSmb = true else creatingNfs = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             ) { Icon(Icons.Rounded.Add, "Add share") }

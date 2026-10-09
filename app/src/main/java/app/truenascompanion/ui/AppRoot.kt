@@ -132,6 +132,11 @@ private object Routes {
     const val REPL_TASK = "replication_task?id={id}"
     const val SSH_CONN = "ssh_connection?id={id}"
     const val SSH_KEY = "ssh_keypair?id={id}"
+    const val ISCSI = "iscsi"
+    const val ISCSI_EDIT = "iscsi_edit/{kind}?id={id}"
+    const val ISCSI_SETTINGS = "iscsi_settings"
+    const val ISCSI_WIZARD = "iscsi_wizard"
+    fun iscsiEdit(kind: app.truenascompanion.ui.iscsi.IscsiKind, id: Int?) = "iscsi_edit/${kind.name}" + (id?.let { "?id=$it" } ?: "")
     fun replTask(id: Int?) = if (id == null) "replication_task" else "replication_task?id=$id"
     fun sshConn(id: Int?) = if (id == null) "ssh_connection" else "ssh_connection?id=$id"
     fun sshKey(id: Int?) = if (id == null) "ssh_keypair" else "ssh_keypair?id=$id"
@@ -271,7 +276,32 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                         onReplace = { nav.navigate(Routes.replace(it)) },
                         onCloudSync = { nav.navigate(Routes.CLOUD_SYNC) },
                         onReplication = { nav.navigate(Routes.REPLICATION) },
+                        onIscsi = { nav.navigate(Routes.ISCSI) },
+                        onIscsiWizard = { nav.navigate(Routes.ISCSI_WIZARD) },
+                        onServices = { nav.navigate(Routes.SERVICES) },
                     )
+                }
+                pushed(Routes.ISCSI) { _ ->
+                    app.truenascompanion.ui.iscsi.IscsiScreen(
+                        onBack = { nav.popBackStack() },
+                        nav = app.truenascompanion.ui.iscsi.IscsiNav(
+                            onEdit = { k, id -> nav.navigate(Routes.iscsiEdit(k, id)) },
+                            onWizard = { nav.navigate(Routes.ISCSI_WIZARD) },
+                            onSettings = { nav.navigate(Routes.ISCSI_SETTINGS) },
+                            onServices = { nav.navigate(Routes.SERVICES) },
+                        ),
+                    )
+                }
+                pushed(Routes.ISCSI_EDIT, "kind", "id?") { a ->
+                    val kind = app.truenascompanion.ui.iscsi.IscsiKind.entries.firstOrNull { it.name == a["kind"] }
+                    if (kind == null) LaunchedEffect(Unit) { nav.popBackStack() }
+                    else app.truenascompanion.ui.iscsi.IscsiEditorScreen(kind, a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.ISCSI_SETTINGS) { _ ->
+                    app.truenascompanion.ui.iscsi.IscsiSettingsScreen(onBack = { nav.popBackStack() }, onServices = { nav.navigate(Routes.SERVICES) })
+                }
+                pushed(Routes.ISCSI_WIZARD) { _ ->
+                    app.truenascompanion.ui.iscsi.IscsiWizardScreen(onBack = { nav.popBackStack() }, onDone = { nav.popBackStack() })
                 }
                 pushedWithEntry(Routes.CLOUD_SYNC) { _, entry ->
                     val picked by entry.savedStateHandle.getStateFlow<String?>(Routes.PICKED_PATH, null).collectAsStateWithLifecycle()

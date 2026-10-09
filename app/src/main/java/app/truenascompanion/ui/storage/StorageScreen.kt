@@ -194,6 +194,9 @@ fun StorageScreen(
     onReplace: (String) -> Unit = {},
     onCloudSync: () -> Unit = {},
     onReplication: () -> Unit = {},
+    onIscsi: () -> Unit = {},
+    onIscsiWizard: () -> Unit = {},
+    onServices: () -> Unit = {},
 ) {
     val vm = appViewModel { StorageViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -246,6 +249,7 @@ fun StorageScreen(
                             onUpdateNfs = vm::updateNfs,
                             onDeleteNfs = vm::deleteNfs,
                             onBrowse = onBrowse,
+                            iscsiContent = { app.truenascompanion.ui.iscsi.IscsiSharesTab(onOpen = onIscsi, onWizard = onIscsiWizard, onServices = onServices) },
                         )
                     }
                 }
