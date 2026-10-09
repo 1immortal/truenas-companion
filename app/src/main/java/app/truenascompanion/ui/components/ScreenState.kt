@@ -150,6 +150,8 @@ fun <T> ScreenScaffold(
     skeletonHeight: Dp = 96.dp,
     empty: EmptyContent? = null,
     isEmpty: (T) -> Boolean = { (it as? Collection<*>)?.isEmpty() == true },
+    /** 1.9.0: shown above every state (loading, error, empty, content) and never scrolled away, e.g. a warning. */
+    header: (@Composable () -> Unit)? = null,
     content: @Composable (T) -> Unit,
 ) {
     Scaffold(
@@ -167,10 +169,14 @@ fun <T> ScreenScaffold(
         val body: @Composable () -> Unit = {
             StateContent(state, onRetry, skeletonCount = skeletonCount, skeletonHeight = skeletonHeight, empty = empty, isEmpty = isEmpty, content = content)
         }
-        if (onRefresh != null) {
-            PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.padding(padding).fillMaxSize()) { body() }
-        } else {
-            Box(Modifier.padding(padding).fillMaxSize()) { body() }
+        androidx.compose.foundation.layout.Column(Modifier.padding(padding).fillMaxSize()) {
+            header?.invoke()
+            val rest = Modifier.weight(1f).fillMaxSize()
+            if (onRefresh != null) {
+                PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = rest) { body() }
+            } else {
+                Box(rest) { body() }
+            }
         }
     }
 }

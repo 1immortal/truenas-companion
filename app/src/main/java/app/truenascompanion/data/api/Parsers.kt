@@ -122,8 +122,15 @@ object Parsers {
         var rx = 0.0
         var tx = 0.0
         var anyIface = false
-        fields["interfaces"].obj()?.forEach { (_, v) ->
+        val perIface = LinkedHashMap<String, app.truenascompanion.data.model.InterfaceRate>()
+        fields["interfaces"].obj()?.forEach { (name, v) ->
             val i = v.obj() ?: return@forEach
+            perIface[name] = app.truenascompanion.data.model.InterfaceRate(
+                linkUp = i.str("link_state") != "LINK_STATE_DOWN",
+                rxBytesPerSec = i.double("received_bytes_rate") ?: 0.0,
+                txBytesPerSec = i.double("sent_bytes_rate") ?: 0.0,
+                speedMbps = i.double("speed")?.takeIf { it > 0 },
+            )
             if (i.str("link_state") == "LINK_STATE_DOWN") return@forEach
             anyIface = true
             rx += i.double("received_bytes_rate") ?: 0.0
@@ -138,6 +145,7 @@ object Parsers {
             netRxBytesPerSec = if (anyIface) rx else null,
             netTxBytesPerSec = if (anyIface) tx else null,
             cpuCores = cores,
+            interfaces = perIface,
         )
     }
 

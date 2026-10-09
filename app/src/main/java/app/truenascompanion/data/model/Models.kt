@@ -152,6 +152,8 @@ data class RealtimeStats(
     /** Per-thread usage (`cpu0`, `cpu1`, …) in percent. */
     val cpuCores: List<Double> = emptyList(),
     val timestamp: Long = System.currentTimeMillis(),
+    /** 1.9.0: per interface (`interfaces.<name>`), for the Network page. */
+    val interfaces: Map<String, InterfaceRate> = emptyMap(),
 ) {
     val memoryUsed: Long?
         get() = if (memoryTotal != null && memoryAvailable != null) (memoryTotal - memoryAvailable).coerceAtLeast(0) else null

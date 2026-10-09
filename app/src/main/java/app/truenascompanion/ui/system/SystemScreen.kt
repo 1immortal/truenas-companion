@@ -254,6 +254,7 @@ fun SystemScreen(
     onServices: () -> Unit = {},
     onScheduledTasks: () -> Unit = {},
     onPage: (SystemPage) -> Unit = {},
+    onNetwork: () -> Unit = {},
 ) {
     val vm = appViewModel { SystemHubViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
@@ -270,7 +271,7 @@ fun SystemScreen(
 
     val actions = HubActions(
         onPage = onPage, onJobs = onJobs, onOverview = onOverview, onServices = onServices, onScheduledTasks = onScheduledTasks,
-        onAccounts = onAccounts, onCertificates = onCertificates, onAudit = onAudit, onReports = onReports,
+        onAccounts = onAccounts, onCertificates = onCertificates, onAudit = onAudit, onReports = onReports, onNetwork = onNetwork,
         onShell = {
             if (connection is ConnectionState.Connected) confirmShell = true
             else uiScope.launch { snackbar.showSnackbar("Connect to the NAS to open a shell") }

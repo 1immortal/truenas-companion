@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MiscellaneousServices
 import androidx.compose.material.icons.rounded.NotificationsActive
@@ -73,6 +74,7 @@ enum class HubItem(val title: String, val keywords: String) {
     POWER("Power", "reboot restart shutdown shut down power off turn off"),
     TASKS("Running jobs", "tasks jobs running progress activity"),
     ALL_SERVERS("All servers", "servers overview saved nas switch status alerts multiple"),
+    NETWORK("Network", "network interfaces ip address gateway dns name server nameserver hostname domain routes static vlan bridge lag bond aggregation mtu dhcp mac ipmi proxy"),
     SERVICES("Services", "ssh smb nfs ups snmp ftp iscsi cifs start stop autostart"),
     SCHEDULED("Scheduled tasks", "cron jobs init shutdown scripts startup schedule"),
     ACCOUNTS("Users & groups", "users accounts groups passwords ssh keys"),
@@ -92,6 +94,7 @@ enum class HubItem(val title: String, val keywords: String) {
         POWER -> Icons.Rounded.PowerSettingsNew
         TASKS -> Icons.AutoMirrored.Rounded.ListAlt
         ALL_SERVERS -> Icons.Rounded.Storage
+        NETWORK -> Icons.Rounded.Lan
         SERVICES -> Icons.Rounded.MiscellaneousServices
         SCHEDULED -> Icons.Rounded.EventRepeat
         ACCOUNTS -> Icons.Rounded.Group
@@ -138,6 +141,7 @@ data class HubActions(
     val onAudit: () -> Unit = {},
     val onReports: () -> Unit = {},
     val onShell: () -> Unit = {},
+    val onNetwork: () -> Unit = {},
 )
 
 fun HubItem.open(a: HubActions) {
@@ -152,12 +156,13 @@ fun HubItem.open(a: HubActions) {
         HubItem.AUDIT -> a.onAudit()
         HubItem.REPORTS -> a.onReports()
         HubItem.SHELL -> a.onShell()
+        HubItem.NETWORK -> a.onNetwork()
         else -> error("$this has a page")
     }
 }
 
 enum class HubGroup(val title: String, val items: List<HubItem>) {
-    SERVER("Server", listOf(HubItem.UPDATES, HubItem.POWER, HubItem.TASKS, HubItem.ALL_SERVERS)),
+    SERVER("Server", listOf(HubItem.UPDATES, HubItem.POWER, HubItem.NETWORK, HubItem.TASKS, HubItem.ALL_SERVERS)),
     SERVICES("Services & tasks", listOf(HubItem.SERVICES, HubItem.SCHEDULED)),
     SECURITY("Security & access", listOf(HubItem.ACCOUNTS, HubItem.CERTIFICATES, HubItem.AUDIT, HubItem.SHELL)),
     MONITORING("Monitoring", listOf(HubItem.REPORTS, HubItem.ALERTS)),
@@ -244,6 +249,7 @@ fun hubSubtitles(s: HubSummary): Map<HubItem, HubSubtitle> = HubItem.entries.ass
         HubItem.POWER -> HubSubtitle("Reboot, turn off")
         HubItem.TASKS -> s.runningJobs?.let { HubSubtitle(if (it == 0) "Nothing running" else "$it running") } ?: HubSubtitle("Jobs & progress")
         HubItem.ALL_SERVERS -> HubSubtitle(if (s.serverCount > 0) "${s.serverCount} saved" else "Every saved NAS")
+        HubItem.NETWORK -> HubSubtitle("View only")
         HubItem.SERVICES -> s.servicesRunning?.let { HubSubtitle("$it running") } ?: HubSubtitle("SSH, SMB, NFS…")
         HubItem.SCHEDULED -> {
             val c = s.cronJobs; val i = s.initScripts

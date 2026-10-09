@@ -87,6 +87,7 @@ private object Routes {
     const val ACCOUNTS = "accounts"
     const val REPORTS = "reports"
     const val AUDIT = "audit"
+    const val NETWORK = "network"
     const val CERTIFICATES = "certificates?highlight={highlight}"
     fun certificates(highlight: String? = null) = if (highlight == null) "certificates" else "certificates?highlight=${enc(highlight)}"
     const val EDIT = "server_edit?id={id}"
@@ -465,7 +466,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onReports = { nav.navigate(Routes.REPORTS) }, onAudit = { nav.navigate(Routes.AUDIT) },
                     onCertificates = { nav.navigate(Routes.certificates()) },
                     onServices = { nav.navigate(Routes.SERVICES) }, onScheduledTasks = { nav.navigate(Routes.TASKS) },
-                    onPage = { nav.navigate(Routes.systemPage(it)) }) }
+                    onPage = { nav.navigate(Routes.systemPage(it)) }, onNetwork = { nav.navigate(Routes.NETWORK) }) }
                 pushed(Routes.SYSTEM_PAGE, "page") { a ->
                     val page = app.truenascompanion.ui.system.SystemPage.parse(a["page"])
                     if (page == null) LaunchedEffect(Unit) { nav.popBackStack() }
@@ -512,6 +513,8 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 pushed(Routes.ACCOUNTS) { app.truenascompanion.ui.accounts.AccountsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.REPORTS) { app.truenascompanion.ui.reports.ReportsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.AUDIT) { app.truenascompanion.ui.audit.AuditScreen(onBack = { nav.popBackStack() }) }
+                // 1.9.0: Network settings, view only.
+                pushed(Routes.NETWORK) { app.truenascompanion.ui.network.NetworkScreen(onBack = { nav.popBackStack() }, onReports = { nav.navigate(Routes.REPORTS) }) }
                 pushed(Routes.CERTIFICATES, "highlight?") { a ->
                     app.truenascompanion.ui.certs.CertificatesScreen(onBack = { nav.popBackStack() }, onReviewServer = { id -> nav.navigate(Routes.edit(id)) }, highlight = a["highlight"])
                 }
