@@ -46,6 +46,8 @@ sealed interface AlertTarget {
     }
     /** 1.5.0: Storage › Protection › Cloud sync (failed cloud sync tasks, finished manual runs). */
     data object CloudSync : AlertTarget { override val destination get() = DeepLink.DEST_CLOUD_SYNC; override val label get() = "Open cloud sync" }
+    /** 1.6.0: Storage › Protection › Replication (failed or finished replication tasks, finished manual runs). */
+    data object Replication : AlertTarget { override val destination get() = DeepLink.DEST_REPLICATION; override val label get() = "Open replication" }
     data object Alerts : AlertTarget { override val destination get() = DeepLink.DEST_ALERTS; override val label get() = "Open alerts" }
 
     companion object {
@@ -74,6 +76,7 @@ sealed interface AlertTarget {
                 k == "HasUpdate" || k == "CurrentlyRunningVersionDoesNotMatchProfile" -> Update
                 k.startsWith("Certificate") || k == "WebUiCertificateSetupFailed" -> Certificate(args.text("name"))
                 k == "CloudSyncTaskFailed" -> CloudSync
+                k == "ReplicationFailed" || k == "ReplicationSuccess" -> Replication
                 else -> Alerts
             }
         }
@@ -89,6 +92,7 @@ sealed interface AlertTarget {
             DeepLink.DEST_UPDATE -> Update
             DeepLink.DEST_CERTIFICATE -> Certificate(arg)
             DeepLink.DEST_CLOUD_SYNC -> CloudSync
+            DeepLink.DEST_REPLICATION -> Replication
             else -> Alerts
         }
     }

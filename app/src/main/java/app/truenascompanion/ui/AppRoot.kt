@@ -127,6 +127,14 @@ private object Routes {
     const val PICK_FOLDER = "pick_folder?path={path}"
     fun cloudTask(id: Int?) = if (id == null) "cloud_task" else "cloud_task?id=$id"
     fun cloudCred(id: Int?) = if (id == null) "cloud_credential" else "cloud_credential?id=$id"
+    // 1.6.0: replication (Storage › Protection)
+    const val REPLICATION = "replication"
+    const val REPL_TASK = "replication_task?id={id}"
+    const val SSH_CONN = "ssh_connection?id={id}"
+    const val SSH_KEY = "ssh_keypair?id={id}"
+    fun replTask(id: Int?) = if (id == null) "replication_task" else "replication_task?id=$id"
+    fun sshConn(id: Int?) = if (id == null) "ssh_connection" else "ssh_connection?id=$id"
+    fun sshKey(id: Int?) = if (id == null) "ssh_keypair" else "ssh_keypair?id=$id"
     fun pickFolder(path: String?) = if (path == null) "pick_folder" else "pick_folder?path=${enc(path)}"
     fun service(kind: app.truenascompanion.data.services.ServiceKind) = "service/${kind.name}"
     fun cronJob(id: Int?) = if (id == null) "cron_job" else "cron_job?id=$id"
@@ -262,6 +270,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                         onOpenDisk = { nav.navigate(Routes.disk(it)) },
                         onReplace = { nav.navigate(Routes.replace(it)) },
                         onCloudSync = { nav.navigate(Routes.CLOUD_SYNC) },
+                        onReplication = { nav.navigate(Routes.REPLICATION) },
                     )
                 }
                 pushedWithEntry(Routes.CLOUD_SYNC) { _, entry ->
@@ -287,6 +296,25 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 }
                 pushed(Routes.CLOUD_CRED, "id?") { a ->
                     app.truenascompanion.ui.cloud.CloudCredentialEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.REPLICATION) { _ ->
+                    app.truenascompanion.ui.replication.ReplicationScreen(
+                        onBack = { nav.popBackStack() },
+                        onEditTask = { nav.navigate(Routes.replTask(it)) },
+                        onEditConnection = { nav.navigate(Routes.sshConn(it)) },
+                        onEditKeyPair = { nav.navigate(Routes.sshKey(it)) },
+                    )
+                }
+                pushed(Routes.REPL_TASK, "id?") { a ->
+                    app.truenascompanion.ui.replication.ReplicationTaskEditorScreen(
+                        a["id"]?.toIntOrNull(), onAddConnection = { nav.navigate(Routes.sshConn(null)) }, onBack = { nav.popBackStack() },
+                    )
+                }
+                pushed(Routes.SSH_CONN, "id?") { a ->
+                    app.truenascompanion.ui.replication.SshConnectionEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.SSH_KEY, "id?") { a ->
+                    app.truenascompanion.ui.replication.KeyPairEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
                 }
                 pushed(Routes.PICK_FOLDER, "path?") { a ->
                     val start = a["path"]?.takeIf { app.truenascompanion.data.files.FilePolicy.normalize(it)?.startsWith(app.truenascompanion.data.files.FilePolicy.ROOT + "/") == true }
@@ -502,6 +530,9 @@ private fun NavHostController.openTarget(container: app.truenascompanion.AppCont
         is app.truenascompanion.notify.AlertTarget.Certificate -> { switchTab(Tab.SYSTEM.route); navigate(Routes.certificates(t.name)) }
         app.truenascompanion.notify.AlertTarget.CloudSync -> {
             container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.PROTECTION; switchTab(Tab.STORAGE.route); navigate(Routes.CLOUD_SYNC)
+        }
+        app.truenascompanion.notify.AlertTarget.Replication -> {
+            container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.PROTECTION; switchTab(Tab.STORAGE.route); navigate(Routes.REPLICATION)
         }
         app.truenascompanion.notify.AlertTarget.Alerts -> switchTab(Tab.ALERTS.route)
     }

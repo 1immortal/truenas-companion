@@ -193,6 +193,7 @@ fun StorageScreen(
     onOpenDisk: (String) -> Unit = {},
     onReplace: (String) -> Unit = {},
     onCloudSync: () -> Unit = {},
+    onReplication: () -> Unit = {},
 ) {
     val vm = appViewModel { StorageViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -213,7 +214,7 @@ fun StorageScreen(
                 tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, maxLines = 1) }) }
             }
             if (tab == StorageTabs.PROTECTION) {
-                ProtectionPane(snackbar, onSnapshotTask, onCloudSync)
+                ProtectionPane(snackbar, onSnapshotTask, onCloudSync, onReplication)
                 return@Column
             }
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
@@ -255,7 +256,7 @@ fun StorageScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -> Unit, onCloudSync: () -> Unit) {
+private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -> Unit, onCloudSync: () -> Unit, onReplication: () -> Unit) {
     val vm = appViewModel { ProtectionViewModel(it) }
     val state by vm.state.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
@@ -270,7 +271,7 @@ private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -
         when (val s = state) {
             UiState.Loading -> SkeletonList(4, 110.dp)
             is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-            is UiState.Success -> ProtectionTab(s.data, vm, onAddTask = { onSnapshotTask(null) }, onEditTask = { onSnapshotTask(it) }, onCloudSync = onCloudSync)
+            is UiState.Success -> ProtectionTab(s.data, vm, onAddTask = { onSnapshotTask(null) }, onEditTask = { onSnapshotTask(it) }, onCloudSync = onCloudSync, onReplication = onReplication)
         }
     }
 }

@@ -45,6 +45,8 @@ object DeepLink {
     const val DEST_DASHBOARD = "dashboard"
     // 1.5.0: Storage › Protection › Cloud sync (finished manual runs, CloudSyncTaskFailed alerts)
     const val DEST_CLOUD_SYNC = "cloud_sync"
+    // 1.6.0: Storage › Protection › Replication (finished manual runs, ReplicationFailed / ReplicationSuccess alerts)
+    const val DEST_REPLICATION = "replication"
 }
 
 /** Builds and posts all app notifications (alerts, sign-in reminder, test, instant-mode service). */
@@ -69,6 +71,7 @@ class AlertNotifier(private val context: Context) {
         const val ID_CERT = 6
         const val ID_RESILVER = 7
         const val ID_CLOUD_SYNC = 8
+        const val ID_REPLICATION = 9
         const val ID_SERVICE = 1001
 
         /** Individual notifications per check; the rest are only listed in the group summary. */
@@ -337,6 +340,33 @@ class AlertNotifier(private val context: Context) {
             .setContentIntent(openAppIntent(server.id, DeepLink.DEST_CLOUD_SYNC, tag, taskId.toString()))
             .build()
         nm.notify(tag, ID_CLOUD_SYNC, n)
+    }
+
+    /** 1.6.0: a replication started from the app finished (the user asked to be notified). [taskId] -1: a one-time run. */
+    @SuppressLint("MissingPermission") // canPost() checks POST_NOTIFICATIONS
+    fun postReplicationDone(server: ServerConfig, taskId: Int, taskName: String, state: app.truenascompanion.data.model.JobState, error: String?) {
+        if (!canPost()) return
+        val tag = "replication/${server.id}/$taskId"
+        val ok = state == app.truenascompanion.data.model.JobState.SUCCESS
+        val title = when {
+            ok -> "$taskName finished"
+            state == app.truenascompanion.data.model.JobState.ABORTED -> "$taskName was stopped"
+            else -> "$taskName failed"
+        }
+        val text = when {
+            ok -> "The snapshots were replicated."
+            state == app.truenascompanion.data.model.JobState.ABORTED -> "The replication was stopped before it finished."
+            else -> error?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(300) ?: "Open the task's log in the app for details."
+        }
+        val n = base(if (ok || state == app.truenascompanion.data.model.JobState.ABORTED) CH_INFO else CH_WARNING)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setSubText("${server.name} · Replication")
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(openAppIntent(server.id, DeepLink.DEST_REPLICATION, tag, taskId.toString()))
+            .build()
+        nm.notify(tag, ID_REPLICATION, n)
     }
 
     @SuppressLint("MissingPermission")

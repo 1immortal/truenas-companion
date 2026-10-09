@@ -25,7 +25,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.TimeUnit
 
 /**
- * 1.5.0: "Notify me when it finishes" for cloud sync runs started in the app. While the app process lives it checks
+ * 1.5.0: "Notify me when it finishes" for cloud sync runs (and, since 1.6.0, replication runs) started in the app. While the app process lives it checks
  * the job every few seconds (then every 30 s); a 15-minute background check is the fallback if Android stops the
  * app. Each watch is removed before its notification is posted, so a run is reported once.
  */
@@ -76,7 +76,7 @@ object CloudSyncWatcher {
                 val j = container.alertChecker.withConnection(server) { api -> job(api, watch.jobId) }
                 failures = 0
                 if (ended(j) && claim(context, watch)) {
-                    container.notifier.postCloudSyncDone(server, watch.taskId, watch.taskName, watch.dryRun, j!!.state, j.error)
+                    post(context, server, watch, j!!)
                     return
                 }
                 if (j == null && n > 3) return // job gone: the background check decides
@@ -86,6 +86,12 @@ object CloudSyncWatcher {
                 if (++failures > 20) return // offline for a while: leave it to the background check
             }
         }
+    }
+
+    private fun post(context: Context, server: app.truenascompanion.data.model.ServerConfig, w: CloudRunWatch, j: LastJob) {
+        val notifier = (context.applicationContext as TrueNasApp).container.notifier
+        if (w.kind == CloudRunWatch.KIND_REPLICATION) notifier.postReplicationDone(server, w.taskId, w.taskName, j.state, j.error)
+        else notifier.postCloudSyncDone(server, w.taskId, w.taskName, w.dryRun, j.state, j.error)
     }
 
     fun schedule(context: Context, active: Boolean) {
@@ -111,7 +117,7 @@ object CloudSyncWatcher {
                     list.forEach { w ->
                         val j = job(api, w.jobId)
                         when {
-                            ended(j) -> if (claim(context, w)) container.notifier.postCloudSyncDone(server, w.taskId, w.taskName, w.dryRun, j!!.state, j.error)
+                            ended(j) -> if (claim(context, w)) post(context, server, w, j!!)
                             // TrueNAS forgets old jobs after a while (and after a reboot): nothing left to report.
                             j == null -> claim(context, w)
                             now - w.startedAt > MAX_AGE_MS -> claim(context, w)
