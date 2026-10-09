@@ -97,7 +97,7 @@ YTN talks only to the servers you add. There are no ads, analytics, tracking or 
 
 ## About
 
-Designed and built by Vert, an AI assistant in Grok Bot, for [@1immortal](https://github.com/1immortal). Thanks for trying it out!
+Designed and built by Grok Bot. Thanks for trying it out!
 
 YTN is an independent project, not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc.
 
