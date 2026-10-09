@@ -137,7 +137,11 @@ class NoRestAuthTest {
             val code = f.readLines().filterNot { it.trimStart().startsWith("*") || it.trimStart().startsWith("//") }.joinToString("\n")
             assertFalse("${f.name} talks to /api/v2.0", code.contains("/api/v2.0") || code.contains("api/v2"))
             assertFalse("${f.name} sends a Bearer token", code.contains("Bearer "))
-            assertFalse("${f.name} sends auth_token", code.contains("auth_token"))
+            // 1.5.0: OpenStack Swift cloud sync credentials have a field named `auth_token` (stored by TrueNAS for rclone,
+            // never sent by the app over HTTP). Only that field declaration is allowed, and only in CloudProviders.kt.
+            val authCode = if (f.name == "CloudProviders.kt") code.replace("CredField(\"auth_token\"", "CredField(") else code
+            assertFalse("${f.name} sends auth_token", authCode.contains("auth_token"))
+            if (f.name == "CloudProviders.kt") assertFalse(code.contains("okhttp") || code.contains("http.Request"))
             // wg-easy (a separate app on its own port, not the TrueNAS middleware) is the only HTTP API with credentials.
             // 1.3.0: the file browser's upload goes to TrueNAS's file application (`/_upload`, audited as "REST", not
             // LEGACY_REST) with a single-use `Token` from auth.generate_token; nothing else, no Basic/Bearer.

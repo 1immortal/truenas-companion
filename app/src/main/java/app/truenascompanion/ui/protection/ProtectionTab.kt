@@ -31,7 +31,7 @@ private sealed interface PDialog {
 
 /** The Protection tab of Storage: state, dialogs and polling around [ProtectionContent]. */
 @Composable
-fun ProtectionTab(data: ProtectionData, vm: ProtectionViewModel, onAddTask: () -> Unit, onEditTask: (Int) -> Unit) {
+fun ProtectionTab(data: ProtectionData, vm: ProtectionViewModel, onAddTask: () -> Unit, onEditTask: (Int) -> Unit, onCloudSync: () -> Unit = {}) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     var dialog by remember { mutableStateOf<PDialog?>(null) }
     val running = data.anythingRunning
@@ -60,6 +60,7 @@ fun ProtectionTab(data: ProtectionData, vm: ProtectionViewModel, onAddTask: () -
             override fun toggleBackup(t: BackupTask, on: Boolean) { if (on) vm.setBackupEnabled(t, true) else dialog = PDialog.DisableBackup(t) }
             override fun runBackup(t: BackupTask) { vm.runBackup(t) }
             override fun showLog(t: BackupTask) { dialog = PDialog.Log(t) }
+            override fun openCloudSync() = onCloudSync()
         }
     }
     ProtectionContent(data, busy, actions)

@@ -43,6 +43,8 @@ object DeepLink {
     const val DEST_RESTART_APP = "quick_restart_app"
     const val DEST_SCRUB_POOL = "quick_scrub_pool"
     const val DEST_DASHBOARD = "dashboard"
+    // 1.5.0: Storage › Protection › Cloud sync (finished manual runs, CloudSyncTaskFailed alerts)
+    const val DEST_CLOUD_SYNC = "cloud_sync"
 }
 
 /** Builds and posts all app notifications (alerts, sign-in reminder, test, instant-mode service). */
@@ -66,6 +68,7 @@ class AlertNotifier(private val context: Context) {
         const val ID_TEST = 5
         const val ID_CERT = 6
         const val ID_RESILVER = 7
+        const val ID_CLOUD_SYNC = 8
         const val ID_SERVICE = 1001
 
         /** Individual notifications per check; the rest are only listed in the group summary. */
@@ -305,6 +308,35 @@ class AlertNotifier(private val context: Context) {
             .setContentIntent(openAppIntent(server.id, DeepLink.DEST_POOL, tag, poolName))
             .build()
         nm.notify(tag, ID_RESILVER, n)
+    }
+
+    /** 1.5.0: a cloud sync run started from the app finished (the user asked to be notified). */
+    @SuppressLint("MissingPermission") // canPost() checks POST_NOTIFICATIONS
+    fun postCloudSyncDone(server: ServerConfig, taskId: Int, taskName: String, dryRun: Boolean, state: app.truenascompanion.data.model.JobState, error: String?) {
+        if (!canPost()) return
+        val tag = "cloudsync/${server.id}/$taskId"
+        val ok = state == app.truenascompanion.data.model.JobState.SUCCESS
+        val what = if (dryRun) "Dry run of $taskName" else taskName
+        val title = when {
+            ok -> "$what finished"
+            state == app.truenascompanion.data.model.JobState.ABORTED -> "$what was stopped"
+            else -> "$what failed"
+        }
+        val text = when {
+            ok && dryRun -> "Nothing was changed. Open the task's log to see what a real run would do."
+            ok -> "The cloud sync finished successfully."
+            state == app.truenascompanion.data.model.JobState.ABORTED -> "The run was aborted before it finished."
+            else -> error?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(300) ?: "Open the task's log in the app for details."
+        }
+        val n = base(if (ok || state == app.truenascompanion.data.model.JobState.ABORTED) CH_INFO else CH_WARNING)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setSubText("${server.name} · Cloud sync")
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(openAppIntent(server.id, DeepLink.DEST_CLOUD_SYNC, tag, taskId.toString()))
+            .build()
+        nm.notify(tag, ID_CLOUD_SYNC, n)
     }
 
     @SuppressLint("MissingPermission")

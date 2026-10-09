@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -138,10 +139,11 @@ import java.util.Date
 
 /**
  * File browser for pool datasets under /mnt (1.3.0). With [pickFile] (1.4.0) it becomes a file picker: tapping a file
- * returns its path (used to choose an init/shutdown script); uploads and file actions are hidden.
+ * returns its path (used to choose an init/shutdown script); uploads and file actions are hidden. With [pickFolder]
+ * (1.5.0) it picks a folder instead: open it, then "Use this folder" (cloud sync local paths).
  */
 @Composable
-fun FileBrowserScreen(initialPath: String, onBack: () -> Unit, pickFile: ((String) -> Unit)? = null) {
+fun FileBrowserScreen(initialPath: String, onBack: () -> Unit, pickFile: ((String) -> Unit)? = null, pickFolder: ((String) -> Unit)? = null) {
     val vm = appViewModel(key = "files:$initialPath") { FileBrowserViewModel(it, initialPath) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -207,6 +209,7 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit, pickFile: ((Strin
                     e.isDirectory -> vm.open(e.path)
                     e.isSymlink -> vm.openLink(e)
                     pickFile != null -> pickFile(e.path)
+                    pickFolder != null -> Unit
                     FilePolicy.previewKind(e) != null -> vm.preview(e)
                     else -> vm.showDetails(e)
                 }
@@ -228,7 +231,9 @@ fun FileBrowserScreen(initialPath: String, onBack: () -> Unit, pickFile: ((Strin
             onClosePreview = vm::closePreview,
             onConfirmUpload = vm::upload,
             onDismissUpload = vm::dismissUpload,
-            pickMode = pickFile != null,
+            pickMode = pickFile != null || pickFolder != null,
+            pickFolder = pickFolder != null,
+            onPickFolder = { path -> pickFolder?.invoke(path) },
         ),
     )
 }
@@ -258,6 +263,9 @@ class FileActions(
     val onDismissUpload: () -> Unit = {},
     /** 1.4.0 picker mode: tapping a file picks it; no uploads or per-file actions. */
     val pickMode: Boolean = false,
+    /** 1.5.0 folder picker: "Use this folder" picks the open folder (files can't be picked). */
+    val pickFolder: Boolean = false,
+    val onPickFolder: (String) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -276,7 +284,7 @@ fun FileBrowserContent(
     var mkdirDialog by remember { mutableStateOf(false) }
     // Stopping an upload that is already streaming leaves a partial file on the NAS: ask first. Holds what to do on "Stop".
     var stopUpload by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val title = if (ui.atRoot) (if (actions.pickMode) "Choose a file" else "Files") else ui.path.substringAfterLast('/')
+    val title = if (ui.atRoot) (if (actions.pickFolder) "Choose a folder" else if (actions.pickMode) "Choose a file" else "Files") else ui.path.substringAfterLast('/')
     val cancelTransfer = {
         if (ui.transfer?.cancelLeavesPartial == true) stopUpload = actions.onCancelTransfer else actions.onCancelTransfer()
     }
@@ -309,6 +317,11 @@ fun FileBrowserContent(
             )
         },
         floatingActionButton = {
+            if (actions.pickFolder && !ui.atRoot) ExtendedFloatingActionButton(
+                onClick = { actions.onPickFolder(ui.path) },
+                icon = { Icon(Icons.Rounded.Check, null) },
+                text = { Text("Use this folder") },
+            )
             if (!ui.atRoot && ui.transfer == null && !actions.pickMode) Box {
                 ExtendedFloatingActionButton(
                     onClick = { addMenu = true },
@@ -482,7 +495,7 @@ private fun EntryList(ui: FileBrowserUi, actions: FileActions) {
         // A refresh or "load more" that failed while older entries are still shown.
         ui.error?.let { err -> item(key = "error") { InfoBanner(err, health = Health.WARNING, modifier = Modifier.padding(vertical = 4.dp)) } }
         if (ui.atRoot || actions.pickMode) item {
-            Text(if (actions.pickMode) "Tap the file to use. Only files in your pools can be picked." else "Choose a pool to browse its datasets and files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+            Text(if (actions.pickFolder) "Open the folder to use, then tap Use this folder. Only folders in your pools can be picked." else if (actions.pickMode) "Tap the file to use. Only files in your pools can be picked." else "Choose a pool to browse its datasets and files.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
         }
         items(list, key = { it.path }) { e -> EntryRow(e, ui.atRoot, actions, incomplete = e.path in ui.incomplete) }
         if (ui.hasMore) item {

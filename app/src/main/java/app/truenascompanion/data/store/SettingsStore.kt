@@ -107,6 +107,7 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun vpnWorked(id: String) = booleanPreferencesKey("vpn_worked_$id")
         fun vpnTipDismissed(id: String) = booleanPreferencesKey("vpn_tip_dismissed_$id")
         val RESILVER_WATCHES = stringPreferencesKey("resilver_watches")
+        val CLOUD_RUN_WATCHES = stringPreferencesKey("cloud_run_watches")
         val FILES_SHOW_SYSTEM = booleanPreferencesKey("files_show_system")
     }
 
@@ -393,6 +394,22 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             val cur = p[Keys.RESILVER_WATCHES]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.data.model.ResilverWatch>>(it) }.getOrNull() } ?: emptyList()
             result = transform(cur)
             if (result.isEmpty()) p.remove(Keys.RESILVER_WATCHES) else p[Keys.RESILVER_WATCHES] = json.encodeToString(result)
+        }
+        return result
+    }
+
+    // --- 1.5.0: cloud sync runs to notify about when they finish ---
+
+    suspend fun cloudRunWatches(): List<app.truenascompanion.data.cloud.CloudRunWatch> =
+        store.data.first()[Keys.CLOUD_RUN_WATCHES]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.data.cloud.CloudRunWatch>>(it) }.getOrNull() }
+            ?: emptyList()
+
+    suspend fun updateCloudRunWatches(transform: (List<app.truenascompanion.data.cloud.CloudRunWatch>) -> List<app.truenascompanion.data.cloud.CloudRunWatch>): List<app.truenascompanion.data.cloud.CloudRunWatch> {
+        var result = emptyList<app.truenascompanion.data.cloud.CloudRunWatch>()
+        store.edit { p ->
+            val cur = p[Keys.CLOUD_RUN_WATCHES]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.data.cloud.CloudRunWatch>>(it) }.getOrNull() } ?: emptyList()
+            result = transform(cur)
+            if (result.isEmpty()) p.remove(Keys.CLOUD_RUN_WATCHES) else p[Keys.CLOUD_RUN_WATCHES] = json.encodeToString(result)
         }
         return result
     }

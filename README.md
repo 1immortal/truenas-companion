@@ -36,6 +36,11 @@
 - **Open a terminal.** A shell on the NAS, in an app's container, or in an Incus container, like the TrueNAS web UI. With the app lock on it asks for your fingerprint first, and the session closes when you leave.
 - **Control VMs and containers.** Start, stop, restart, edit resources or create a simple VM.
 - **Keep your data safe.** See at a glance when the last snapshot, scrub and backup ran and whether anything failed. Take, roll back, clone and delete snapshots, schedule snapshot tasks, start or pause scrubs, run SMART tests and kick off replication, cloud sync or rsync backups.
+- **Back up to the cloud.** Storage › Protection › **Cloud sync** sets up TrueNAS cloud sync from your phone.
+  - Add credentials for S3 (and S3-compatible storage like MinIO or Wasabi), Backblaze B2, Google Drive, Dropbox, OneDrive, SFTP, WebDAV, Storj, Azure Blob, pCloud and more. **Verify** checks them before you save. Keys and passwords stay hidden until you tap **Show**.
+  - For Google Drive, Dropbox, OneDrive and other sign-in providers, paste a token from `rclone authorize` or add the credential once in the web UI. The app explains how.
+  - Create and edit tasks: push or pull, sync/copy/move explained in plain words, the NAS folder picked from your pools, bucket and folder picked by browsing the cloud, a schedule picker, snapshot first, include/exclude, bandwidth limits, encryption and scripts.
+  - **Run now**, **Dry run**, **Abort** and **Restore**, with live progress. You can get a notification when a run you started finishes.
 - **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
 - **Browse your files.** Open any pool or dataset in **Storage › Files**, or tap *Browse files* on a dataset or share.
   - Folders and files with size, date and type; sort by name, size or date and search the folder you're in.

@@ -43,6 +43,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,6 +96,8 @@ open class ProtectionActions {
     open fun toggleBackup(t: BackupTask, on: Boolean) {}
     open fun runBackup(t: BackupTask) {}
     open fun showLog(t: BackupTask) {}
+    /** 1.5.0: Storage › Protection › Cloud sync (tasks and credentials). */
+    open fun openCloudSync() {}
 }
 
 fun ProtectionStatus.label(): String = when (this) {
@@ -181,16 +185,22 @@ fun ProtectionContent(data: ProtectionData, busy: Set<String>, actions: Protecti
             items(list, key = { "smart-${it.cronId}" }) { s -> SmartCard(s, data, "smart:${s.cronId}" in busy, actions) }
         }
 
-        item { SectionTitle("Backup tasks") }
+        item {
+            SectionTitle("Backup tasks") {
+                TextButton(onClick = actions::openCloudSync, modifier = Modifier.testTag("open-cloud-sync")) {
+                    Icon(Icons.Rounded.Cloud, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Cloud sync")
+                }
+            }
+        }
         val backups = data.backups
         when {
             backups == null -> item { InfoBanner("Couldn't load backup tasks.") }
-            backups.isEmpty() -> item { EmptyCard("No backup tasks", "Create replication, cloud sync or rsync tasks in the TrueNAS web UI (Data Protection). They show up here with their status.") }
+            backups.isEmpty() -> item { EmptyCard("No backup tasks", "Set up cloud sync with the Cloud sync button above. Replication and rsync tasks are created in the TrueNAS web UI (Data Protection); they show up here with their status.") }
             else -> items(backups, key = { "backup-${it.kind}-${it.id}" }) { t -> BackupCard(t, "backup:${t.kind}:${t.id}" in busy, data.now, actions) }
         }
         item {
             Text(
-                "Create or fully edit replication, cloud sync and rsync tasks in the TrueNAS web UI.",
+                "Cloud sync tasks and credentials: tap Cloud sync. Replication and rsync tasks are created and edited in the TrueNAS web UI.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
             )
@@ -346,7 +356,7 @@ private fun BackupKind.icon(): ImageVector = when (this) {
 
 @Composable
 private fun BackupCard(t: BackupTask, busy: Boolean, now: Long, actions: ProtectionActions) {
-    ElevatedSection {
+    ElevatedSection(onClick = if (t.kind == BackupKind.CLOUD_SYNC) actions::openCloudSync else null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBadge(t.kind.icon(), tint = when {
                 t.failed -> MaterialTheme.colorScheme.error

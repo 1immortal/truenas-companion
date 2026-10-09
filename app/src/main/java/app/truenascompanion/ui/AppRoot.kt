@@ -120,6 +120,14 @@ private object Routes {
     const val INIT_SCRIPT = "init_script?id={id}"
     const val PICK_FILE = "pick_file?path={path}"
     const val PICKED_PATH = "picked_path"
+    // 1.5.0: cloud sync (Storage › Protection)
+    const val CLOUD_SYNC = "cloud_sync"
+    const val CLOUD_TASK = "cloud_task?id={id}"
+    const val CLOUD_CRED = "cloud_credential?id={id}"
+    const val PICK_FOLDER = "pick_folder?path={path}"
+    fun cloudTask(id: Int?) = if (id == null) "cloud_task" else "cloud_task?id=$id"
+    fun cloudCred(id: Int?) = if (id == null) "cloud_credential" else "cloud_credential?id=$id"
+    fun pickFolder(path: String?) = if (path == null) "pick_folder" else "pick_folder?path=${enc(path)}"
     fun service(kind: app.truenascompanion.data.services.ServiceKind) = "service/${kind.name}"
     fun cronJob(id: Int?) = if (id == null) "cron_job" else "cron_job?id=$id"
     fun initScript(id: Int?) = if (id == null) "init_script" else "init_script?id=$id"
@@ -253,6 +261,38 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                         onOpenPool = { nav.navigate(Routes.poolLayout(it)) },
                         onOpenDisk = { nav.navigate(Routes.disk(it)) },
                         onReplace = { nav.navigate(Routes.replace(it)) },
+                        onCloudSync = { nav.navigate(Routes.CLOUD_SYNC) },
+                    )
+                }
+                pushedWithEntry(Routes.CLOUD_SYNC) { _, entry ->
+                    val picked by entry.savedStateHandle.getStateFlow<String?>(Routes.PICKED_PATH, null).collectAsStateWithLifecycle()
+                    app.truenascompanion.ui.cloud.CloudSyncScreen(
+                        onBack = { nav.popBackStack() },
+                        onEditTask = { nav.navigate(Routes.cloudTask(it)) },
+                        onEditCredential = { nav.navigate(Routes.cloudCred(it)) },
+                        onPickFolder = { nav.navigate(Routes.pickFolder(it)) },
+                        pickedPath = picked,
+                        onPickConsumed = { entry.savedStateHandle[Routes.PICKED_PATH] = null },
+                    )
+                }
+                pushedWithEntry(Routes.CLOUD_TASK, "id?") { a, entry ->
+                    val picked by entry.savedStateHandle.getStateFlow<String?>(Routes.PICKED_PATH, null).collectAsStateWithLifecycle()
+                    app.truenascompanion.ui.cloud.CloudTaskEditorScreen(
+                        a["id"]?.toIntOrNull(), picked,
+                        onPickConsumed = { entry.savedStateHandle[Routes.PICKED_PATH] = null },
+                        onBrowseLocal = { nav.navigate(Routes.pickFolder(it)) },
+                        onAddCredential = { nav.navigate(Routes.cloudCred(null)) },
+                        onBack = { nav.popBackStack() },
+                    )
+                }
+                pushed(Routes.CLOUD_CRED, "id?") { a ->
+                    app.truenascompanion.ui.cloud.CloudCredentialEditorScreen(a["id"]?.toIntOrNull(), onBack = { nav.popBackStack() })
+                }
+                pushed(Routes.PICK_FOLDER, "path?") { a ->
+                    val start = a["path"]?.takeIf { app.truenascompanion.data.files.FilePolicy.normalize(it)?.startsWith(app.truenascompanion.data.files.FilePolicy.ROOT + "/") == true }
+                    app.truenascompanion.ui.files.FileBrowserScreen(
+                        start ?: app.truenascompanion.data.files.FilePolicy.ROOT, onBack = { nav.popBackStack() },
+                        pickFolder = { path -> nav.previousBackStackEntry?.savedStateHandle?.set(Routes.PICKED_PATH, path); nav.popBackStack() },
                     )
                 }
                 pushed(Routes.SNAPSHOTS, "dataset") { a ->
@@ -460,6 +500,9 @@ private fun NavHostController.openTarget(container: app.truenascompanion.AppCont
         app.truenascompanion.notify.AlertTarget.Apps -> switchTab(Tab.APPS.route)
         app.truenascompanion.notify.AlertTarget.Update -> { switchTab(Tab.SYSTEM.route); navigate(Routes.systemPage(app.truenascompanion.ui.system.SystemPage.UPDATES)) }
         is app.truenascompanion.notify.AlertTarget.Certificate -> { switchTab(Tab.SYSTEM.route); navigate(Routes.certificates(t.name)) }
+        app.truenascompanion.notify.AlertTarget.CloudSync -> {
+            container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.PROTECTION; switchTab(Tab.STORAGE.route); navigate(Routes.CLOUD_SYNC)
+        }
         app.truenascompanion.notify.AlertTarget.Alerts -> switchTab(Tab.ALERTS.route)
     }
 }

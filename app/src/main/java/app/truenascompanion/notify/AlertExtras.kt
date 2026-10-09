@@ -44,6 +44,8 @@ sealed interface AlertTarget {
     data class ReplaceDisk(val pool: String) : AlertTarget {
         override val destination get() = DeepLink.DEST_REPLACE_DISK; override val arg get() = pool; override val label get() = "Replace disk in $pool"
     }
+    /** 1.5.0: Storage › Protection › Cloud sync (failed cloud sync tasks, finished manual runs). */
+    data object CloudSync : AlertTarget { override val destination get() = DeepLink.DEST_CLOUD_SYNC; override val label get() = "Open cloud sync" }
     data object Alerts : AlertTarget { override val destination get() = DeepLink.DEST_ALERTS; override val label get() = "Open alerts" }
 
     companion object {
@@ -71,6 +73,7 @@ sealed interface AlertTarget {
                 k == "EncryptedDataset" || k == "SnapshotTotalCount" -> Dataset(null)
                 k == "HasUpdate" || k == "CurrentlyRunningVersionDoesNotMatchProfile" -> Update
                 k.startsWith("Certificate") || k == "WebUiCertificateSetupFailed" -> Certificate(args.text("name"))
+                k == "CloudSyncTaskFailed" -> CloudSync
                 else -> Alerts
             }
         }
@@ -85,6 +88,7 @@ sealed interface AlertTarget {
             DeepLink.DEST_SNAPSHOTS -> arg?.let { Snapshots(it) } ?: Dataset(null)
             DeepLink.DEST_UPDATE -> Update
             DeepLink.DEST_CERTIFICATE -> Certificate(arg)
+            DeepLink.DEST_CLOUD_SYNC -> CloudSync
             else -> Alerts
         }
     }
