@@ -1,5 +1,9 @@
 package app.truenascompanion.ui.storage
 
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import app.truenascompanion.ui.components.CheckRow
+import app.truenascompanion.ui.components.FullScreenEditor
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -279,44 +283,38 @@ private fun SmbShareDialog(
     var browsable by rememberSaveable { mutableStateOf(existing?.browsable ?: true) }
     val path = StorageApi.pathForDataset(dataset)
     val valid = name.isNotBlank() && dataset.isNotBlank() && !name.any { it in """\/[]:|<>+=;,*?" """ }
+    val initial = remember { listOf(name, dataset, purpose, comment, enabled, readonly, browsable) }
+    val dirty = listOf(name, dataset, purpose, comment, enabled, readonly, browsable) != initial
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (existing == null) "New SMB share" else "Edit SMB share") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = existing == null)
-                OutlinedTextField(dataset, { dataset = it }, label = { Text("Dataset") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Path: $path") })
-                if (datasetPaths.isNotEmpty()) {
-                    Text("Quick pick", style = MaterialTheme.typography.labelMedium)
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        datasetPaths.take(8).forEach { id ->
-                            FilterChip(selected = dataset == id, onClick = { dataset = id; if (name.isBlank()) name = id.substringAfterLast('/') }, label = { Text(id, maxLines = 1) })
-                        }
-                    }
+    FullScreenEditor(
+        title = if (existing == null) "New SMB share" else "Edit SMB share",
+        saveLabel = if (existing == null) "Create" else "Save",
+        canSave = valid, dirty = dirty, onDismiss = onDismiss,
+        onSave = { onConfirm(SmbShareInput(name.trim(), path, purpose, enabled, comment.trim(), readonly, browsable)) },
+    ) {
+        OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = existing == null)
+        OutlinedTextField(dataset, { dataset = it }, label = { Text("Dataset") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Path: $path") })
+        if (datasetPaths.isNotEmpty()) {
+            Text("Quick pick", style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                datasetPaths.take(8).forEach { id ->
+                    FilterChip(selected = dataset == id, onClick = { dataset = id; if (name.isBlank()) name = id.substringAfterLast('/') }, label = { Text(id, maxLines = 1) })
                 }
-                Text("Purpose", style = MaterialTheme.typography.labelMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    StorageApi.SMB_PURPOSES.take(3).forEach { p ->
-                        FilterChip(selected = purpose == p, onClick = { purpose = p }, label = { Text(p.removeSuffix("_SHARE").lowercase().replaceFirstChar { it.uppercase() }) })
-                    }
-                }
-                OutlinedTextField(comment, { comment = it }, label = { Text("Comment") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(enabled, { enabled = it }); Text("Enabled") }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(readonly, { readonly = it }); Text("Read-only") }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(browsable, { browsable = it }); Text("Browsable") }
             }
-        },
-        confirmButton = {
-            GlowButton(
-                onClick = {
-                    onConfirm(SmbShareInput(name.trim(), path, purpose, enabled, comment.trim(), readonly, browsable))
-                },
-                enabled = valid,
-            ) { Text(if (existing == null) "Create" else "Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+        Text("Purpose", style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            StorageApi.SMB_PURPOSES.take(3).forEach { p ->
+                FilterChip(selected = purpose == p, onClick = { purpose = p }, label = { Text(p.removeSuffix("_SHARE").lowercase().replaceFirstChar { it.uppercase() }) })
+            }
+        }
+        OutlinedTextField(comment, { comment = it }, label = { Text("Comment") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        CheckRow("Enabled", enabled, { enabled = it })
+        CheckRow("Read-only", readonly, { readonly = it })
+        CheckRow("Browsable", browsable, { browsable = it })
+    }
 }
 
 @Composable
@@ -334,42 +332,39 @@ private fun NfsShareDialog(
     var readonly by rememberSaveable { mutableStateOf(existing?.readonly ?: false) }
     val path = StorageApi.pathForDataset(dataset)
     val valid = dataset.isNotBlank()
+    val initial = remember { listOf(dataset, comment, networks, hosts, enabled, readonly) }
+    val dirty = listOf(dataset, comment, networks, hosts, enabled, readonly) != initial
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (existing == null) "New NFS share" else "Edit NFS share") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(dataset, { dataset = it }, label = { Text("Dataset") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Path: $path") })
-                if (datasetPaths.isNotEmpty()) {
-                    datasetPaths.take(8).forEach { id ->
-                        FilterChip(selected = dataset == id, onClick = { dataset = id }, label = { Text(id, maxLines = 1) })
-                    }
+    FullScreenEditor(
+        title = if (existing == null) "New NFS share" else "Edit NFS share",
+        saveLabel = if (existing == null) "Create" else "Save",
+        canSave = valid, dirty = dirty, onDismiss = onDismiss,
+        onSave = {
+            onConfirm(
+                NfsShareInput(
+                    path = path,
+                    comment = comment.trim(),
+                    enabled = enabled,
+                    readonly = readonly,
+                    networks = networks.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                    hosts = hosts.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                ),
+            )
+        },
+    ) {
+        OutlinedTextField(dataset, { dataset = it }, label = { Text("Dataset") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Path: $path") })
+        if (datasetPaths.isNotEmpty()) {
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                datasetPaths.take(8).forEach { id ->
+                    FilterChip(selected = dataset == id, onClick = { dataset = id }, label = { Text(id, maxLines = 1) })
                 }
-                OutlinedTextField(networks, { networks = it }, label = { Text("Networks (CIDR, comma-separated)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Empty = all networks") })
-                OutlinedTextField(hosts, { hosts = it }, label = { Text("Hosts (comma-separated)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(comment, { comment = it }, label = { Text("Comment") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(enabled, { enabled = it }); Text("Enabled") }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(readonly, { readonly = it }); Text("Read-only") }
             }
-        },
-        confirmButton = {
-            GlowButton(
-                onClick = {
-                    onConfirm(
-                        NfsShareInput(
-                            path = path,
-                            comment = comment.trim(),
-                            enabled = enabled,
-                            readonly = readonly,
-                            networks = networks.split(',').map { it.trim() }.filter { it.isNotEmpty() },
-                            hosts = hosts.split(',').map { it.trim() }.filter { it.isNotEmpty() },
-                        ),
-                    )
-                },
-                enabled = valid,
-            ) { Text(if (existing == null) "Create" else "Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+        OutlinedTextField(networks, { networks = it }, label = { Text("Networks (CIDR, comma-separated)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Empty = all networks") })
+        OutlinedTextField(hosts, { hosts = it }, label = { Text("Hosts (comma-separated)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(comment, { comment = it }, label = { Text("Comment") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        CheckRow("Enabled", enabled, { enabled = it })
+        CheckRow("Read-only", readonly, { readonly = it })
+    }
 }

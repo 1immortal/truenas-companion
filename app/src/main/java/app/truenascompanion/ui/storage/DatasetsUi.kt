@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.storage
 
+import androidx.compose.ui.semantics.heading
+import app.truenascompanion.ui.components.FullScreenEditor
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -234,65 +236,54 @@ private fun CreateDatasetDialog(
     val valid = child.isNotEmpty() && !child.contains('/') && parent.isNotEmpty() &&
         (!asZvol || (volGiB.toDoubleOrNull()?.let { it > 0 } == true))
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (asZvol) "New ZVOL" else "New dataset") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(parent, { parent = it }, label = { Text("Parent") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Pool or parent dataset") })
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(asZvol, { asZvol = it })
-                    Text("Create as ZVOL (block device)", style = MaterialTheme.typography.bodyMedium)
+    val initial = remember { listOf(parent, name, asZvol, shareType, compression, comments, volGiB, sparse) }
+    val dirty = listOf(parent, name, asZvol, shareType, compression, comments, volGiB, sparse) != initial
+    FullScreenEditor(
+        title = if (asZvol) "New ZVOL" else "New dataset",
+        saveLabel = "Create", canSave = valid, dirty = dirty, onDismiss = onDismiss,
+        onSave = {
+            onConfirm(
+                DatasetCreateRequest(
+                    name = full,
+                    type = if (asZvol) "VOLUME" else "FILESYSTEM",
+                    shareType = shareType,
+                    compression = compression,
+                    comments = comments.trim().ifBlank { null },
+                    volsize = if (asZvol) ((volGiB.toDoubleOrNull() ?: 0.0) * (1L shl 30)).toLong() else null,
+                    sparse = sparse,
+                ),
+            )
+        },
+    ) {
+        OutlinedTextField(parent, { parent = it }, label = { Text("Parent") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Pool or parent dataset") })
+        OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        app.truenascompanion.ui.components.CheckRow("Create as ZVOL (block device)", asZvol, { asZvol = it })
+        if (!asZvol) {
+            Text("Share type", style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                StorageApi.SHARE_TYPES.take(4).forEach { t ->
+                    FilterChip(selected = shareType == t, onClick = { shareType = t }, label = { Text(t) })
                 }
-                if (!asZvol) {
-                    Text("Share type", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        StorageApi.SHARE_TYPES.take(4).forEach { t ->
-                            FilterChip(selected = shareType == t, onClick = { shareType = t }, label = { Text(t) })
-                        }
-                    }
-                } else {
-                    OutlinedTextField(
-                        volGiB, { volGiB = it.filter { c -> c.isDigit() || c == '.' } },
-                        label = { Text("Size (GiB)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(sparse, { sparse = it })
-                        Text("Sparse (thin provision)", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-                Text("Compression", style = MaterialTheme.typography.labelMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("INHERIT", "LZ4", "ZSTD", "OFF").forEach { c ->
-                        FilterChip(selected = compression == c, onClick = { compression = c }, label = { Text(c) })
-                    }
-                }
-                OutlinedTextField(comments, { comments = it }, label = { Text("Comments (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Will create: $full", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        },
-        confirmButton = {
-            GlowButton(
-                onClick = {
-                    onConfirm(
-                        DatasetCreateRequest(
-                            name = full,
-                            type = if (asZvol) "VOLUME" else "FILESYSTEM",
-                            shareType = shareType,
-                            compression = compression,
-                            comments = comments.trim().ifBlank { null },
-                            volsize = if (asZvol) ((volGiB.toDoubleOrNull() ?: 0.0) * (1L shl 30)).toLong() else null,
-                            sparse = sparse,
-                        ),
-                    )
-                },
-                enabled = valid,
-            ) { Text("Create") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        } else {
+            OutlinedTextField(
+                volGiB, { volGiB = it.filter { c -> c.isDigit() || c == '.' } },
+                label = { Text("Size (GiB)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            )
+            app.truenascompanion.ui.components.CheckRow("Sparse (thin provision)", sparse, { sparse = it })
+        }
+        Text("Compression", style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("INHERIT", "LZ4", "ZSTD", "OFF").forEach { c ->
+                FilterChip(selected = compression == c, onClick = { compression = c }, label = { Text(c) })
+            }
+        }
+        OutlinedTextField(comments, { comments = it }, label = { Text("Comments (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text("Will create: $full", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable

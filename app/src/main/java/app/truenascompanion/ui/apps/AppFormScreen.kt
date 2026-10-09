@@ -67,6 +67,8 @@ sealed interface AppFormMode {
 }
 
 data class AppFormUi(
+    /** 1.8.0: the user changed something (unsaved-changes warning on back). */
+    val touched: Boolean = false,
     val loading: Boolean = true,
     val loadError: String? = null,
     val title: String = "",
@@ -137,14 +139,14 @@ class AppFormViewModel(private val c: AppContainer, val mode: AppFormMode) : Vie
 
     fun change(path: ValuePath, value: JsonElement) = _ui.update {
         val v = AppForm.set(it.values, path, value) as JsonObject
-        it.copy(values = v, issues = it.issues - path.display(), submitError = null)
+        it.copy(values = v, issues = it.issues - path.display(), submitError = null, touched = true)
     }
 
-    fun remove(path: ValuePath, index: Int) = _ui.update { it.copy(values = AppForm.removeAt(it.values, path, index) as JsonObject) }
+    fun remove(path: ValuePath, index: Int) = _ui.update { it.copy(values = AppForm.removeAt(it.values, path, index) as JsonObject, touched = true) }
 
-    fun appName(name: String) = _ui.update { it.copy(appName = name.lowercase().trim(), appNameError = null) }
+    fun appName(name: String) = _ui.update { it.copy(appName = name.lowercase().trim(), appNameError = null, touched = true) }
 
-    fun jsonText(text: String) = _ui.update { it.copy(jsonText = text, jsonError = null) }
+    fun jsonText(text: String) = _ui.update { it.copy(jsonText = text, jsonError = null, touched = true) }
 
     fun toggleJson() = _ui.update { s ->
         if (s.jsonOnly) return@update s
@@ -190,11 +192,12 @@ fun AppFormScreen(mode: AppFormMode, onBack: () -> Unit, onDone: (String) -> Uni
     val vm = appViewModel(key = key) { AppFormViewModel(it, mode) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     LaunchedEffect(ui.done) { ui.done?.let(onDone) }
+    val back = app.truenascompanion.ui.components.rememberDiscardGuard(ui.touched && ui.done == null && !ui.submitting, "your changes to this app", onBack)
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (mode is AppFormMode.Install) "Install ${ui.title}" else "Edit ${ui.title}", maxLines = 1) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
                 actions = {
                     if (!ui.loading && ui.loadError == null && !ui.jsonOnly) {
                         IconButton(onClick = vm::toggleJson) {

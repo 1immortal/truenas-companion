@@ -142,11 +142,13 @@ fun SnapshotTaskEditorScreen(id: Int?, onBack: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(vm) { vm.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(vm) { vm.done.collect { onBack() } }
+    val dirty = (state as? UiState.Success)?.data?.initial?.let { it != form } == true && !saving
+    val back = app.truenascompanion.ui.components.rememberDiscardGuard(dirty, "this snapshot task", onBack)
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (id == null) "New snapshot task" else "Edit snapshot task") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
                 actions = { TextButton(onClick = vm::save, enabled = form.valid && !saving && state is UiState.Success) { Text("Save") } },
             )
         },

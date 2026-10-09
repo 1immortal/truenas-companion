@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.dashboard
 
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.remember
@@ -117,7 +119,7 @@ private fun WidgetHeader(type: WidgetType, full: Boolean, trailing: @Composable 
         Text(
             if (full) type.title else type.shortTitle,
             style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).semantics { heading() }, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
         )
         trailing()
     }
@@ -220,15 +222,51 @@ private fun SystemWidget(d: DashboardData, flavor: ApiFlavor?, live: LiveStats) 
         SkeletonBlock(height = 28.dp, widthFraction = 0.6f); Spacer(Modifier.height(8.dp)); SkeletonBlock(widthFraction = 0.8f)
         return
     }
-    FitText(s.hostname, MaterialTheme.typography.headlineSmall, min = 16.sp)
-    Muted(s.version, maxLines = 1)
+    // 1.8.0 (UI review P1-27): the hostname is already the screen title, so this card answers "is my NAS OK?" first.
+    SystemHealthSummary(d)
     Spacer(Modifier.height(10.dp))
+    Text(s.version, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Muted("Up ${Format.uptime(s.uptimeSeconds)}" + (s.cpuModel?.let { " · $it" } ?: ""), maxLines = 1)
+    Spacer(Modifier.height(8.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Tag("Up ${Format.uptime(s.uptimeSeconds)}")
         s.cores?.let { Tag("$it threads") }
         s.physicalMemory?.let { Tag(Format.bytes(it) + " RAM") }
     }
-    s.cpuModel?.let { Spacer(Modifier.height(8.dp)); Muted(it, maxLines = 1) }
+}
+
+/** One line per area with a tone dot: pools, alerts, apps. Missing data is left out. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun SystemHealthSummary(d: DashboardData) {
+    val items = DashboardSummary.items(d)
+    if (items.isEmpty()) return
+    val status = LocalStatusColors.current
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        items.forEach { (health, text) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(status.fillOf(health), androidx.compose.foundation.shape.CircleShape))
+                Spacer(Modifier.width(6.dp))
+                Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Text for [SystemHealthSummary] (pure, unit-tested). */
+internal object DashboardSummary {
+    fun items(d: DashboardData): List<Pair<Health, String>> = buildList {
+        d.pools?.takeIf { it.isNotEmpty() }?.let { pools ->
+            val bad = pools.count { it.health != Health.HEALTHY }
+            add(if (bad == 0) Health.HEALTHY to (if (pools.size == 1) "Pool healthy" else "${pools.size} pools healthy")
+                else pools.maxOf { it.health } to (if (bad == 1) "1 pool needs attention" else "$bad pools need attention"))
+        }
+        d.alerts?.let { a ->
+            add(if (a.active == 0) Health.HEALTHY to "No alerts" else a.worst to (if (a.active == 1) "1 alert" else "${a.active} alerts"))
+        }
+        d.apps?.takeIf { it.total > 0 }?.let { a ->
+            add(if (a.problems > 0) Health.WARNING to "${a.problems} of ${a.total} apps need attention" else Health.HEALTHY to "${a.running} of ${a.total} apps running")
+        }
+    }
 }
 
 @Composable
@@ -421,19 +459,21 @@ private fun PoolsWidget(full: Boolean, d: DashboardData) {
             BigValue("${pools.size}")
             StatusChip(worst, if (worst == Health.HEALTHY) "Healthy" else "Attention")
         }
-        else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            pools.take(4).forEach { p ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(p.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.width(8.dp))
-                    StatusChip(p.health, p.status.lowercase().replaceFirstChar { it.uppercase() })
-                }
-                Spacer(Modifier.height(6.dp))
-                CapacityBar(p.usedFraction)
-                Spacer(Modifier.height(4.dp))
-                Row {
-                    Muted("${Format.bytes(p.allocated)} of ${Format.bytes(p.size)}", Modifier.weight(1f), maxLines = 1)
-                    Text(Format.percent(p.usedFraction * 100.0), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        else -> Column {
+            // 1.8.0 (UI review P1-28): each pool is one tight block (name · % · status, bar, caption); dividers between.
+            pools.take(4).forEachIndexed { i, p ->
+                if (i > 0) androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Column(Modifier.semantics(mergeDescendants = true) {}) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(p.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Format.percent(p.usedFraction * 100.0), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        Spacer(Modifier.width(8.dp))
+                        StatusChip(p.health, p.status.lowercase().replaceFirstChar { it.uppercase() })
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    CapacityBar(p.usedFraction)
+                    Spacer(Modifier.height(4.dp))
+                    Muted("${Format.bytes(p.allocated)} of ${Format.bytes(p.size)}", maxLines = 1)
                 }
             }
             if (pools.size > 4) Muted("+${pools.size - 4} more")

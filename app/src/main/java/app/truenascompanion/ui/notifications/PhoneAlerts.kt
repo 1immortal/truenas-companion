@@ -260,8 +260,7 @@ fun PhoneAlertsSection(
                 server == null -> "Add a server first"
                 enabled -> "On for ${server.name}. You'll be notified about new alerts."
                 else -> "Get a notification when ${server.name} raises an alert"
-            },
-        ) { Switch(checked = enabled, onCheckedChange = onToggle, enabled = server != null) }
+            }, checked = enabled, onCheckedChange = onToggle, enabled = server != null)
 
         if (enabled && !canNotify) {
             Spacer(Modifier.height(12.dp))
@@ -299,8 +298,7 @@ fun PhoneAlertsSection(
                 SettingRow(
                     Icons.Rounded.Bolt, "Instant alerts",
                     if (prefs.instant) "Live connection is open. Uses more battery; a silent notification shows while it's on."
-                    else "Get alerts within seconds instead of every ${intervalLabel(prefs.intervalMinutes)}. Keeps a live connection open, which uses more battery.",
-                ) { Switch(checked = prefs.instant, onCheckedChange = { on -> onUpdate { it.copy(instant = on) } }) }
+                    else "Get alerts within seconds instead of every ${intervalLabel(prefs.intervalMinutes)}. Keeps a live connection open, which uses more battery.", checked = prefs.instant, onCheckedChange = { on -> onUpdate { it.copy(instant = on) } })
                 if (!batteryOk) {
                     Spacer(Modifier.height(12.dp))
                     Hint(
@@ -312,15 +310,12 @@ fun PhoneAlertsSection(
                     )
                 }
                 Divider()
-                SettingRow(Icons.Rounded.CheckCircle, "Notify when an alert clears") {
-                    Switch(checked = prefs.notifyOnClear, onCheckedChange = { on -> onUpdate { it.copy(notifyOnClear = on) } })
-                }
+                SettingRow(Icons.Rounded.CheckCircle, "Notify when an alert clears", checked = prefs.notifyOnClear, onCheckedChange = { on -> onUpdate { it.copy(notifyOnClear = on) } })
                 Divider()
                 SettingRow(
                     Icons.Rounded.VerifiedUser, "Certificate expiry",
                     if (prefs.certWarnEnabled) "Warns ${prefs.certWarnDays} days before a certificate expires. Checked during the alert checks, at most twice a day."
-                    else "Off",
-                ) { Switch(checked = prefs.certWarnEnabled, onCheckedChange = { on -> onUpdate { it.copy(certWarnEnabled = on) } }) }
+                    else "Off", checked = prefs.certWarnEnabled, onCheckedChange = { on -> onUpdate { it.copy(certWarnEnabled = on) } })
                 AnimatedVisibility(visible = prefs.certWarnEnabled) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 10.dp)) {
                         NotificationPrefs.CERT_WARN_DAYS.forEachIndexed { i, d ->
@@ -334,9 +329,7 @@ fun PhoneAlertsSection(
                     }
                 }
                 Divider()
-                SettingRow(Icons.Rounded.Bedtime, "Quiet hours", "Only Critical and more severe alerts come through") {
-                    Switch(checked = prefs.quietEnabled, onCheckedChange = { on -> onUpdate { it.copy(quietEnabled = on) } })
-                }
+                SettingRow(Icons.Rounded.Bedtime, "Quiet hours", "Only Critical and more severe alerts come through", checked = prefs.quietEnabled, onCheckedChange = { on -> onUpdate { it.copy(quietEnabled = on) } })
                 AnimatedVisibility(visible = prefs.quietEnabled) {
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         TimeButton("From", prefs.quietStart, Modifier.weight(1f)) { pickTime = "start" }

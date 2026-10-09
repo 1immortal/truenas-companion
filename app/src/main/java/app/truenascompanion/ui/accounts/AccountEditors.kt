@@ -49,45 +49,16 @@ object AccountValidation {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditorScaffold(title: String, canSave: Boolean, readOnly: Boolean, onDismiss: () -> Unit, onSave: () -> Unit, inline: Boolean, content: @Composable ColumnScope.() -> Unit) {
-    if (inline) EditorBody(title, canSave, readOnly, onDismiss, onSave, content)
-    else Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        EditorBody(title, canSave, readOnly, onDismiss, onSave, content)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EditorBody(title: String, canSave: Boolean, readOnly: Boolean, onDismiss: () -> Unit, onSave: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    run {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(title) },
-                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") } },
-                    actions = { if (!readOnly) TextButton(onClick = onSave, enabled = canSave) { Text("Save") } },
-                )
-            },
-            modifier = Modifier.fillMaxSize(),
-        ) { padding ->
-            Column(
-                Modifier.padding(padding).imePadding().fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp), content = content,
-            )
-        }
-    }
+private fun EditorScaffold(title: String, canSave: Boolean, readOnly: Boolean, onDismiss: () -> Unit, onSave: () -> Unit, inline: Boolean, dirty: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    // 1.8.0: the shared full-screen editor (filled Save, unsaved-changes warning on close/back).
+    val save = if (readOnly) null else "Save"
+    if (inline) app.truenascompanion.ui.components.FullScreenEditorBody(title, save, canSave, dirty && !readOnly, onSave, onDismiss, content)
+    else app.truenascompanion.ui.components.FullScreenEditor(title, save, canSave, dirty && !readOnly, onSave, onDismiss, content)
 }
 
 @Composable
-private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked, onCheckedChange = onChange, enabled = enabled)
-    }
-}
+private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) =
+    app.truenascompanion.ui.components.SwitchRow(title, checked, onChange, supporting = subtitle, enabled = enabled)
 
 @Composable
 private fun PasswordField(value: String, onChange: (String) -> Unit, label: String, enabled: Boolean = true, error: String? = null) {
@@ -152,9 +123,11 @@ fun UserEditorDialog(user: NasUser?, data: AccountsData, onDismiss: () -> Unit, 
         (!creating || passwordDisabled || AccountValidation.password(password, confirm) == null) &&
         (creating && groupCreate || primary != null) && fullName.isNotBlank()
 
+    val form = listOf(username, fullName, email, password, confirm, passwordDisabled, groupCreate, primary, extra, home, homeCreate, shell, keys, smb, sshPassword, locked)
+    val initialForm = remember { form }
     EditorScaffold(
         title = when { creating -> "New user"; readOnly -> user.username; else -> "Edit ${user.username}" },
-        canSave = canSave, readOnly = readOnly, onDismiss = onDismiss, inline = inline,
+        canSave = canSave, readOnly = readOnly, onDismiss = onDismiss, inline = inline, dirty = form != initialForm && confirmSave == null,
         onSave = {
             confirmSave = UserInput(
                 username = username.trim(), fullName = fullName.trim(), email = email.trim().ifEmpty { null },
@@ -246,9 +219,11 @@ fun GroupEditorDialog(group: NasGroup?, users: List<NasUser>, onDismiss: () -> U
     val gidError = if (gid.isNotBlank() && (gidValue == null || gidValue < 0)) "A number" else null
     val canSave = !readOnly && AccountValidation.groupName(name) == null && gidError == null
 
+    val form = listOf(name, gid, smb, members)
+    val initialForm = remember { form }
     EditorScaffold(
         title = when { creating -> "New group"; readOnly -> group.name; else -> "Edit ${group.name}" },
-        canSave = canSave, readOnly = readOnly, onDismiss = onDismiss, inline = inline,
+        canSave = canSave, readOnly = readOnly, onDismiss = onDismiss, inline = inline, dirty = form != initialForm && confirmSave == null,
         onSave = { confirmSave = GroupInput(name.trim(), if (creating) gidValue else null, smb, members.toList().sorted()) },
     ) {
         if (readOnly) InfoBanner("Built-in groups are managed by TrueNAS and shown read-only.")

@@ -277,12 +277,8 @@ fun VmCreateContent(ui: VmCreateUi, onChange: ((VmFormState) -> VmFormState) -> 
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) =
+    app.truenascompanion.ui.components.SwitchRow(label, checked, onChange)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

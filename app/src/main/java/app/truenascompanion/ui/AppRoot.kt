@@ -1,5 +1,7 @@
 package app.truenascompanion.ui
 
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import app.truenascompanion.ui.components.glow
@@ -170,6 +172,9 @@ private object Routes {
     fun logs(name: String, container: String?) = "app/${enc(name)}/logs" + (container?.let { "?container=${enc(it)}" } ?: "")
 }
 
+/** Widest a screen gets (tablets, landscape); the rest is page background. */
+internal val MAX_CONTENT_WIDTH = 840.dp
+
 @Composable
 fun AppRoot() {
     val container = (LocalContext.current.applicationContext as TrueNasApp).container
@@ -250,8 +255,10 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
             onActiveChange = { overlayActive = it },
             onSwitchServer = if (list.size > 1) ({ nav.navigate(Routes.SERVERS) }) else null,
         ) {
-        Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
+        // 1.8.0 (UI review P2-17): on tablets and in landscape, screens stay at a readable width, centred.
+        Box(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             NavHost(
+                modifier = Modifier.widthIn(max = MAX_CONTENT_WIDTH).fillMaxSize(),
                 navController = nav,
                 startDestination = Tab.DASHBOARD.route,
                 enterTransition = { fadeIn() },
@@ -270,6 +277,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                             }
                         },
                         onServers = { nav.navigate(Routes.SERVERS) },
+                        onConnection = { nav.navigate(Routes.systemPage(app.truenascompanion.ui.system.SystemPage.CONNECTION)) },
                     )
                 }
                 composable(Tab.STORAGE.route) {
@@ -459,7 +467,10 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 pushed(Routes.SYSTEM_PAGE, "page") { a ->
                     val page = app.truenascompanion.ui.system.SystemPage.parse(a["page"])
                     if (page == null) LaunchedEffect(Unit) { nav.popBackStack() }
-                    else app.truenascompanion.ui.system.SystemPageScreen(page, onBack = { nav.popBackStack() })
+                    else app.truenascompanion.ui.system.SystemPageScreen(
+                        page, onBack = { nav.popBackStack() },
+                        onEditServer = { nav.navigate(Routes.edit(it)) }, onVpn = { nav.navigate(Routes.vpn(it)) },
+                    )
                 }
                 pushed(Routes.SERVICES) {
                     app.truenascompanion.ui.services.ServicesScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.service(it)) })

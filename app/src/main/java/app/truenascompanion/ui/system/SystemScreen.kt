@@ -1,5 +1,10 @@
 package app.truenascompanion.ui.system
 
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.VpnKey
+import androidx.compose.material.icons.rounded.Dns
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Search
@@ -310,7 +315,7 @@ fun SystemScreen(
 /** A settings page opened from the hub. Pushed on top of the System tab, so the connection overlay still covers it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemPageScreen(page: SystemPage, onBack: () -> Unit) {
+fun SystemPageScreen(page: SystemPage, onBack: () -> Unit, onEditServer: (String) -> Unit = {}, onVpn: (String) -> Unit = {}) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -352,7 +357,19 @@ fun SystemPageScreen(page: SystemPage, onBack: () -> Unit) {
                 }
                 SystemPage.ALERTS -> item { app.truenascompanion.ui.notifications.PhoneAlertsSettings(server, say) }
                 SystemPage.SECURITY -> item { app.truenascompanion.ui.lock.SecuritySettings(say) }
-                SystemPage.CONNECTION -> item { ConnectionTimeoutSection(giveUpMs = giveUpMs, onSelect = vm::setConnectionGiveUp) }
+                SystemPage.CONNECTION -> {
+                    // 1.8.0 (UX review P1-1): one Connection page — addresses, auto-switch, VPN/Tailscale and the retry timeout.
+                    val container = (context.applicationContext as app.truenascompanion.TrueNasApp).container
+                    server?.let { s ->
+                        item { SectionTitle("This server") }
+                        item {
+                            val routes by container.routes.lastRoute.collectAsStateWithLifecycle()
+                            ServerConnectionCard(s, routes[s.id], onAddresses = { onEditServer(s.id) }, onVpn = { onVpn(s.id) })
+                        }
+                    }
+                    item { SectionTitle("Retry timeout") }
+                    item { ConnectionTimeoutSection(giveUpMs = giveUpMs, onSelect = vm::setConnectionGiveUp) }
+                }
                 SystemPage.APPEARANCE -> item { AppearanceSection(appearance, onTheme = vm::setTheme, onDynamic = vm::setDynamic) }
                 SystemPage.ABOUT -> item {
                     AboutSection(
@@ -413,9 +430,7 @@ fun AppearanceSection(appearance: AppearanceSettings, onTheme: (ThemeMode) -> Un
             }
         }
         Spacer(Modifier.height(12.dp))
-        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the YTN theme (Android 12+)") {
-            Switch(checked = appearance.dynamicColor, onCheckedChange = onDynamic)
-        }
+        SettingRow(Icons.Rounded.Palette, "Dynamic color", "Use your wallpaper colors instead of the YTN theme (Android 12+)", checked = appearance.dynamicColor, onCheckedChange = onDynamic)
     }
 }
 
@@ -445,6 +460,46 @@ fun AboutSection(versionName: String, onOpenWebUi: (() -> Unit)?, updates: @Comp
 }
 
 @OptIn(ExperimentalLayoutApi::class)
+/** Addresses and remote access of the active server, with links to edit them (1.8.0). */
+@Composable
+fun ServerConnectionCard(
+    server: app.truenascompanion.data.model.ServerConfig,
+    route: app.truenascompanion.data.model.Route?,
+    onAddresses: () -> Unit,
+    onVpn: () -> Unit,
+) {
+    ElevatedSection(contentPadding = 0.dp) {
+        LinkRow(
+            Icons.Rounded.Dns, "Addresses & auto-switch",
+            buildString {
+                append(server.localUrl?.let { "Home: $it · " } ?: "")
+                append("Remote: ${server.url}")
+                append(" · ${server.routeMode.label}")
+                route?.let { append(" · now ${it.label}") }
+            },
+            onAddresses,
+        )
+        androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        LinkRow(Icons.Rounded.VpnKey, "VPN & remote access", "Built-in WireGuard tunnel and Tailscale", onVpn)
+    }
+}
+
+@Composable
+private fun LinkRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconBadge(icon, size = 36.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 fun ConnectionTimeoutSection(giveUpMs: Long, onSelect: (Long) -> Unit) {
     ElevatedSection {
@@ -471,14 +526,30 @@ fun ConnectionTimeoutSection(giveUpMs: Long, onSelect: (Long) -> Unit) {
 
 /** Icon + title (+ subtitle) row with the icon centered on the first line of text, optional trailing control. */
 @Composable
-fun SettingRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
+fun SettingRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String? = null,
+    /** 1.8.0: a switch row — the whole row toggles and TalkBack reads it as one control. */
+    checked: Boolean? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val toggle = if (checked != null && onCheckedChange != null)
+        Modifier.toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onCheckedChange)
+    else Modifier
     // Multi-line rows align the icon with the title line instead of floating in the middle of the text block.
-    Row(verticalAlignment = if (subtitle == null) Alignment.CenterVertically else Alignment.Top) {
+    Row(toggle, verticalAlignment = if (subtitle == null) Alignment.CenterVertically else Alignment.Top) {
         IconBadge(icon, size = 36.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f).padding(top = if (subtitle == null) 0.dp else 6.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        if (checked != null) {
+            Spacer(Modifier.width(12.dp))
+            Box(Modifier.align(Alignment.CenterVertically)) { Switch(checked = checked, onCheckedChange = null, enabled = enabled) }
         }
         trailing?.let { Spacer(Modifier.width(12.dp)); Box(Modifier.align(Alignment.CenterVertically)) { it() } }
     }

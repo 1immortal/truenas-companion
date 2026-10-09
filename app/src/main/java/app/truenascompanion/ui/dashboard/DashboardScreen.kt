@@ -1,5 +1,8 @@
 package app.truenascompanion.ui.dashboard
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import app.truenascompanion.ui.components.Tag
 import app.truenascompanion.ui.theme.LocalStatusColors
 import app.truenascompanion.ui.theme.LocalBrandColors
@@ -86,7 +89,7 @@ import sh.calvin.reorderable.rememberReorderableLazyGridState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
+fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit, onConnection: () -> Unit = {}) {
     val vm = appViewModel { DashboardViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -116,7 +119,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
                     else {
                         val (label, health) = connectionLabel(connection, live.latest != null)
                         DashboardTitle(data.system?.hostname ?: server?.name ?: "Dashboard", label, health, live.latest != null,
-                            route.takeIf { connection is ConnectionState.Connected })
+                            route.takeIf { connection is ConnectionState.Connected }, onRoute = onConnection)
                     }
                 },
                 actions = {
@@ -185,17 +188,26 @@ fun Modifier.dashboardHeaderGlow(): Modifier {
 }
 
 @Composable
-fun DashboardTitle(title: String, label: String, health: Health, live: Boolean, route: app.truenascompanion.data.model.Route? = null) {
-    Column {
-        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+fun DashboardTitle(title: String, label: String, health: Health, live: Boolean, route: app.truenascompanion.data.model.Route? = null, onRoute: (() -> Unit)? = null) {
+    // 1.8.0 (200 % font): the two-line title grows to at most 1.3x so it stays inside the 64 dp bar.
+    Column(Modifier.semantics(mergeDescendants = true) { heading() }) {
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = app.truenascompanion.ui.cappedSp(20f, 1.3f))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (live) { LiveDot(); Spacer(Modifier.width(4.dp)) }
             else {
                 Box(Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape).background(LocalStatusColors.current.of(health)))
                 Spacer(Modifier.width(6.dp))
             }
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            route?.let { Spacer(Modifier.width(8.dp)); app.truenascompanion.ui.components.RouteChip(it) }
+            Text(label, style = MaterialTheme.typography.labelMedium.copy(fontSize = app.truenascompanion.ui.cappedSp(12f, 1.3f)), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            route?.let {
+                Spacer(Modifier.width(8.dp))
+                // Tapping the route ("Local", "Tailscale"…) opens the Connection page (UX review P1-1).
+                app.truenascompanion.ui.components.RouteChip(
+                    it,
+                    if (onRoute != null) Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .clickable(onClickLabel = "Connection settings", onClick = onRoute) else Modifier,
+                )
+            }
         }
     }
 }

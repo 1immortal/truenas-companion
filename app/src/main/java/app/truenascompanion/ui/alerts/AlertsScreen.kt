@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.alerts
 
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.Visibility
 import kotlinx.coroutines.flow.first
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material3.IconButton
@@ -198,6 +200,10 @@ fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}, onPhoneAlertSettings:
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Alerts") }, actions = {
+            // 1.8.0 (UI review P1-15): the dismissed filter lives in the bar, so an empty list shows only "All clear".
+            androidx.compose.material3.IconToggleButton(checked = showDismissed, onCheckedChange = { showDismissed = it }) {
+                Icon(if (showDismissed) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, contentDescription = "Show dismissed alerts")
+            }
             // 1.8.0 (UX review): phone-alert settings are one tap away from the alert list.
             IconButton(onClick = onPhoneAlertSettings) { Icon(Icons.Rounded.NotificationsActive, contentDescription = "Phone alert settings") }
         })
@@ -213,11 +219,11 @@ fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}, onPhoneAlertSettings:
                         if (showPrompt) item(key = "phone-alerts-prompt") {
                             PhoneAlertsPromptCard(server?.name ?: "your NAS", onEnable = enableAlerts, onDismiss = { vm.dismissPrompt() }, modifier = Modifier.animateItem())
                         }
-                        item {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${active.size} active", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f).padding(start = 4.dp))
-                                FilterChip(selected = showDismissed, onClick = { showDismissed = !showDismissed }, label = { Text("Show dismissed") })
-                            }
+                        if (list.isNotEmpty()) item {
+                            Text(
+                                if (showDismissed) "${active.size} active · ${s.data.size - active.size} dismissed" else "${active.size} active",
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp),
+                            )
                         }
                         if (list.isEmpty()) item {
                             EmptyState(Icons.Rounded.DoneAll, "All clear", "No active alerts. Your NAS is happy.")

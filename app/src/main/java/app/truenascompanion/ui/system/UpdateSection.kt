@@ -202,9 +202,7 @@ fun AppUpdateContent(
             }
         }
         UpdateChannelRow(channel = channel, onSelect = onChannel)
-        SettingRow(Icons.Rounded.SystemUpdate, "Check for updates daily", "Asks GitHub once a day and notifies you about new versions. Nothing else is sent.") {
-            Switch(checked = auto, onCheckedChange = onAutoCheck)
-        }
+        SettingRow(Icons.Rounded.SystemUpdate, "Check for updates daily", "Asks GitHub once a day and notifies you about new versions. Nothing else is sent.", checked = auto, onCheckedChange = onAutoCheck)
     }
 }
 

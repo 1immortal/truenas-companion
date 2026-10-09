@@ -104,6 +104,8 @@ data class ServerEditState(
             AuthMethod.API_KEY -> apiKey.isNotBlank() || hasSavedKey
             AuthMethod.PASSWORD -> username.isNotBlank() && (password.isNotEmpty() || hasSavedPassword)
         }
+    /** The fields the user edits (1.8.0: compared with the loaded server for the unsaved-changes warning). */
+    val formKey: List<Any?> get() = listOf(name, url, authMethod, apiKey, username, password, rememberPassword, sessionDays, localUrl, routeMode)
     val canSave: Boolean
         get() = normalizedUrl != null && when (authMethod) {
             AuthMethod.API_KEY -> apiKey.isNotBlank() || hasSavedKey
@@ -121,6 +123,9 @@ sealed interface LocalStatus {
 class ServerEditViewModel(private val c: AppContainer, serverId: String?) : ViewModel() {
     private val _state = MutableStateFlow(ServerEditState())
     val state: StateFlow<ServerEditState> = _state.asStateFlow()
+    /** Form fields as loaded; [ServerEditState.formKey] differs from this once the user changed something. */
+    var baseline: List<Any?> = ServerEditState().formKey
+        private set
 
     private var pendingOtp: PendingOtp? = null
     /** Session token obtained by a successful password test; saved with the server so no second 2FA prompt is needed. */
@@ -139,6 +144,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
                 localUrl = s.localUrl.orEmpty(), localPinnedCert = s.localPinnedCertSha256, routeMode = s.routeMode,
                 certReviewRequired = s.certReviewRequired,
             )
+            baseline = _state.value.formKey
         }
     }
 

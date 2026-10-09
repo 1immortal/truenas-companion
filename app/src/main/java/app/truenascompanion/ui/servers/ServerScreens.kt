@@ -177,12 +177,14 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
     val currentRoute = serverId?.let { routes[it] }
 
     LaunchedEffect(s.saved) { if (s.saved) onDone() }
+    // 1.8.0: leaving with unsaved edits asks first (first-run setup has no back target, so nothing to guard).
+    val back = onBack?.let { b -> app.truenascompanion.ui.components.rememberDiscardGuard(!s.saved && s.formKey != vm.baseline, "the server settings", b) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (serverId == null) "Connect to TrueNAS" else "Edit server") },
-                navigationIcon = { onBack?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } } },
+                navigationIcon = { back?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } } },
             )
         },
     ) { padding ->

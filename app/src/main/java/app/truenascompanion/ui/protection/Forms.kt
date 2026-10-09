@@ -36,16 +36,8 @@ import app.truenascompanion.data.protection.SchedulePreset
 import app.truenascompanion.data.protection.Schedules
 
 @Composable
-internal fun SwitchRow(label: String, checked: Boolean, supporting: String? = null, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            supporting?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
+internal fun SwitchRow(label: String, checked: Boolean, supporting: String? = null, onChange: (Boolean) -> Unit) =
+    app.truenascompanion.ui.components.SwitchRow(label, checked, onChange, supporting = supporting)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -50,8 +50,8 @@ sealed class TrueNasException(message: String, cause: Throwable? = null) : Excep
 }
 
 const val INSECURE_ADDRESS_MESSAGE =
-    "This address uses http://, which isn't encrypted. To protect your password, API key and sessions, TrueNAS " +
-        "Companion only signs in over HTTPS. Edit the server and use its https:// address (a self-signed certificate is fine: " +
+    "This address uses http://, which isn't encrypted. To protect your password, API key and sessions, YTN " +
+        "only signs in over HTTPS. Edit the server and use its https:// address (a self-signed certificate is fine: " +
         "you'll be asked to trust it once)."
 
 /** One middleware validation error: [attribute] is the dotted path (`smb_update.netbiosname`, `data.tcpport`). */
@@ -97,8 +97,35 @@ fun mapNetworkError(t: Throwable, certificate: () -> CertificateInfo?): TrueNasE
 
 fun Throwable.userMessage(): String = when (this) {
     is TrueNasException.AuthFailed -> message ?: "API key rejected."
-    is TrueNasException -> message ?: "Unknown error"
-    else -> message ?: javaClass.simpleName
+    // 1.8.0 (UX review: friendly errors): middleware errors lose their "[EINVAL]" tag and Python tracebacks, and
+    // well-known error codes get a plain sentence when the NAS sends no text.
+    is TrueNasException.Rpc -> friendlyNasText(message) ?: friendlyErrname(errname) ?: "TrueNAS couldn't do that (error $code)."
+    is TrueNasException.JobFailed -> friendlyNasText(message) ?: "The task failed on the NAS."
+    is TrueNasException -> message?.takeIf { it.isNotBlank() } ?: "Something went wrong."
+    is kotlinx.serialization.SerializationException ->
+        "The NAS sent an answer this version of YTN doesn't understand. Check for app updates, or report it on GitHub."
+    is java.io.IOException -> mapNetworkError(this) { null }.message ?: "Network error."
+    else -> message?.takeIf { it.isNotBlank() } ?: "Something went wrong (${javaClass.simpleName})."
+}
+
+/** "[EINVAL] ssh_update.tcpport: Port is in use\nTraceback…" → "Port is in use" (keeps plain text as is). */
+internal fun friendlyNasText(raw: String?): String? {
+    val firstLine = raw?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: return null
+    val noTag = firstLine.replace(Regex("^\\[E[A-Z0-9_]+]\\s*"), "")
+    // "method.argument.field: message" → "message"
+    val noPath = noTag.replace(Regex("^[a-z0-9_]+(\\.[a-z0-9_]+)+:\\s+"), "")
+    val text = noPath.takeIf { it.isNotBlank() } ?: return null
+    return if (noPath != firstLine) text.replaceFirstChar { it.uppercase() } else text
+}
+
+internal fun friendlyErrname(errname: String?): String? = when (errname?.uppercase()) {
+    "ENOENT" -> "It no longer exists on the NAS. Refresh and try again."
+    "EEXIST" -> "Something with that name already exists."
+    "EPERM", "EACCES" -> "Your account isn't allowed to do that on the NAS."
+    "EBUSY" -> "It's busy right now. Try again in a moment."
+    "EINVAL" -> "TrueNAS didn't accept one of the values."
+    "ETIMEDOUT" -> "The NAS took too long to answer."
+    else -> null
 }
 
 /** Shown when TrueNAS answers `false` / 401 to an API key. */

@@ -312,8 +312,7 @@ fun SecuritySection(
                 !ready && !settings.enabled -> "Needs a screen lock (PIN, pattern or password) on this phone"
                 settings.enabled -> "Fingerprint, face or screen lock is needed to open the app"
                 else -> "Ask for your fingerprint, face or screen lock when opening the app"
-            },
-        ) { Switch(checked = settings.enabled, onCheckedChange = onToggle, enabled = ready || settings.enabled) }
+            }, checked = settings.enabled, onCheckedChange = onToggle, enabled = ready || settings.enabled)
 
         if (!ready && !settings.enabled) {
             Spacer(Modifier.height(12.dp))
@@ -335,15 +334,12 @@ fun SecuritySection(
                     RelockPicker(settings.relock, onRelock)
                 }
                 SectionDivider()
-                SettingRow(Icons.Rounded.VerifiedUser, "Confirm dangerous actions", "Ask again before shutdown, reboot, deleting or powering off") {
-                    Switch(checked = settings.confirmDangerous, onCheckedChange = onConfirmDangerous)
-                }
+                SettingRow(Icons.Rounded.VerifiedUser, "Confirm dangerous actions", "Ask again before shutdown, reboot, deleting or powering off", checked = settings.confirmDangerous, onCheckedChange = onConfirmDangerous)
                 SectionDivider()
                 SettingRow(
                     Icons.Rounded.PrivacyTip, "Hide in recent apps",
                     if (Build.VERSION.SDK_INT >= 33) "Blank preview in the app switcher"
-                    else "Blank preview in the app switcher. This also blocks screenshots on this Android version.",
-                ) { Switch(checked = settings.privacyScreen, onCheckedChange = onPrivacy) }
+                    else "Blank preview in the app switcher. This also blocks screenshots on this Android version.", checked = settings.privacyScreen, onCheckedChange = onPrivacy)
             }
         }
     }
