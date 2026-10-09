@@ -51,6 +51,7 @@
 - 🛟 **Keep your data safe**: snapshots, scrubs, SMART tests, replication to another NAS and cloud sync, with a clear "when did this last run" overview.
 - 🧩 **Manage apps, VMs and containers**: install and update apps, read logs, start and stop VMs, open a terminal.
 - ⚙️ **Handle the everyday chores**: services, scheduled tasks, users and groups, certificates, updates, reboot and shut down.
+- 🌐 **Check your network settings**: interfaces, addresses, gateways, DNS and routes at a glance, view only, so nothing on your phone can cut your NAS off the network.
 - 🏠 **Works at home and away**: uses your home address on your Wi-Fi and your remote address everywhere else, with an optional built-in VPN (WireGuard or Tailscale) so your NAS doesn't have to be open to the internet.
 - 🔒 **Private and secure**: sign in with your TrueNAS account (with two-factor codes), lock the app with your fingerprint, and everything stays encrypted on your phone.
 - 🎨 **Looks at home on your phone**: light and dark themes, colours from your wallpaper, a themed icon, large-font and TalkBack friendly.

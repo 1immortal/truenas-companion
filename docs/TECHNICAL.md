@@ -11,6 +11,23 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - **Release asset names stay `truenas-companion-release.apk` and `truenas-companion-debug.apk`** (each with a `.sha256` file). Older updaters look for exactly these names in the latest release; renaming them to `ytn-*.apk` would leave every 1.7.x install stuck. They will keep these names.
 - **Trademark.** YTN is an independent project, not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc.
 
+## What's new in 1.9.0
+
+- **Network settings, view only** (`data/api/NetworkApi.kt`, `ui/network/`). System › Network (Server group) reads, and only reads, the TrueNAS 25.10 network configuration. Methods and fields were checked against the 25.10 middleware source (`api/v25_10_0/network_configuration.py`, `interface.py`, `static_route.py`, `dns.py`, `ipmi_lan.py`; `plugins/network.py`, `plugins/network_/`, `plugins/ipmi_/lan.py`):
+
+  | Method | Shows | Role |
+  |---|---|---|
+  | `network.configuration.config` | hostname, domain, additional domains, IPv4/IPv6 gateway, name servers 1–3, hosts, HTTP proxy, service announcement; `state` for what's in use now | NETWORK_GENERAL_READ |
+  | `interface.query` | name, type, description, `state.link_state`, MTU, DHCP / IPv6 auto, saved `aliases` and live `state.aliases` (without the `LINK`/MAC entry), `state.link_address`, speed from `state.active_media_subtype`, LAG protocol/ports (with live port flags), hash policy, LACPDU rate, VLAN parent/tag/PCP, bridge members, `fake` (saved but not on the system) | NETWORK_INTERFACE_READ |
+  | `staticroute.query`, `dns.query` (the resolv.conf name servers) | static routes, name servers in use | NETWORK_INTERFACE_READ |
+  | `interface.has_pending_changes`, `interface.checkin_waiting` | unfinished or under-test changes (red banner) | NETWORK_INTERFACE_WRITE, although they only read in-memory state; a read-only account sees a short note instead |
+  | `ipmi.lan.query` | IPMI address, source, gateway, MAC, VLAN (loaded after the rest, it runs `ipmi-config --checkout`) | IPMI_READ |
+
+  Live per-interface traffic comes from the `reporting.realtime` subscription the dashboard already uses (`interfaces.<name>.received_bytes_rate` / `sent_bytes_rate` / `speed`); charts stay in Reports, linked from the page.
+- **Guaranteed read-only.** Every call goes through `NetworkApi.read()`, which refuses methods outside `NetworkApi.READ_METHODS`. `V190NetworkTest` calls every public `NetworkApi` method against a recording fake NAS and fails on any method outside the allow list or anything that looks like create/update/delete/commit/rollback/checkin; it also scans the network sources for other method names and the whole app for network-changing methods (in the spirit of `NoRestAuthTest`). The UI has no text fields, switches or save buttons (also tested).
+- **The warning.** A warning card that can't be dismissed sits above the content on the Network page and every interface page (outside the scrolling list, so it's visible while loading and on errors too). It's one TalkBack item, ordered first, starting with "Warning. View only.". `ScreenScaffold` got a `header` slot for it.
+- **Copying.** Long-press a value to copy it (TalkBack: the row's *Copy* action); rows have no tap action, so nothing looks editable.
+
 ## What's new in 1.8.1
 
 - **Undo.** Dismissing an alert, snoozing an alert and removing a server show a snackbar with *Undo* for 6 seconds, or 12 seconds (or Android's recommended timeout, if longer) while TalkBack or another accessibility service is on. Snackbars are polite live regions, so TalkBack reads them.

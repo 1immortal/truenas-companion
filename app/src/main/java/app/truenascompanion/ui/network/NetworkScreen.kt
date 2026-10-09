@@ -207,12 +207,13 @@ fun NetworkContent(
             modifier = Modifier.fillMaxSize().testTag("network_list"),
         ) {
             if (data.pending.needsAttention) item(key = "pending") { PendingChangesBanner(data.pending) }
-            item(key = "general") { GeneralSection(data.global) }
-            item(key = "dns") { GatewaysDnsSection(data.global, data.resolvers) }
-            item(key = "other") { OtherSection(data.global) }
+            // Interfaces first: what people look for most (addresses, link, speed). Tap one for its details.
             item(key = "if_title") { SectionTitle("Interfaces") }
             if (data.interfaces.isEmpty()) item(key = "if_none") { MutedText("The NAS reported no network interfaces.") }
             items(data.interfaces, key = { "if_" + it.name }) { InterfaceCard(it, rates[it.name]) { onOpenInterface(it) } }
+            item(key = "dns") { GatewaysDnsSection(data.global, data.resolvers) }
+            item(key = "general") { GeneralSection(data.global) }
+            item(key = "other") { OtherSection(data.global) }
             item(key = "routes") { RoutesSection(data.staticRoutes) }
             if (ipmi.isNotEmpty()) item(key = "ipmi") { IpmiSection(ipmi) }
             if (data.pending.unknown) item(key = "pending_unknown") {
@@ -247,7 +248,8 @@ fun ValueRow(label: String, value: String, modifier: Modifier = Modifier, copy: 
     val m = if (copy == null) modifier else modifier
         .pointerInput(copy) { detectTapGestures(onLongPress = { onCopy(label, copy) }) }
         .semantics { onLongClick(label = "Copy") { onCopy(label, copy); true } }
-    Column(m.fillMaxWidth().padding(vertical = 6.dp)) {
+    // One TalkBack item per row: "Hostname, truenas.home.example.com", with "Copy" as its long-press action.
+    Column(m.semantics(mergeDescendants = true) { }.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value.ifBlank { NOT_SET }, style = MaterialTheme.typography.bodyLarge, color = if (value.isBlank() || value == NOT_SET) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
     }
@@ -265,9 +267,9 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 /** "Configured" vs "in use": shows what the NAS uses now when it differs (e.g. a gateway from DHCP). */
-fun gatewayText(configured: String, current: String): String = when {
+fun gatewayText(configured: String, current: String, automatic: String = "from DHCP"): String = when {
     configured.isBlank() && current.isBlank() -> NOT_SET
-    configured.isBlank() -> "$current (from DHCP)"
+    configured.isBlank() -> "$current ($automatic)"
     current.isBlank() || current == configured -> configured
     else -> "$configured (in use: $current)"
 }
@@ -287,7 +289,7 @@ private fun GeneralSection(g: NetworkGlobal) = Section("General") {
 @Composable
 private fun GatewaysDnsSection(g: NetworkGlobal, resolvers: List<String>?) = Section("Gateways & DNS") {
     ValueRow("IPv4 default gateway", gatewayText(g.ipv4Gateway, g.currentIpv4Gateway), copy = g.currentIpv4Gateway.ifBlank { g.ipv4Gateway }.ifBlank { null })
-    ValueRow("IPv6 default gateway", gatewayText(g.ipv6Gateway, g.currentIpv6Gateway), copy = g.currentIpv6Gateway.ifBlank { g.ipv6Gateway }.ifBlank { null })
+    ValueRow("IPv6 default gateway", gatewayText(g.ipv6Gateway, g.currentIpv6Gateway, automatic = "automatic"), copy = g.currentIpv6Gateway.ifBlank { g.ipv6Gateway }.ifBlank { null })
     val configured = g.nameservers.mapIndexed { i, s -> "${i + 1}. $s" }.joinToString("\n")
     ValueRow("Name servers", configured.ifBlank { "From DHCP" }, copy = g.nameservers.joinToString("\n").ifBlank { null })
     val inUse = (resolvers ?: g.currentNameservers)
