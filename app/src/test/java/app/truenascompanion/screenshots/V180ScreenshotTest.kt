@@ -188,6 +188,7 @@ class V180ScreenshotTest {
     @Test fun alertsDark() = shot("alerts_dark", true) { Alerts() }
     @Test fun alertsLight() = shot("alerts_light", false) { Alerts() }
     @Test fun connectionDark() = shot("connection_dark", true) { Connection() }
+    @Test fun connectionLight() = shot("connection_light", false) { Connection() }
 
     @Test fun smbEditor() {
         rule.mainClock.autoAdvance = false

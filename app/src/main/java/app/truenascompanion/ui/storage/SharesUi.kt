@@ -307,7 +307,7 @@ internal fun SmbShareDialog(
         @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             StorageApi.SMB_PURPOSES.take(3).forEach { p ->
-                FilterChip(selected = purpose == p, onClick = { purpose = p }, label = { Text(p.removeSuffix("_SHARE").lowercase().replaceFirstChar { it.uppercase() }) })
+                FilterChip(selected = purpose == p, onClick = { purpose = p }, label = { Text(smbPurposeLabel(p)) })
             }
         }
         OutlinedTextField(comment, { comment = it }, label = { Text("Comment") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -367,4 +367,13 @@ private fun NfsShareDialog(
         CheckRow("Enabled", enabled, { enabled = it })
         CheckRow("Read-only", readonly, { readonly = it })
     }
+}
+
+/** Web UI wording for SMB share purposes ("Time Machine", not "Timemachine"). */
+internal fun smbPurposeLabel(purpose: String): String = when (purpose) {
+    "DEFAULT_SHARE" -> "Default"
+    "MULTIPROTOCOL_SHARE" -> "Multiprotocol"
+    "TIMEMACHINE_SHARE" -> "Time Machine"
+    "LEGACY_SHARE" -> "Legacy"
+    else -> purpose.removeSuffix("_SHARE").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
 }

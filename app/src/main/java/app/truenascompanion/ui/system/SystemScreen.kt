@@ -472,10 +472,17 @@ fun ServerConnectionCard(
         LinkRow(
             Icons.Rounded.Dns, "Addresses & auto-switch",
             buildString {
-                append(server.localUrl?.let { "Home: $it · " } ?: "")
-                append("Remote: ${server.url}")
-                append(" · ${server.routeMode.label}")
-                route?.let { append(" · now ${it.label}") }
+                server.localUrl?.let { append("Home: $it\n") }
+                append("Remote: ${server.url}\n")
+                append(if (server.routeMode == app.truenascompanion.data.model.RouteMode.AUTO) "Auto-switch" else server.routeMode.label)
+                route?.let {
+                    val via = when (it) {
+                        app.truenascompanion.data.model.Route.LOCAL -> "home address"
+                        app.truenascompanion.data.model.Route.REMOTE -> "remote address"
+                        else -> it.label
+                    }
+                    append(" · connected via $via")
+                }
             },
             onAddresses,
         )
@@ -494,7 +501,7 @@ private fun LinkRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

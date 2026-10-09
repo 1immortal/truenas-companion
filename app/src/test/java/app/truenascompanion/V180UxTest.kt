@@ -44,6 +44,12 @@ import org.robolectric.annotation.Config
 class V180UxTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun smbPurposesUseWebUiWording() {
+        org.junit.Assert.assertEquals("Time Machine", app.truenascompanion.ui.storage.smbPurposeLabel("TIMEMACHINE_SHARE"))
+        org.junit.Assert.assertEquals("Multiprotocol", app.truenascompanion.ui.storage.smbPurposeLabel("MULTIPROTOCOL_SHARE"))
+        org.junit.Assert.assertEquals("Private datasets", app.truenascompanion.ui.storage.smbPurposeLabel("PRIVATE_DATASETS_SHARE"))
+    }
+
     @Test fun middlewareErrorsReadLikeSentences() {
         assertEquals("Port is in use", TrueNasException.Rpc(22, "EINVAL", "[EINVAL] ssh_update.tcpport: Port is in use").userMessage())
         assertEquals("Failed 'up' action", TrueNasException.JobFailed("[EFAULT] Failed 'up' action\nTraceback (most recent call last):").userMessage())
