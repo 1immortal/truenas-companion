@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.files
 
+import androidx.compose.foundation.layout.wrapContentHeight
 import app.truenascompanion.ui.components.GlowButton
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -427,7 +428,9 @@ private fun Breadcrumbs(path: String, onOpen: (String) -> Unit) {
                 fontWeight = if (last) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (last) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !last) { onOpen(p) }.padding(horizontal = 6.dp, vertical = 6.dp),
+                // 1.8.0 (a11y): 48 dp touch target for the path segments (they were 39 dp).
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !last) { onOpen(p) }
+                    .heightIn(min = 48.dp).wrapContentHeight().padding(horizontal = 6.dp),
             )
             if (!last) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

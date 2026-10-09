@@ -289,7 +289,7 @@ fun AlertCard(
                     itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     StatusChip(a.health, a.level.lowercase().replaceFirstChar { it.uppercase() })
-                    if (snoozedUntil != null) Tag("Snoozed until ${snoozeText(snoozedUntil)}")
+                    if (snoozedUntil != null) Tag("Snoozed until ${snoozeText(snoozedUntil)}", maxLines = 2) // wraps at large font sizes
                     if (a.dismissed) Tag("Dismissed")
                     Text(Format.relativeTime(a.datetimeMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }

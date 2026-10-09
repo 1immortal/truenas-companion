@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.system
 
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -354,7 +356,8 @@ fun SystemHubContent(
                 Text(
                     group.title.uppercase(), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+                    // 1.8.0 (a11y): group labels are headings, so TalkBack users can jump between groups.
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp).semantics { heading() },
                 )
             }
             items.chunked(columns).forEachIndexed { row, pair ->

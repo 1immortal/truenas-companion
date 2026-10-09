@@ -120,4 +120,16 @@ class V180UxTest {
         rule.onNode(switch).performClick()
         assertTrue(dyn)
     }
+
+    @Test fun hubGroupLabelsAreHeadings() {
+        rule.setContent {
+            TrueNasTheme(themeMode = ThemeMode.DARK, dynamicColor = false) {
+                app.truenascompanion.ui.system.SystemHubContent(
+                    app.truenascompanion.ui.system.HubHeader("homenas", "nas.example.com", "25.10.4", 1_036_800, online = true),
+                    emptyMap(), onOpen = {}, onSwitchServer = {},
+                )
+            }
+        }
+        rule.onNodeWithText("SERVER").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+    }
 }

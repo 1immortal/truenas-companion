@@ -103,7 +103,9 @@ fun PasswordDialog(
     onSubmit: (password: String, remember: Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var password by rememberSaveable { mutableStateOf("") }
+    // 1.8.0 (security review L-5): secrets stay in memory only, never in the saved instance state (which can be
+    // written to disk when the app is in the background).
+    var password by remember { mutableStateOf("") }
     var show by rememberSaveable { mutableStateOf(false) }
     var remember by rememberSaveable(rememberDefault) { mutableStateOf(rememberDefault) }
     val focus = remember { FocusRequester() }
@@ -168,7 +170,7 @@ fun OtpDialog(
     onSubmit: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var code by rememberSaveable { mutableStateOf("") }
+    var code by remember { mutableStateOf("") } // not saved to instance state (L-5)
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     // Clear the field after a rejected code so the next one can be typed straight away.

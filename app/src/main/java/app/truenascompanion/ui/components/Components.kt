@@ -127,12 +127,13 @@ fun StatusChip(health: Health, label: String, modifier: Modifier = Modifier, sho
  * [StatusChip] for Online / Degraded / Running / Stopped.
  */
 @Composable
-fun Tag(text: String, modifier: Modifier = Modifier, brand: Boolean = false) {
+fun Tag(text: String, modifier: Modifier = Modifier, brand: Boolean = false, maxLines: Int = 1) {
     val bg = if (brand) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
     val fg = if (brand) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Text(
         text,
-        style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1,
+        style = MaterialTheme.typography.labelMedium, color = fg, maxLines = maxLines,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         modifier = modifier.clip(app.truenascompanion.ui.theme.Radius.tagShape).background(bg).padding(horizontal = 8.dp, vertical = 3.dp),
     )
 }
