@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.iscsi
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -293,11 +295,9 @@ fun IscsiScreen(onBack: () -> Unit, nav: IscsiNav) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(4, 120.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }) {
-                    IscsiContent(s.data, tab, { tab = it }, busy, nav, lunError,
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 4, skeletonHeight = 120.dp) { data ->
+                    PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }) {
+                    IscsiContent(data, tab, { tab = it }, busy, nav, lunError,
                         onDelete = vm::delete, onStart = vm::startService, onAddLun = vm::addLun, onLunDialogClosed = vm::clearLunError)
                 }
             }
@@ -599,10 +599,8 @@ fun IscsiSharesTab(onOpen: () -> Unit, onWizard: () -> Unit, onServices: () -> U
     val state by vm.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.onShown() }
-    when (val s = state) {
-        UiState.Loading -> SkeletonList(2, 120.dp)
-        is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-        is UiState.Success -> IscsiSummary(s.data, busy, onStart = vm::startService, onOpen = onOpen, onWizard = onWizard, onServices = onServices)
+    StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 2, skeletonHeight = 120.dp) { data ->
+            IscsiSummary(data, busy, onStart = vm::startService, onOpen = onOpen, onWizard = onWizard, onServices = onServices)
     }
 }
 

@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.protection
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.ui.components.GlowButton
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -226,11 +228,9 @@ fun SnapshotsScreen(dataset: String, onBack: () -> Unit, onBrowse: ((String) -> 
         },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(6, 72.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> SnapshotsContent(
-                    s.data, query, { query = it }, sort, { sort = it }, selected,
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 6, skeletonHeight = 72.dp) { data ->
+                    SnapshotsContent(
+                    data, query, { query = it }, sort, { sort = it }, selected,
                     onTap = { snap -> if (selecting) selected = selected.toggle(snap.id) else dialog = SDialog.Actions(snap) },
                     onLongPress = { snap -> selected = selected.toggle(snap.id) },
                 )

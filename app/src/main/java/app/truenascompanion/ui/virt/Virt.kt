@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.virt
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.util.runCatchingCancellable
 
 import androidx.compose.animation.AnimatedVisibility
@@ -381,19 +383,15 @@ private fun VirtScreen(
 
 @Composable
 fun VmList(state: UiState<List<VmInfo>>, busy: Map<String, String>, onRetry: () -> Unit, onOpen: (VmInfo) -> Unit, onCreate: () -> Unit, onAction: (VmInfo, VmAction) -> Unit) {
-    when (state) {
-        UiState.Loading -> SkeletonList(4, 96.dp)
-        is UiState.Error -> ScrollableErrorState(state.message, state.isLoginRequired, onRetry)
-        is UiState.Success -> if (state.data.isEmpty()) LazyColumn(Modifier.fillMaxSize()) {
-            item { EmptyState(Icons.Rounded.Computer, "No virtual machines", "Create a VM here or in the TrueNAS web UI.") { GlowButton(onClick = onCreate) { Text("New VM") } } }
-        } else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+    StateContent(state, onRetry = onRetry, skeletonCount = 4, skeletonHeight = 96.dp, empty = app.truenascompanion.ui.components.EmptyContent(Icons.Rounded.Computer, "No virtual machines", "Create a VM here or in the TrueNAS web UI.") { GlowButton(onClick = onCreate) { Text("New VM") } }) { data ->
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
             item {
-                Text("${state.data.size} VMs · ${state.data.count { it.state == VmState.RUNNING }} running", style = MaterialTheme.typography.bodyMedium,
+                Text("${data.size} VMs · ${data.count { it.state == VmState.RUNNING }} running", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
             }
-            items(state.data, key = { it.id }) { v -> VmCard(v, busy["vm:${v.id}"], onOpen = { onOpen(v) }, onAction = { onAction(v, it) }) }
+            items(data, key = { it.id }) { v -> VmCard(v, busy["vm:${v.id}"], onOpen = { onOpen(v) }, onAction = { onAction(v, it) }) }
         }
-    }
+}
 }
 
 @Composable
@@ -433,19 +431,15 @@ fun ContainerList(
     ui: ContainersUi, busy: Map<String, String>, onRetry: () -> Unit, onAction: (VirtInstance, InstanceAction) -> Unit, onDelete: (VirtInstance) -> Unit,
     onShell: (VirtInstance) -> Unit = {},
 ) {
-    when (val s = ui.list) {
-        UiState.Loading -> SkeletonList(4, 96.dp)
-        is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired, onRetry)
-        is UiState.Success -> if (s.data.isEmpty()) LazyColumn(Modifier.fillMaxSize()) {
-            item { EmptyState(Icons.Rounded.Inventory2, if (ui.unavailable != null) "Containers not set up" else "No containers", ui.unavailable ?: "Create Linux containers in the TrueNAS web UI (Containers). They'll show up here.") }
-        } else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+    StateContent(ui.list, onRetry = onRetry, skeletonCount = 4, skeletonHeight = 96.dp, empty = app.truenascompanion.ui.components.EmptyContent(Icons.Rounded.Inventory2, if (ui.unavailable != null) "Containers not set up" else "No containers", ui.unavailable ?: "Create Linux containers in the TrueNAS web UI (Containers). They'll show up here.")) { data ->
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
             item {
-                Text("${s.data.size} containers · ${s.data.count { it.status == InstanceStatus.RUNNING }} running", style = MaterialTheme.typography.bodyMedium,
+                Text("${data.size} containers · ${data.count { it.status == InstanceStatus.RUNNING }} running", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
             }
-            items(s.data, key = { it.id }) { i -> ContainerCard(i, busy["ct:${i.id}"], onAction = { onAction(i, it) }, onDelete = { onDelete(i) }, onShell = { onShell(i) }) }
+            items(data, key = { it.id }) { i -> ContainerCard(i, busy["ct:${i.id}"], onAction = { onAction(i, it) }, onDelete = { onDelete(i) }, onShell = { onShell(i) }) }
         }
-    }
+}
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.certs
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.ui.components.Tag
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -78,10 +80,8 @@ fun CertificatesScreen(onBack: () -> Unit, onReviewServer: (String) -> Unit, hig
         },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(5, 110.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> CertificatesContent(s.data, now, warnDays, tab, onTab = { tab = it }, busy = busy, highlight = highlight, onAction = { action = it })
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 5, skeletonHeight = 110.dp) { data ->
+                    CertificatesContent(data, now, warnDays, tab, onTab = { tab = it }, busy = busy, highlight = highlight, onAction = { action = it })
             }
         }
     }

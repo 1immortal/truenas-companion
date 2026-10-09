@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.accounts
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -59,10 +61,8 @@ fun AccountsScreen(onBack: () -> Unit) {
         },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(6, 76.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> AccountsContent(s.data, tab, onTab = { tab = it }, busy = busy, onAction = { action = it })
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 6, skeletonHeight = 76.dp) { data ->
+                    AccountsContent(data, tab, onTab = { tab = it }, busy = busy, onAction = { action = it })
             }
         }
     }

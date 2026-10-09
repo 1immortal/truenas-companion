@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.jobs
 
+import app.truenascompanion.ui.components.StateContent
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -173,39 +175,36 @@ fun JobsScreen(onBack: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(6, 84.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.start() }
-                is UiState.Success -> {
-                    val active = s.data.count { it.state.active }
-                    val shown = if (activeOnly) s.data.filter { it.state.active } else s.data
-                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                        item {
-                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                                SegmentedButton(selected = !activeOnly, onClick = { activeOnly = false }, shape = SegmentedButtonDefaults.itemShape(0, 2), icon = {}) { Text("Recent", maxLines = 1) }
-                                SegmentedButton(selected = activeOnly, onClick = { activeOnly = true }, shape = SegmentedButtonDefaults.itemShape(1, 2), icon = {}) {
-                                    Text(if (active > 0) "Running ($active)" else "Running")
-                                }
+            StateContent(state, onRetry = { vm.start() }, skeletonCount = 6, skeletonHeight = 84.dp) { data ->
+                val active = data.count { it.state.active }
+                val shown = if (activeOnly) data.filter { it.state.active } else data
+                LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+                    item {
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                            SegmentedButton(selected = !activeOnly, onClick = { activeOnly = false }, shape = SegmentedButtonDefaults.itemShape(0, 2), icon = {}) { Text("Recent", maxLines = 1) }
+                            SegmentedButton(selected = activeOnly, onClick = { activeOnly = true }, shape = SegmentedButtonDefaults.itemShape(1, 2), icon = {}) {
+                                Text(if (active > 0) "Running ($active)" else "Running")
                             }
-                        }
-                        item {
-                            Text(
-                                "Live view of long-running TrueNAS jobs: app upgrades, scrubs, catalog syncs, updates and more.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 4.dp),
-                            )
-                        }
-                        if (shown.isEmpty()) {
-                            item {
-                                EmptyState(Icons.Rounded.TaskAlt, if (activeOnly) "Nothing running" else "No recent tasks",
-                                    "Jobs started on the server (from this app or the web UI) show up here with live progress.")
-                            }
-                        }
-                        items(shown, key = { it.id }) { job ->
-                            JobCard(job, onAbort = { confirmAbort = job }, modifier = Modifier.animateItem())
                         }
                     }
+                    item {
+                        Text(
+                            "Live view of long-running TrueNAS jobs: app upgrades, scrubs, catalog syncs, updates and more.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                    if (shown.isEmpty()) {
+                        item {
+                            EmptyState(Icons.Rounded.TaskAlt, if (activeOnly) "Nothing running" else "No recent tasks",
+                                "Jobs started on the server (from this app or the web UI) show up here with live progress.")
+                        }
+                    }
+                    items(shown, key = { it.id }) { job ->
+                        JobCard(job, onAbort = { confirmAbort = job }, modifier = Modifier.animateItem())
+                    }
                 }
+
             }
         }
     }

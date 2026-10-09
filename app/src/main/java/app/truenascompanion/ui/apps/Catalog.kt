@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.apps
 
+import app.truenascompanion.ui.components.StateContent
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -130,34 +132,31 @@ fun CatalogScreen(onBack: () -> Unit, onOpen: (CatalogApp) -> Unit) {
 /** Stateless catalog list (also rendered by the screenshot tests). */
 @Composable
 fun CatalogContent(ui: CatalogUi, onQuery: (String) -> Unit, onCategory: (String?) -> Unit, onOpen: (CatalogApp) -> Unit, onRetry: () -> Unit) {
-    when (val s = ui.apps) {
-        UiState.Loading -> SkeletonList(7, 76.dp)
-        is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired, onRetry)
-        is UiState.Success -> {
-            val list = ui.filtered
-            LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                item(key = "search") {
-                    OutlinedTextField(
-                        value = ui.query, onValueChange = onQuery, singleLine = true,
-                        placeholder = { Text("Search ${s.data.size} apps") },
-                        leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                        trailingIcon = if (ui.query.isNotEmpty()) ({ IconButton(onClick = { onQuery("") }) { Icon(Icons.Rounded.Close, "Clear") } }) else null,
-                        shape = RoundedCornerShape(28.dp),
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                }
-                item(key = "categories") {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = ui.category == null, onClick = { onCategory(null) }, label = { Text("All") })
-                        ui.categories.forEach { cat ->
-                            FilterChip(selected = ui.category == cat, onClick = { onCategory(cat) }, label = { Text(cat.prettyCategory(), maxLines = 1) })
-                        }
+    StateContent(ui.apps, onRetry = onRetry, skeletonCount = 7, skeletonHeight = 76.dp) { data ->
+        val list = ui.filtered
+        LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+            item(key = "search") {
+                OutlinedTextField(
+                    value = ui.query, onValueChange = onQuery, singleLine = true,
+                    placeholder = { Text("Search ${data.size} apps") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = if (ui.query.isNotEmpty()) ({ IconButton(onClick = { onQuery("") }) { Icon(Icons.Rounded.Close, "Clear") } }) else null,
+                    shape = RoundedCornerShape(28.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
+            item(key = "categories") {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = ui.category == null, onClick = { onCategory(null) }, label = { Text("All") })
+                    ui.categories.forEach { cat ->
+                        FilterChip(selected = ui.category == cat, onClick = { onCategory(cat) }, label = { Text(cat.prettyCategory(), maxLines = 1) })
                     }
                 }
-                if (list.isEmpty()) item { EmptyState(Icons.Rounded.Storefront, "No matching apps", "Try another search or category.") }
-                items(list, key = { it.train + "/" + it.name }) { app -> CatalogRow(app) { onOpen(app) } }
             }
+            if (list.isEmpty()) item { EmptyState(Icons.Rounded.Storefront, "No matching apps", "Try another search or category.") }
+            items(list, key = { it.train + "/" + it.name }) { app -> CatalogRow(app) { onOpen(app) } }
         }
+
     }
 }
 
@@ -213,10 +212,8 @@ fun CatalogDetailScreen(name: String, train: String, onBack: () -> Unit, onInsta
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(3, 140.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.load() }
-                is UiState.Success -> CatalogDetailContent(s.data) { onInstall(name, train) }
+            StateContent(state, onRetry = { vm.load() }, skeletonCount = 3, skeletonHeight = 140.dp) { data ->
+                    CatalogDetailContent(data) { onInstall(name, train) }
             }
         }
     }

@@ -397,7 +397,8 @@ fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifi
 /** Scrollable error state (so pull-to-refresh still works). */
 @Composable
 fun ScrollableErrorState(message: String, loginRequired: Boolean = false, onRetry: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize()) { item { Spacer(Modifier.height(48.dp)); ErrorState(message, onRetry, loginRequired = loginRequired) } }
+    // 1.8.1: same friendly state (and TalkBack live region) as StateContent.
+    ScreenError(message, if (loginRequired) app.truenascompanion.data.api.TrueNasException.LoginRequired() else null, onRetry)
 }
 
 val UiState.Error.isLoginRequired: Boolean get() = cause is app.truenascompanion.data.api.TrueNasException.LoginRequired

@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.services
 
+import app.truenascompanion.ui.components.StateContent
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -158,11 +160,9 @@ fun ServicesScreen(onBack: () -> Unit, onOpenSettings: (ServiceKind) -> Unit) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(6, 120.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> ServicesContent(
-                    s.data, busy,
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 6, skeletonHeight = 120.dp) { data ->
+                    ServicesContent(
+                    data, busy,
                     onAction = { svc, verb -> if (verb == ServiceVerb.START) vm.control(svc, verb) else confirm = svc to verb },
                     onAutostart = vm::setAutostart,
                     onOpen = onOpenSettings,

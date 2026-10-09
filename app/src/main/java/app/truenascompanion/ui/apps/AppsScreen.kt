@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.apps
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.util.runCatchingCancellable
 
 import android.content.Intent
@@ -372,65 +374,53 @@ fun AppsScreen(onJobs: () -> Unit = {}, onCatalog: () -> Unit = {}, onOpenApp: (
         Column(Modifier.padding(padding).fillMaxSize()) {
         header()
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(6, 88.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> {
-                    val apps = s.data
-                    if (apps.isEmpty()) {
-                        LazyColumn(Modifier.fillMaxSize()) {
-                            item {
-                                EmptyState(Icons.Rounded.Apps, "No apps installed", "Apps you install from the TrueNAS catalog will appear here.") {
-                                    app.truenascompanion.ui.components.GlowButton(onClick = onCatalog) { Text("Browse the catalog") }
-                                }
-                            }
-                        }
-                    } else {
-                        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                            item {
-                                val running = apps.count { it.state == AppState.RUNNING }
-                                Text(
-                                    "${apps.size} apps · $running running",
-                                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
-                                )
-                            }
-                            catalogSync?.let { job ->
-                                item(key = "catalog-sync") {
-                                    ElevatedSection(contentPadding = 14.dp) {
-                                        Text("Checking the catalog for updates…", style = MaterialTheme.typography.titleSmall)
-                                        Spacer(Modifier.height(8.dp))
-                                        JobProgress(job)
-                                    }
-                                }
-                            }
-                            val upgradable = apps.filter { it.upgradeAvailable && !it.legacyChart }
-                            if (upgradable.isNotEmpty()) {
-                                item(key = "updates-banner") {
-                                    UpdatesBanner(
-                                        count = upgradable.size,
-                                        allBusy = upgradable.all { it.name in upgradeJobs || it.name in pending },
-                                        onUpgradeAll = { confirmAll = upgradable },
-                                    )
-                                }
-                            }
-                            items(apps, key = { it.name }) { app ->
-                                AppCard(
-                                    app, busy[app.name],
-                                    upgradeJob = upgradeJobs[app.name],
-                                    upgradePending = app.name in pending,
-                                    onAction = { action -> if (action == AppAction.START) vm.act(app, action) else confirm = app to action },
-                                    onUpgrade = { vm.requestUpgrade(app) },
-                                    onImageInfo = { imageInfo = app },
-                                    modifier = Modifier.animateItem(),
-                                    lifecycleJob = lifecycleJobs[app.name],
-                                    portalBase = vm.portalBase,
-                                    onOpen = if (app.legacyChart) null else ({ onOpenApp(app.name) }),
-                                )
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 6, skeletonHeight = 88.dp, empty = app.truenascompanion.ui.components.EmptyContent(Icons.Rounded.Apps, "No apps installed", "Apps you install from the TrueNAS catalog will appear here.") { app.truenascompanion.ui.components.GlowButton(onClick = onCatalog) { Text("Browse the catalog") } }) { data ->
+                val apps = data
+                LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+                    item {
+                        val running = apps.count { it.state == AppState.RUNNING }
+                        Text(
+                            "${apps.size} apps · $running running",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                        )
+                    }
+                    catalogSync?.let { job ->
+                        item(key = "catalog-sync") {
+                            ElevatedSection(contentPadding = 14.dp) {
+                                Text("Checking the catalog for updates…", style = MaterialTheme.typography.titleSmall)
+                                Spacer(Modifier.height(8.dp))
+                                JobProgress(job)
                             }
                         }
                     }
+                    val upgradable = apps.filter { it.upgradeAvailable && !it.legacyChart }
+                    if (upgradable.isNotEmpty()) {
+                        item(key = "updates-banner") {
+                            UpdatesBanner(
+                                count = upgradable.size,
+                                allBusy = upgradable.all { it.name in upgradeJobs || it.name in pending },
+                                onUpgradeAll = { confirmAll = upgradable },
+                            )
+                        }
+                    }
+                    items(apps, key = { it.name }) { app ->
+                        AppCard(
+                            app, busy[app.name],
+                            upgradeJob = upgradeJobs[app.name],
+                            upgradePending = app.name in pending,
+                            onAction = { action -> if (action == AppAction.START) vm.act(app, action) else confirm = app to action },
+                            onUpgrade = { vm.requestUpgrade(app) },
+                            onImageInfo = { imageInfo = app },
+                            modifier = Modifier.animateItem(),
+                            lifecycleJob = lifecycleJobs[app.name],
+                            portalBase = vm.portalBase,
+                            onOpen = if (app.legacyChart) null else ({ onOpenApp(app.name) }),
+                        )
+                    }
                 }
+
+
             }
         }
         }

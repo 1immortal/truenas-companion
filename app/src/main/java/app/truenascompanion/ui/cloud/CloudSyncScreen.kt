@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.cloud
 
+import app.truenascompanion.ui.components.StateContent
+
 import androidx.compose.material.icons.rounded.Delete
 import app.truenascompanion.ui.components.GlowButton
 import androidx.compose.foundation.background
@@ -340,11 +342,9 @@ fun CloudSyncScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(4, 170.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> if (tab == 0) CloudTasksContent(s.data, busy, System.currentTimeMillis(), actions)
-                else CloudCredentialsContent(s.data, busy, actions)
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 4, skeletonHeight = 170.dp) { data ->
+                    if (tab == 0) CloudTasksContent(data, busy, System.currentTimeMillis(), actions)
+                else CloudCredentialsContent(data, busy, actions)
             }
         }
     }

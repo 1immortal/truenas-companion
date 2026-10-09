@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.tasks
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -235,17 +237,15 @@ fun ScheduledTasksScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(5, 130.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> if (tab == 0) CronJobsContent(
-                    s.data.cron, busy,
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 5, skeletonHeight = 130.dp) { data ->
+                    if (tab == 0) CronJobsContent(
+                    data.cron, busy,
                     onToggle = vm::setCronEnabled,
                     onRun = { confirm = TaskConfirm.RunCron(it) },
                     onEdit = { onEditCron(it.id) },
                     onDelete = { confirm = TaskConfirm.DeleteCron(it) },
                 ) else InitScriptsContent(
-                    s.data.scripts, busy,
+                    data.scripts, busy,
                     onToggle = vm::setScriptEnabled,
                     onEdit = { onEditScript(it.id) },
                     onDelete = { confirm = TaskConfirm.DeleteScript(it) },

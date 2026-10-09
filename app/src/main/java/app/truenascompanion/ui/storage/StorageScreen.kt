@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.storage
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.util.runCatchingCancellable
 
 import androidx.compose.animation.animateContentSize
@@ -231,28 +233,26 @@ fun StorageScreen(
                 return@Column
             }
             PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
-                when (val s = state) {
-                    UiState.Loading -> SkeletonList(4, 110.dp)
-                    is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                    is UiState.Success -> when (tab) {
-                        StorageTabs.POOLS -> PoolsList(s.data.pools, onOpenPool, onReplace)
-                        StorageTabs.DISKS -> app.truenascompanion.ui.disks.DisksPane(app.truenascompanion.ui.disks.DisksData(s.data.layouts, s.data.disks), onOpenDisk)
-                        StorageTabs.FILES -> app.truenascompanion.ui.files.FilesLauncher(s.data.pools, s.data.datasets, onBrowse)
+                StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 4, skeletonHeight = 110.dp) { data ->
+                        when (tab) {
+                        StorageTabs.POOLS -> PoolsList(data.pools, onOpenPool, onReplace)
+                        StorageTabs.DISKS -> app.truenascompanion.ui.disks.DisksPane(app.truenascompanion.ui.disks.DisksData(data.layouts, data.disks), onOpenDisk)
+                        StorageTabs.FILES -> app.truenascompanion.ui.files.FilesLauncher(data.pools, data.datasets, onBrowse)
                         StorageTabs.DATASETS -> DatasetsPane(
-                            datasets = s.data.datasets,
-                            pools = s.data.pools,
+                            datasets = data.datasets,
+                            pools = data.pools,
                             busy = busy,
                             onOpenSnapshots = onOpenSnapshots,
                             onCreate = vm::createDataset,
                             onRename = vm::renameDataset,
                             onDelete = vm::deleteDataset,
                             onBrowse = onBrowse,
-                            sharePaths = s.data.shares.smb.map { it.path } + s.data.shares.nfs.map { it.path },
+                            sharePaths = data.shares.smb.map { it.path } + data.shares.nfs.map { it.path },
                             loadDeleteImpact = vm::deleteImpact,
                         )
                         else -> SharesPane(
-                            data = s.data.shares,
-                            datasets = s.data.datasets,
+                            data = data.shares,
+                            datasets = data.datasets,
                             busy = busy,
                             onCreateSmb = vm::createSmb,
                             onUpdateSmb = vm::updateSmb,
@@ -284,10 +284,8 @@ private fun ProtectionPane(snackbar: SnackbarHostState, onSnapshotTask: (Int?) -
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { if (!first) vm.reload(); first = false }
     }
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
-        when (val s = state) {
-            UiState.Loading -> SkeletonList(4, 110.dp)
-            is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-            is UiState.Success -> ProtectionTab(s.data, vm, onAddTask = { onSnapshotTask(null) }, onEditTask = { onSnapshotTask(it) }, onCloudSync = onCloudSync, onReplication = onReplication)
+        StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 4, skeletonHeight = 110.dp) { data ->
+                ProtectionTab(data, vm, onAddTask = { onSnapshotTask(null) }, onEditTask = { onSnapshotTask(it) }, onCloudSync = onCloudSync, onReplication = onReplication)
         }
     }
 }

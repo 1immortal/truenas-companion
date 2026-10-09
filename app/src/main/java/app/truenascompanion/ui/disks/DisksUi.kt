@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.disks
 
+import app.truenascompanion.ui.components.StateContent
+
 import app.truenascompanion.util.runCatchingCancellable
 
 import androidx.compose.foundation.clickable
@@ -305,14 +307,11 @@ fun PoolLayoutScreen(poolName: String, onBack: () -> Unit, onOpenDisk: (String) 
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(4, 120.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> {
-                    val pool = s.data.pools.firstOrNull { it.name == poolName }
-                    if (pool == null) EmptyState(Icons.Rounded.Storage, "Pool not found", "TrueNAS doesn't report a pool named $poolName.")
-                    else PoolLayoutContent(pool, s.data, onOpenDisk, onReplace)
-                }
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 4, skeletonHeight = 120.dp) { data ->
+                val pool = data.pools.firstOrNull { it.name == poolName }
+                if (pool == null) EmptyState(Icons.Rounded.Storage, "Pool not found", "TrueNAS doesn't report a pool named $poolName.")
+                else PoolLayoutContent(pool, data, onOpenDisk, onReplace)
+
             }
         }
     }
@@ -449,11 +448,9 @@ fun DiskDetailScreen(name: String, onBack: () -> Unit, onReplace: (pool: String,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(4, 120.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> DiskDetailContent(
-                    name, s.data, busy,
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 4, skeletonHeight = 120.dp) { data ->
+                    DiskDetailContent(
+                    name, data, busy,
                     onReplace = { m -> onReplace(m.poolName, m.node.guid, m.node.disk) },
                     onOffline = { dialog = DiskDialog.Offline(it) },
                     onOnline = { dialog = DiskDialog.Online(it) },
