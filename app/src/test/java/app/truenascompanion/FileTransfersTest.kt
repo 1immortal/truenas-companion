@@ -99,7 +99,10 @@ class FileTransfersTest {
     @Test fun cancellingStopsTheDownloadQuickly() = runBlocking {
         server.enqueue(MockResponse().setBody(Buffer().write(bytes(5_000_000))).throttleBody(16_384, 100, TimeUnit.MILLISECONDS))
         val out = ByteArrayOutputStream()
-        val job = async(Dispatchers.Default) { FileTransfers(client, base()).download("/_download/5", out, 5_000_000) { _, _ -> } }
+        // Own scope: a socket error racing the cancel must not fail the test runner's scope (flaky on CI otherwise).
+        val job = kotlinx.coroutines.CoroutineScope(Dispatchers.Default + kotlinx.coroutines.SupervisorJob()).async {
+            FileTransfers(client, base()).download("/_download/5", out, 5_000_000) { _, _ -> }
+        }
         delay(400)
         val t0 = System.currentTimeMillis()
         job.cancel()
