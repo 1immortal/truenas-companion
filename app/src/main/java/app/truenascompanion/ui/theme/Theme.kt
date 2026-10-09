@@ -15,7 +15,9 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.truenascompanion.data.model.Health
@@ -45,7 +47,8 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF6F8CFF), onPrimary = Color.White,
+    // 1.7.1 (contrast): dark-blue text on the light-blue filled buttons, 4.9:1 (white was 3.1:1).
+    primary = Color(0xFF6F8CFF), onPrimary = Color(0xFF0A1F66),
     primaryContainer = Color(0xFF1E3A8A), onPrimaryContainer = Color(0xFFDCE4FF),
     secondary = Cyan, onSecondary = Color(0xFF002A33),
     secondaryContainer = Color(0xFF0B4A5E), onSecondaryContainer = Color(0xFFCFF7FE),
@@ -136,7 +139,7 @@ private val AppShapes = Shapes(
 )
 
 private val base = Typography()
-private val AppTypography = base.copy(
+private val Weighted = base.copy(
     displaySmall = base.displaySmall.copy(fontWeight = FontWeight.SemiBold),
     headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
     headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
@@ -144,6 +147,20 @@ private val AppTypography = base.copy(
     titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
     labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold),
     labelSmall = base.labelSmall.copy(letterSpacing = 0.4.sp),
+)
+
+/**
+ * 1.7.1 (RTL, UX review P0-1): every style takes its direction from the text itself. On a phone set to Hebrew the
+ * layout still mirrors, but an English line stays a left-to-right paragraph ("3 items", not "items 3").
+ */
+private fun TextStyle.content() = copy(textDirection = TextDirection.Content)
+
+internal val AppTypography = Weighted.copy(
+    displayLarge = Weighted.displayLarge.content(), displayMedium = Weighted.displayMedium.content(), displaySmall = Weighted.displaySmall.content(),
+    headlineLarge = Weighted.headlineLarge.content(), headlineMedium = Weighted.headlineMedium.content(), headlineSmall = Weighted.headlineSmall.content(),
+    titleLarge = Weighted.titleLarge.content(), titleMedium = Weighted.titleMedium.content(), titleSmall = Weighted.titleSmall.content(),
+    bodyLarge = Weighted.bodyLarge.content(), bodyMedium = Weighted.bodyMedium.content(), bodySmall = Weighted.bodySmall.content(),
+    labelLarge = Weighted.labelLarge.content(), labelMedium = Weighted.labelMedium.content(), labelSmall = Weighted.labelSmall.content(),
 )
 
 @Composable
@@ -164,7 +181,13 @@ fun TrueNasTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, dynamicColor: Boolean 
         LocalStatusColors provides if (dark) DarkStatus else LightStatus,
         LocalBrandColors provides if (dark) DarkBrand else LightBrand,
     ) {
-        MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes, content = content)
+        MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes) {
+            // Text without an explicit style (and text fields) follow the content direction too.
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.content(),
+                content = content,
+            )
+        }
     }
 }
 

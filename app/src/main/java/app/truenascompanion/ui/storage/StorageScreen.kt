@@ -175,6 +175,8 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
     fun renameDataset(id: String, newName: String) = action("ds:$id", "Dataset renamed") { it.renameDataset(id, newName) }
     fun deleteDataset(id: String, recursive: Boolean, force: Boolean) =
         action("ds:$id", "Dataset deleted") { it.deleteDataset(id, recursive, force) }
+    suspend fun deleteImpact(id: String): app.truenascompanion.data.api.DatasetDeleteRemote? =
+        runCatching { c.repository.call { StorageApi(it).deleteImpact(id) } }.getOrNull()
     fun createSmb(input: SmbShareInput) = action("smb:new", "SMB share created") { it.createSmbShare(input) }
     fun updateSmb(id: Int, input: SmbShareInput) = action("smb:$id", "SMB share saved") { it.updateSmbShare(id, input) }
     fun deleteSmb(id: Int) = action("smb:$id", "SMB share deleted") { it.deleteSmbShare(id) }
@@ -237,6 +239,8 @@ fun StorageScreen(
                             onRename = vm::renameDataset,
                             onDelete = vm::deleteDataset,
                             onBrowse = onBrowse,
+                            sharePaths = s.data.shares.smb.map { it.path } + s.data.shares.nfs.map { it.path },
+                            loadDeleteImpact = vm::deleteImpact,
                         )
                         else -> SharesPane(
                             data = s.data.shares,

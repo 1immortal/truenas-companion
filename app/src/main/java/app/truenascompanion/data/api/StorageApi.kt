@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -63,6 +64,34 @@ class StorageApi(private val api: TrueNasApi) {
         )
     }
 
+    /**
+     * 1.7.1: what a dataset delete would also remove, for the confirmation dialog.
+     * `pool.snapshot.query` with `{"count": true}` over the dataset and its children, and
+     * `pool.dataset.attachments` (shares, apps, VMs, iSCSI extents… using it). Each part is best effort (null when
+     * the NAS doesn't answer or the account lacks the role).
+     */
+    suspend fun deleteImpact(id: String): DatasetDeleteRemote {
+        val snaps = runCatching {
+            api.rpc(
+                "pool.snapshot.query",
+                buildJsonArray {
+                    add(buildJsonArray {
+                        add(JsonPrimitive("OR"))
+                        add(buildJsonArray {
+                            add(buildJsonArray { add(JsonPrimitive("dataset")); add(JsonPrimitive("=")); add(JsonPrimitive(id)) })
+                            add(buildJsonArray { add(JsonPrimitive("dataset")); add(JsonPrimitive("^")); add(JsonPrimitive("$id/")) })
+                        })
+                    })
+                },
+                buildJsonObject { put("count", true) },
+            ).let { (it as? JsonPrimitive)?.content?.toIntOrNull() }
+        }.getOrNull()
+        val attachments = runCatching {
+            parseAttachments(api.rpc("pool.dataset.attachments", JsonPrimitive(id)))
+        }.getOrNull()
+        return DatasetDeleteRemote(snaps, attachments)
+    }
+
     suspend fun smbShares(): List<SmbShare> =
         api.rpc("sharing.smb.query").arr()?.mapNotNull { it.obj()?.let(Parsers::smbShare) }
             ?.sortedBy { it.name.lowercase() } ?: emptyList()
@@ -102,6 +131,15 @@ class StorageApi(private val api: TrueNasApi) {
 
         fun pathForDataset(datasetId: String) = "/mnt/$datasetId"
 
+        /** `[{type, service, attachments: [names]}]` → "SMB share: media, photos". */
+        fun parseAttachments(e: JsonElement): List<String> =
+            (e as? JsonArray).orEmpty().mapNotNull { item ->
+                val o = item as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                val type = (o["type"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val names = (o["attachments"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+                if (names.isEmpty()) type else "$type: ${names.joinToString(", ")}"
+            }
+
         private fun smbJson(input: SmbShareInput, forUpdate: Boolean = false) = buildJsonObject {
             put("name", input.name)
             put("path", input.path)
@@ -125,3 +163,6 @@ class StorageApi(private val api: TrueNasApi) {
         }
     }
 }
+
+/** Parts of the delete impact that need the NAS (null = unknown). */
+data class DatasetDeleteRemote(val snapshots: Int?, val attachments: List<String>?)

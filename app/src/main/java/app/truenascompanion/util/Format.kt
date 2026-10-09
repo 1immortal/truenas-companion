@@ -8,11 +8,20 @@ import kotlin.math.pow
 object Format {
     private val units = arrayOf("B", "KiB", "MiB", "GiB", "TiB", "PiB")
 
+    /**
+     * 1.7.1 (RTL, UX review P0-1): a value with its unit as one left-to-right isolate (U+2066 … U+2069), so on a phone
+     * set to Hebrew or Arabic "16.6 GiB" never turns into "GiB 16.6", even next to a right-to-left dataset name.
+     * The marks are invisible. [plain] removes them (tests, clipboard).
+     */
+    fun ltr(s: String): String = "\u2066$s\u2069"
+
+    fun plain(s: String): String = s.replace("\u2066", "").replace("\u2067", "").replace("\u2068", "").replace("\u2069", "")
+
     fun bytes(value: Long?): String {
         if (value == null) return "—"
-        if (value < 1024) return "$value B"
+        if (value < 1024) return ltr("$value B")
         val exp = (ln(value.toDouble()) / ln(1024.0)).toInt().coerceAtMost(units.size - 1)
-        return String.format(Locale.US, "%.1f %s", value / 1024.0.pow(exp), units[exp])
+        return ltr(String.format(Locale.US, "%.1f %s", value / 1024.0.pow(exp), units[exp]))
     }
 
     /** Compact transfer rate in bytes per second with auto units, e.g. "850 B/s", "7.2 KB/s", "118 MB/s". */
@@ -22,20 +31,20 @@ object Format {
         var v = bytesPerSec.coerceAtLeast(0.0)
         var i = 0
         while (v >= 999.5 && i < u.size - 1) { v /= 1000; i++ }
-        return if (i == 0 || v >= 9.95) String.format(Locale.US, "%.0f %s", v, u[i]) else String.format(Locale.US, "%.1f %s", v, u[i])
+        return ltr(if (i == 0 || v >= 9.95) String.format(Locale.US, "%.0f %s", v, u[i]) else String.format(Locale.US, "%.1f %s", v, u[i]))
     }
 
     /** CPU percent: "<1%" near idle, one decimal below 10%. */
     fun cpuPercent(p: Double?): String = when {
         p == null -> "—"
-        p < 1 -> "<1%"
-        p < 9.95 && String.format(Locale.US, "%.1f", p).let { !it.endsWith(".0") } -> String.format(Locale.US, "%.1f%%", p)
-        else -> String.format(Locale.US, "%.0f%%", p)
+        p < 1 -> ltr("<1%")
+        p < 9.95 && String.format(Locale.US, "%.1f", p).let { !it.endsWith(".0") } -> ltr(String.format(Locale.US, "%.1f%%", p))
+        else -> ltr(String.format(Locale.US, "%.0f%%", p))
     }
 
-    fun percent(p: Double?): String = if (p == null) "—" else String.format(Locale.US, "%.0f%%", p)
+    fun percent(p: Double?): String = if (p == null) "—" else ltr(String.format(Locale.US, "%.0f%%", p))
 
-    fun temp(c: Double?): String = if (c == null) "—" else String.format(Locale.US, "%.0f°C", c)
+    fun temp(c: Double?): String = if (c == null) "—" else ltr(String.format(Locale.US, "%.0f°C", c))
 
     fun uptime(seconds: Long?): String {
         if (seconds == null) return "—"

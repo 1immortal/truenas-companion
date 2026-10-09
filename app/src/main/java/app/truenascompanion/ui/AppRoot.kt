@@ -244,6 +244,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
             currentRoute = route,
             onCheckConfig = { id -> nav.navigate(Routes.edit(id)) },
             onActiveChange = { overlayActive = it },
+            onSwitchServer = if (list.size > 1) ({ nav.navigate(Routes.SERVERS) }) else null,
         ) {
         Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
             NavHost(

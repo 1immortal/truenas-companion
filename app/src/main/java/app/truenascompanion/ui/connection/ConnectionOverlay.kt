@@ -24,10 +24,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.SettingsEthernet
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -128,6 +138,8 @@ object ConnectionOverlayDecision {
             "Sign-in was rejected. Check the address and credentials in connection settings."
         is TrueNasException.Timeout ->
             "The server didn’t answer in time. Check that it’s online and that your phone can reach it."
+        is TrueNasException.InsecureAddress ->
+            "This server’s address uses unencrypted http://, so the app won’t sign in over it. Open connection settings and use its https:// address."
         else ->
             "Make sure the NAS is online and that your phone can reach it — on Wi‑Fi at home, or through your VPN."
     }
@@ -183,6 +195,8 @@ fun ConnectionModalBarrier(
             .testTag("connection_overlay_barrier")
             .semantics {
                 isTraversalGroup = true
+                // 1.7.1 (a11y P0-2): announced as its own pane.
+                paneTitle = "Connection"
             }
             .nestedScroll(BlockingNestedScrollConnection)
             .focusRequester(focusRequester)
@@ -211,6 +225,8 @@ fun ConnectionOverlayHost(
     currentRoute: String?,
     onCheckConfig: (serverId: String) -> Unit,
     onActiveChange: (Boolean) -> Unit = {},
+    /** 1.7.1: shown on the failure card when more than one server is saved. */
+    onSwitchServer: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val connection by container.repository.state.collectAsStateWithLifecycle()
@@ -218,7 +234,8 @@ fun ConnectionOverlayHost(
     val giveUpMs by container.settings.connectionGiveUpMs.collectAsStateWithLifecycle(
         initialValue = ConnectionTimeoutPrefs.DEFAULT_MS,
     )
-    val onEdit = currentRoute?.startsWith("server_edit") == true
+    // The server list and editor stay usable while the server is unreachable (fix the address, switch servers).
+    val onEdit = currentRoute?.startsWith("server_edit") == true || currentRoute == "servers"
     val serverId = active?.id
     val serverName = active?.name?.takeIf { it.isNotBlank() } ?: active?.urlHost() ?: "your NAS"
 
@@ -299,6 +316,9 @@ fun ConnectionOverlayHost(
                 .then(
                     if (obscure) {
                         Modifier
+                            // 1.7.1 (a11y P0-2): TalkBack / Switch Access can't reach (or click) anything under the
+                            // overlay either; before, only touch, scroll and focus were blocked.
+                            .clearAndSetSemantics { }
                             .focusProperties { canFocus = false }
                             .nestedScroll(BlockingNestedScrollConnection)
                             .blockUnderlyingPointerInput()
@@ -333,6 +353,7 @@ fun ConnectionOverlayHost(
                             attemptStartedAt = SystemClock.elapsedRealtime()
                             container.repository.retryConnection()
                         },
+                        onSwitchServer = onSwitchServer,
                     )
                     ConnectionOverlayUi.None -> {}
                 }
@@ -394,6 +415,7 @@ fun ConnectionConnectingPanel(serverName: String) {
                     "Connecting…",
                     style = MaterialTheme.typography.titleLarge,
                     textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -414,6 +436,7 @@ fun ConnectionFailurePanel(
     onQuit: () -> Unit,
     onCheckConfig: () -> Unit,
     onRetry: (() -> Unit)? = null,
+    onSwitchServer: (() -> Unit)? = null,
 ) {
     val brand = LocalBrandColors.current
     val accent = if (brand.dark) brand.accent else MaterialTheme.colorScheme.primary
@@ -434,29 +457,33 @@ fun ConnectionFailurePanel(
             tonalElevation = 6.dp,
             shadowElevation = 10.dp,
             modifier = Modifier
-                .padding(28.dp)
-                .widthIn(max = 400.dp)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(),
         ) {
+            // 1.7.1 (a11y P0-3): scrolls, so every button stays reachable in landscape and at 200 % font size.
             Column(
-                Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
                     Modifier
-                        .size(72.dp)
+                        .size(64.dp)
                         .glow(accent, 18.dp, CircleShape, alpha = if (brand.dark) 0.5f else 0.28f)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.CloudOff, null, tint = accent, modifier = Modifier.size(34.dp))
+                    Icon(Icons.Rounded.CloudOff, null, tint = accent, modifier = Modifier.size(30.dp))
                 }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
                 Text(
                     "Can’t connect to $serverName",
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -465,21 +492,37 @@ fun ConnectionFailurePanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(28.dp))
-                GlowButton(onClick = onCheckConfig, modifier = Modifier.fillMaxWidth().testTag("connection_check_settings")) {
-                    Icon(Icons.Rounded.SettingsEthernet, null, Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Check connection settings", maxLines = 1)
-                }
-                Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = onQuit, modifier = Modifier.fillMaxWidth().testTag("connection_quit")) {
-                    Text("Quit app", maxLines = 1)
-                }
+                Spacer(Modifier.height(24.dp))
+                // Most common action first and most prominent; labels wrap instead of being cut off.
                 if (onRetry != null) {
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = onRetry, modifier = Modifier.testTag("connection_try_again")) {
-                        Text("Try again")
+                    GlowButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("connection_try_again")) {
+                        Icon(Icons.Rounded.Refresh, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Try again", textAlign = TextAlign.Center)
                     }
+                    Spacer(Modifier.height(10.dp))
+                    FilledTonalButton(onClick = onCheckConfig, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("connection_check_settings")) {
+                        Icon(Icons.Rounded.SettingsEthernet, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Connection settings", textAlign = TextAlign.Center)
+                    }
+                } else {
+                    GlowButton(onClick = onCheckConfig, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("connection_check_settings")) {
+                        Icon(Icons.Rounded.SettingsEthernet, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Connection settings", textAlign = TextAlign.Center)
+                    }
+                }
+                if (onSwitchServer != null) {
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = onSwitchServer, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("connection_switch_server")) {
+                        Icon(Icons.Rounded.SwapHoriz, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Switch server", textAlign = TextAlign.Center)
+                    }
+                }
+                TextButton(onClick = onQuit, modifier = Modifier.heightIn(min = 48.dp).testTag("connection_quit")) {
+                    Text("Close app", textAlign = TextAlign.Center)
                 }
             }
         }

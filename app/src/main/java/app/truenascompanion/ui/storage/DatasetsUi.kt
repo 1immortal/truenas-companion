@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,6 +79,8 @@ fun DatasetsPane(
     onRename: (id: String, newName: String) -> Unit,
     onDelete: (id: String, recursive: Boolean, force: Boolean) -> Unit,
     onBrowse: (String) -> Unit = {},
+    sharePaths: List<String> = emptyList(),
+    loadDeleteImpact: (suspend (String) -> app.truenascompanion.data.api.DatasetDeleteRemote?)? = null,
 ) {
     var showSystem by rememberSaveable { mutableStateOf(false) }
     var createFor by remember { mutableStateOf<String?>(null) }
@@ -125,7 +132,18 @@ fun DatasetsPane(
         RenameDatasetDialog(d, onDismiss = { renameTarget = null }, onConfirm = { onRename(d.id, it); renameTarget = null })
     }
     deleteTarget?.let { d ->
-        DeleteDatasetDialogWithOptions(d, onDismiss = { deleteTarget = null }, onConfirm = { r, f -> onDelete(d.id, r, f); deleteTarget = null })
+        val local = remember(d, datasets, sharePaths) { DatasetDeleteImpact.local(d, datasets, sharePaths) }
+        var remote by remember(d.id) { mutableStateOf<app.truenascompanion.data.api.DatasetDeleteRemote?>(null) }
+        var loading by remember(d.id) { mutableStateOf(loadDeleteImpact != null) }
+        androidx.compose.runtime.LaunchedEffect(d.id) {
+            if (loadDeleteImpact != null) { remote = loadDeleteImpact(d.id); loading = false }
+        }
+        DeleteDatasetDialogWithOptions(
+            d,
+            impact = local.copy(snapshots = remote?.snapshots, attachments = remote?.attachments, loading = loading),
+            onDismiss = { deleteTarget = null },
+            onConfirm = { r, f -> onDelete(d.id, r, f); deleteTarget = null },
+        )
     }
 }
 
@@ -297,31 +315,61 @@ private fun RenameDatasetDialog(d: Dataset, onDismiss: () -> Unit, onConfirm: (S
     )
 }
 
+/**
+ * 1.7.1 (UX P0-4): everything a dataset delete takes with it, shown before the user confirms.
+ * [size] is the dataset's USED (includes children and snapshots).
+ */
+data class DatasetDeleteImpact(
+    val size: Long?,
+    val children: Int,
+    val shares: List<String>,
+    val snapshots: Int? = null,
+    val attachments: List<String>? = null,
+    val loading: Boolean = false,
+) {
+    /** Children can only be removed with "recursive"; the NAS refuses otherwise. */
+    val needsRecursive: Boolean get() = children > 0
+
+    companion object {
+        fun local(d: Dataset, all: List<Dataset>, sharePaths: List<String>): DatasetDeleteImpact {
+            val mount = (d.mountpoint?.takeIf { it.startsWith("/mnt/") } ?: StorageApi.pathForDataset(d.id)).trimEnd('/')
+            return DatasetDeleteImpact(
+                size = d.used,
+                children = all.count { it.id.startsWith(d.id + "/") },
+                shares = sharePaths.filter { p -> p.trimEnd('/') == mount || p.startsWith("$mount/") }.distinct(),
+            )
+        }
+
+        /** Delete is enabled only once the exact dataset name is typed (and children acknowledged). */
+        fun canDelete(d: Dataset, typed: String, recursive: Boolean, impact: DatasetDeleteImpact): Boolean =
+            typed.trim() == d.shortName && (recursive || !impact.needsRecursive)
+    }
+}
+
 @Composable
-fun DeleteDatasetDialogWithOptions(d: Dataset, onDismiss: () -> Unit, onConfirm: (recursive: Boolean, force: Boolean) -> Unit) {
+fun DeleteDatasetDialogWithOptions(
+    d: Dataset,
+    impact: DatasetDeleteImpact = DatasetDeleteImpact(d.used, 0, emptyList()),
+    onDismiss: () -> Unit,
+    onConfirm: (recursive: Boolean, force: Boolean) -> Unit,
+) {
     var recursive by rememberSaveable { mutableStateOf(false) }
     var force by rememberSaveable { mutableStateOf(false) }
+    var typed by rememberSaveable { mutableStateOf("") }
     val guard = app.truenascompanion.ui.lock.LocalDangerGuard.current
+    val enabled = DatasetDeleteImpact.canDelete(d, typed, recursive, impact)
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Rounded.Delete, null) },
-        title = { Text("Delete ${d.shortName}?") },
+        icon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text(if (d.isVolume) "Delete zvol ${d.shortName}?" else "Delete dataset ${d.shortName}?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("This permanently deletes ${d.id} and its data.")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(recursive, { recursive = it })
-                    Text("Also delete children", style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(force, { force = it })
-                    Text("Force (ignore busy)", style = MaterialTheme.typography.bodyMedium)
-                }
-            }
+            DatasetDeleteBody(d, impact, recursive, { recursive = it }, force, { force = it }, typed, { typed = it })
         },
         confirmButton = {
             androidx.compose.material3.Button(
                 onClick = { guard.guard("Delete dataset") { onConfirm(recursive, force) } },
+                enabled = enabled,
+                modifier = Modifier.testTag("dataset_delete_confirm"),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError,
@@ -330,4 +378,77 @@ fun DeleteDatasetDialogWithOptions(d: Dataset, onDismiss: () -> Unit, onConfirm:
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Composable
+fun DatasetDeleteBody(
+    d: Dataset,
+    impact: DatasetDeleteImpact,
+    recursive: Boolean,
+    onRecursive: (Boolean) -> Unit,
+    force: Boolean,
+    onForce: (Boolean) -> Unit,
+    typed: String,
+    onTyped: (String) -> Unit,
+) {
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("This permanently deletes the data below. It can’t be undone.", style = MaterialTheme.typography.bodyMedium)
+        ElevatedSection(Modifier.fillMaxWidth(), contentPadding = 12.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ImpactRow("Path", d.id)
+                ImpactRow("Used", impact.size?.let { Format.bytes(it) } ?: "—")
+                ImpactRow("Child datasets", impact.children.toString())
+                ImpactRow("Snapshots", impact.snapshots?.toString() ?: if (impact.loading) "Checking…" else "Unknown")
+                if (impact.shares.isNotEmpty()) ImpactRow("Shares", impact.shares.joinToString("\n"))
+                impact.attachments?.takeIf { it.isNotEmpty() }?.let { ImpactRow("In use by", it.joinToString("\n")) }
+            }
+        }
+        if (impact.shares.isNotEmpty() || !impact.attachments.isNullOrEmpty()) {
+            Text(
+                "Shares, apps or VMs using it will stop working.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        CheckRow(
+            checked = recursive,
+            onChange = onRecursive,
+            label = if (impact.children > 0) "Also delete ${impact.children} child dataset(s) (required)" else "Also delete child datasets",
+            tag = "dataset_delete_recursive",
+        )
+        CheckRow(checked = force, onChange = onForce, label = "Force, even if it’s busy (unmounts it)", tag = "dataset_delete_force")
+        OutlinedTextField(
+            value = typed,
+            onValueChange = onTyped,
+            label = { Text("Type ${d.shortName} to confirm") },
+            singleLine = true,
+            isError = typed.isNotEmpty() && typed.trim() != d.shortName,
+            modifier = Modifier.fillMaxWidth().testTag("dataset_delete_name"),
+        )
+    }
+}
+
+@Composable
+private fun ImpactRow(label: String, value: String) {
+    Column(Modifier.semantics(mergeDescendants = true) {}) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** Whole row toggles (48 dp target) and reads as one labelled checkbox to TalkBack. */
+@Composable
+private fun CheckRow(checked: Boolean, onChange: (Boolean) -> Unit, label: String, tag: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onChange)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked, onCheckedChange = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
 }
