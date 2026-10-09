@@ -95,4 +95,16 @@ private fun WidgetContent(snap: WidgetSnapshot) {
 
 class NasStatusWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = NasStatusWidget()
+
+    /** 1.7.1: the refresh job runs only while at least one widget is placed. */
+    override fun onEnabled(context: android.content.Context) {
+        super.onEnabled(context)
+        WidgetRefreshWorker.sync(context, placed = true)
+        WidgetRefreshWorker.refreshNow(context, placed = true)
+    }
+
+    override fun onDisabled(context: android.content.Context) {
+        super.onDisabled(context)
+        WidgetRefreshWorker.sync(context, placed = false)
+    }
 }

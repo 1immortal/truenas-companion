@@ -3,11 +3,10 @@ package app.truenascompanion.data.api
 import app.truenascompanion.data.net.PinningTrustManager
 import app.truenascompanion.data.net.toInfo
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -47,6 +46,10 @@ class JsonRpcClient(
 
     @Volatile
     var isOpen: Boolean = false
+        private set
+
+    /** True once an event had to be dropped (the connection was then closed so subscribers resync). */
+    @Volatile var eventsOverflowed: Boolean = false
         private set
 
     /** Completes when the socket is closed or fails (lets long-lived subscribers notice a dead connection). */
@@ -106,10 +109,14 @@ class JsonRpcClient(
             put("params", params)
         }
         try {
+            // 1.7.1 (review): the socket may have closed between the check above and registering the request, after
+            // failAll() ran; don't wait 30 s for an answer that can't come.
+            if (!isOpen) throw TrueNasException.NotConnected()
+            kotlin.coroutines.coroutineContext[RequestTracker]?.onSend(method)
             if (!ws.send(msg.toString())) throw TrueNasException.NotConnected()
-            return withTimeout(timeoutMs) { deferred.await() }
-        } catch (e: TimeoutCancellationException) {
-            throw TrueNasException.Timeout("No answer from the server for $method.")
+            // 1.7.1 (review P1-5): withTimeoutOrNull, so a caller's own timeout or cancellation isn't mistaken for
+            // the server not answering (and vice versa).
+            return withTimeoutOrNull(timeoutMs) { deferred.await() } ?: throw TrueNasException.Timeout("No answer from the server for $method.")
         } finally {
             pending.remove(id.toString())
         }
@@ -145,7 +152,14 @@ class JsonRpcClient(
             return
         }
         when (obj.str("method")) {
-            "collection_update", "notify_unsubscribed" -> obj["params"].obj()?.let { _events.tryEmit(it) }
+            "collection_update", "notify_unsubscribed" -> obj["params"].obj()?.let {
+                // 1.7.1 (review P1-6): never drop an event silently. If a collector fell 1024 events behind, the
+                // subscribed views would quietly go stale; closing makes every subscriber reconnect and reload.
+                if (!_events.tryEmit(it)) {
+                    eventsOverflowed = true
+                    close()
+                }
+            }
         }
     }
 
@@ -173,8 +187,10 @@ class JsonRpcClient(
             } ?: emptyList()
     }
 
+    /** Pending requests were already sent: a plain "not connected" becomes NotConnected(requestSent = true). */
     private fun failAll(e: Throwable) {
-        pending.values.forEach { it.completeExceptionally(e) }
+        val err = if (e is TrueNasException.NotConnected) TrueNasException.NotConnected(requestSent = true) else e
+        pending.values.forEach { it.completeExceptionally(err) }
         pending.clear()
     }
 }

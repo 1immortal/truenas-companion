@@ -77,8 +77,8 @@ class TrueNasApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.notifier.createChannels()
+        // 1.7.1 (review P1-1): the widget job only exists while a widget is placed; no refresh on every process start.
         WidgetRefreshWorker.sync(this)
-        WidgetRefreshWorker.refreshNow(this)
         UpdateCheckWorker.createChannel(this)
         container.appScope.launch {
             container.settings.autoUpdateCheck.collect { UpdateCheckWorker.sync(this@TrueNasApp, it) }

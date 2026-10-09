@@ -391,13 +391,19 @@ class TrueNasRepository(
         runCatching { onSignedIn(server.id) }
     }
 
-    /** Runs [block] against the API, retrying once with a fresh connection if the socket had dropped. */
+    /**
+     * Runs [block] against the API. If the socket had dropped, the block is retried once on a fresh connection, but
+     * only when it hadn't sent anything that changes the NAS yet (1.7.1, review P0-3: a create, delete or start must
+     * never run twice). Otherwise [TrueNasException.Interrupted] tells the user to check before trying again.
+     */
     suspend fun <T> call(block: suspend (TrueNasApi) -> T): T = withContext(Dispatchers.IO) {
         activeCalls.incrementAndGet()
         try {
+            val tracker = app.truenascompanion.data.api.RequestTracker()
             try {
-                block(api())
+                withContext(tracker) { block(api()) }
             } catch (e: TrueNasException.NotConnected) {
+                if (tracker.writeSent) throw TrueNasException.Interrupted()
                 block(api())
             }
         } finally {

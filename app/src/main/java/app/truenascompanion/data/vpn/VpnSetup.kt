@@ -4,7 +4,7 @@ import app.truenascompanion.data.api.TrueNasApi
 import app.truenascompanion.data.api.TrueNasException
 import app.truenascompanion.util.UrlUtils
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -108,13 +108,14 @@ object VpnSetup {
 
     /** Waits for a middleware job (polling `core.get_jobs` every 2 s) and reports its progress text. */
     suspend fun awaitJob(api: TrueNasApi, id: Long, timeoutMs: Long = 15 * 60_000L, onProgress: (Int?, String?) -> Unit = { _, _ -> }) {
-        withTimeout(timeoutMs) {
+        // 1.7.1 (review P1-5): withTimeoutOrNull, then a plain Timeout error (not a cancellation).
+        val finished = withTimeoutOrNull(timeoutMs) {
             while (true) {
                 val filter = buildJsonArray { add(buildJsonArray { add(JsonPrimitive("id")); add(JsonPrimitive("=")); add(JsonPrimitive(id)) }) }
                 val job = (api.rpc("core.get_jobs", filter) as? JsonArray)?.firstOrNull() as? JsonObject
                     ?: throw TrueNasException.JobFailed("The install job disappeared.")
                 when (job.str("state")) {
-                    "SUCCESS" -> return@withTimeout
+                    "SUCCESS" -> return@withTimeoutOrNull true
                     "FAILED", "ABORTED" -> throw TrueNasException.JobFailed(
                         job.str("error")?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "The install failed.",
                     )
@@ -125,7 +126,9 @@ object VpnSetup {
                     }
                 }
             }
+            @Suppress("UNREACHABLE_CODE") true
         }
+        if (finished == null) throw TrueNasException.Timeout("The install is still running on the NAS. Check TrueNAS › Apps, then try again.")
     }
 
     private fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.contentOrNull?.takeIf { it != "null" }

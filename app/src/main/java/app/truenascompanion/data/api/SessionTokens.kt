@@ -1,6 +1,10 @@
 package app.truenascompanion.data.api
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -117,22 +121,32 @@ class SessionTokenManager(
                 if (conn == null) { dead += candidate.token; continue }
                 // From here on the candidate is spent: the server destroys it when this connection closes.
                 dead += candidate.token
-                val primary = try {
-                    mintWithRetry(conn, ttlSeconds)
-                } catch (e: Throwable) {
+                // 1.7.1 (review P0-2): minting and saving the replacement can't be cut short by a cancelled caller (a
+                // screen closed, a worker stopped), or the spent token would be gone with nothing saved in its place.
+                // Bounded so a stuck socket can't hold the lock forever.
+                val minted = withContext(NonCancellable) {
+                    withTimeoutOrNull(MINT_TIMEOUT_MS) { runCatching { mintWithRetry(conn, ttlSeconds) } }
+                }
+                val primary = minted?.getOrNull()
+                if (primary == null) {
                     conn.close()
-                    if (e is CancellationException) throw e
+                    val e = minted?.exceptionOrNull()
+                    if (e == null || e is CancellationException) throw TrueNasException.Timeout("TrueNAS didn't issue a new session in time.")
                     if (e.tokenFailure() == TokenFailure.TRANSIENT) throw e
                     // Signed in but may not mint: the original password + 2FA login expired (TrueNAS caps it at 30
                     // days) or was terminated. The spare shares that login, but trying it costs one round trip.
                     continue
                 }
-                val oldSpare = saved.spare?.takeUnless { it.token in dead || it.expired() }
-                val spare = if (oldSpare == null || oldSpare.remainingMs() < ttlSeconds * 1000 / 2) {
-                    runCatching { issued(conn.mint(ttlSeconds), ttlSeconds) }.getOrNull() ?: oldSpare
-                } else oldSpare
-                store.save(serverId, SessionTokens(primary, spare))
+                withContext(NonCancellable) {
+                    val oldSpare = saved.spare?.takeUnless { it.token in dead || it.expired() }
+                    val spare = if (oldSpare == null || oldSpare.remainingMs() < ttlSeconds * 1000 / 2) {
+                        withTimeoutOrNull(MINT_TIMEOUT_MS) { runCatching { issued(conn.mint(ttlSeconds), ttlSeconds) }.getOrNull() } ?: oldSpare
+                    } else oldSpare
+                    store.save(serverId, SessionTokens(primary, spare))
+                }
                 dead.clear() // save() already replaced everything
+                // The new tokens are saved; a caller cancelled meanwhile gets no connection (and we don't leak it).
+                if (!currentCoroutineContext().isActive) { conn.close(); currentCoroutineContext().ensureActive() }
                 result = conn.api
                 break
             }
@@ -162,6 +176,8 @@ class SessionTokenManager(
         if (e is CancellationException || e is TrueNasException.NotConnected) throw e
         issued(conn.mint(ttlSeconds), ttlSeconds)
     }
+
+    private companion object { const val MINT_TIMEOUT_MS = 15_000L }
 
     private fun issued(token: String, ttlSeconds: Long) = IssuedToken(token, clock() + ttlSeconds * 1000)
     private fun IssuedToken.expired() = clock() >= expiresAt

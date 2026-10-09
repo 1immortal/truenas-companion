@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.add
@@ -99,27 +98,11 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
 
     override suspend fun rpc(method: String, vararg args: JsonElement): JsonElement = call(method, *args)
 
-    /** Calls a middleware "job" method and waits for it to finish via core.get_jobs polling. */
+    /** Calls a middleware "job" method and waits for it to finish via core.get_jobs polling (one implementation: Jobs.kt). */
     private suspend fun callJob(method: String, vararg args: JsonElement, timeoutMs: Long = 180_000): JsonElement? {
         val first = call(method, *args)
-        val jobId = first.prim()?.takeUnless { it.isString }?.longOrNull ?: return first
-        return withTimeout(timeoutMs) {
-            var polls = 0
-            var result: JsonElement? = null
-            var done = false
-            while (!done) {
-                val filter = buildJsonArray { add(buildJsonArray { add(p("id")); add(p("=")); add(JsonPrimitive(jobId)) }) }
-                val job = call("core.get_jobs", filter).arr()?.firstOrNull().obj()
-                when (job?.str("state")) {
-                    "SUCCESS" -> { result = job["result"]; done = true }
-                    "FAILED", "ABORTED" -> throw TrueNasException.JobFailed(
-                        job.str("error")?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "$method failed"
-                    )
-                    else -> delay(jobPollDelayMs(polls++))
-                }
-            }
-            result
-        }
+        val jobId = first.asJobId() ?: return first
+        return awaitJob(jobId, method, timeoutMs)
     }
 
     override suspend fun systemInfo(): SystemInfo =

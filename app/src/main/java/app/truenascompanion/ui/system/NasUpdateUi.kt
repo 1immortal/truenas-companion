@@ -1,5 +1,8 @@
 package app.truenascompanion.ui.system
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.mapNotNull
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -95,22 +98,18 @@ class NasUpdateViewModel(private val c: AppContainer) : ViewModel() {
         watch?.cancel()
         watch = viewModelScope.launch {
             try {
-                c.repository.jobs().collect { list ->
-                    val j = list.firstOrNull { it.id == id }
-                    if (j != null) {
-                        _job.value = j
-                        if (j.state == JobState.SUCCESS || j.state == JobState.FAILED || j.state == JobState.ABORTED) {
-                            _message.value = when (j.state) {
-                                JobState.SUCCESS -> "Update finished. The NAS will reboot if that was selected."
-                                JobState.FAILED -> "Update failed: ${j.error ?: j.progressText ?: "unknown error"}"
-                                else -> "Update cancelled"
-                            }
-                            refresh()
-                            _job.value = null
-                            return@collect
-                        }
-                    }
+                // 1.7.1 (review P1-4): stop watching once the job ended (return@collect only skipped one emission).
+                val done = c.repository.jobs()
+                    .mapNotNull { list -> list.firstOrNull { it.id == id } }
+                    .onEach { _job.value = it }
+                    .first { it.state == JobState.SUCCESS || it.state == JobState.FAILED || it.state == JobState.ABORTED }
+                _message.value = when (done.state) {
+                    JobState.SUCCESS -> "Update finished. The NAS will reboot if that was selected."
+                    JobState.FAILED -> "Update failed: ${done.error ?: done.progressText ?: "unknown error"}"
+                    else -> "Update cancelled"
                 }
+                refresh()
+                _job.value = null
             } catch (_: Throwable) {
                 // connection dropped during update is expected when rebooting
             }

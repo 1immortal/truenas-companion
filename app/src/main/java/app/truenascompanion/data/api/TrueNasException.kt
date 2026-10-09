@@ -27,7 +27,13 @@ sealed class TrueNasException(message: String, cause: Throwable? = null) : Excep
     class Http(val code: Int, message: String) : TrueNasException(message)
     class JobFailed(message: String) : TrueNasException(message)
     class Unsupported(message: String) : TrueNasException(message)
-    class NotConnected : TrueNasException("Not connected to the server.")
+    /** [requestSent]: the request had gone out before the connection dropped (it may have run on the NAS). */
+    class NotConnected(val requestSent: Boolean = false) : TrueNasException("Not connected to the server.")
+    /** 1.7.1: the connection dropped after a change was sent; it may or may not have been carried out. */
+    class Interrupted : TrueNasException(
+        "The connection dropped after the request was sent, so it may already have been carried out on the NAS. " +
+            "Refresh to check before trying again.",
+    )
     class NoServer : TrueNasException("No server configured.")
     /** Password sign-in needs user interaction (password and/or 2FA code). */
     class LoginRequired : TrueNasException("Sign in to continue.")

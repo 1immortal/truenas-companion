@@ -26,6 +26,11 @@ import java.util.concurrent.TimeUnit
  */
 class WidgetRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
+        // 1.7.1 (review P1-1): no widget on any home screen, no network work (and no more runs).
+        if (!hasWidgets(applicationContext)) {
+            sync(applicationContext, placed = false)
+            return Result.success()
+        }
         val c = (applicationContext as TrueNasApp).container
         val servers = c.settings.servers.first()
         val activeId = c.settings.activeServerId.first()
@@ -96,18 +101,36 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
     companion object {
         private const val UNIQUE = "nas-status-widget"
 
-        fun sync(context: Context) {
+        private const val UNIQUE_NOW = "nas-status-widget-now"
+
+        /** 1.7.1 (review P1-1): true only if the widget is placed on a home screen. */
+        fun hasWidgets(context: Context): Boolean = runCatching {
+            android.appwidget.AppWidgetManager.getInstance(context)
+                .getAppWidgetIds(android.content.ComponentName(context, NasStatusWidgetReceiver::class.java)).isNotEmpty()
+        }.getOrDefault(false)
+
+        /** Periodic refresh while a widget is placed; nothing (and the job cancelled) otherwise. */
+        fun sync(context: Context, placed: Boolean = hasWidgets(context)) {
             runCatching {
+                val wm = WorkManager.getInstance(context)
+                if (!placed) {
+                    wm.cancelUniqueWork(UNIQUE)
+                    wm.cancelUniqueWork(UNIQUE_NOW)
+                    return
+                }
                 val req = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(30, TimeUnit.MINUTES)
                     .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                     .build()
-                WorkManager.getInstance(context).enqueueUniquePeriodicWork(UNIQUE, ExistingPeriodicWorkPolicy.UPDATE, req)
+                wm.enqueueUniquePeriodicWork(UNIQUE, ExistingPeriodicWorkPolicy.UPDATE, req)
             }
         }
 
-        fun refreshNow(context: Context) {
+        /** One refresh soon (deduplicated), only when a widget is placed. */
+        fun refreshNow(context: Context, placed: Boolean = hasWidgets(context)) {
+            if (!placed) return
             runCatching {
-                WorkManager.getInstance(context).enqueue(
+                WorkManager.getInstance(context).enqueueUniqueWork(
+                    UNIQUE_NOW, androidx.work.ExistingWorkPolicy.KEEP,
                     OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
                         .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                         .build(),
