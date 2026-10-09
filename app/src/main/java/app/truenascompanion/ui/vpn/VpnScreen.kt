@@ -63,6 +63,7 @@ class VpnActions(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VpnScreen(serverId: String, onBack: () -> Unit, onSetup: () -> Unit) {
+    app.truenascompanion.ui.components.SecureWindowEffect() // 1.7.1 (M-4)
     val vm = appViewModel(key = "vpn-$serverId") { VpnViewModel(it, serverId) }
     val s by vm.state.collectAsStateWithLifecycle()
     val tunnel by vm.tunnel.collectAsStateWithLifecycle()

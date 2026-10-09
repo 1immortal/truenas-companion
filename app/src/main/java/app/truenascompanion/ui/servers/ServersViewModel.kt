@@ -34,7 +34,26 @@ class ServerListViewModel(private val c: AppContainer) : ViewModel() {
     val activeId = c.settings.activeServerId.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun select(id: String) = viewModelScope.launch { c.settings.setActiveServer(id) }
-    fun delete(id: String) = viewModelScope.launch { c.settings.deleteServer(id) }
+    /** 1.7.1 (security M-5): signs the app's saved sessions out on the NAS before forgetting the server. */
+    fun delete(id: String) = c.appScope.launch { removeServer(c, id) }
+}
+
+/** Revokes the saved sessions of a password server on the NAS (15 s at most), then deletes it from the phone. */
+suspend fun removeServer(c: AppContainer, id: String) {
+    val server = c.settings.servers.first().firstOrNull { it.id == id }
+    if (server != null && server.authMethod == AuthMethod.PASSWORD) {
+        kotlinx.coroutines.withTimeoutOrNull(15_000) {
+            // Never through the tunnel just for this; the local address only when it's the current, verified route.
+            val target = runCatching { c.routes.resolve(server) }.getOrNull()
+                ?.takeIf { it.activeRoute != app.truenascompanion.data.model.Route.VPN } ?: server.forRoute(app.truenascompanion.data.model.Route.REMOTE)
+            c.sessions.revokeAll(id) { token ->
+                val api = WebSocketAuth.tokenConnection(target, token, app.truenascompanion.data.net.Keepalive.NONE).api
+                try { api.rpc("auth.logout") } finally { api.close() }
+            }
+        }
+    }
+    if (c.repository.activeServer.value?.id == id) c.repository.disconnect()
+    c.settings.deleteServer(id)
 }
 
 sealed interface TestOutcome {
@@ -332,6 +351,7 @@ class ServerEditViewModel(private val c: AppContainer, serverId: String?) : View
                     tailscaleUrl = it.tailscaleUrl, tailscalePinnedCertSha256 = it.tailscalePinnedCertSha256,
                     vpnMode = it.vpnMode, wireGuardConfigured = it.wireGuardConfigured,
                     uiCertCheckinPending = it.uiCertCheckinPending,
+                    httpsUpgradeTried = it.httpsUpgradeTried, httpsBannerDismissed = it.httpsBannerDismissed,
                 )
             } ?: built
             c.settings.saveServer(config, if (s.authMethod == AuthMethod.API_KEY) s.apiKey.trim().ifBlank { null } else null)

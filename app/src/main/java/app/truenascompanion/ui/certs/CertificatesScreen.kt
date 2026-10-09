@@ -343,6 +343,7 @@ fun ImportCertForm(onCancel: () -> Unit, onImport: (CertImport) -> Unit) {
     OutlinedTextField(cert, { cert = it }, label = { Text("Certificate (PEM)") }, minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth(),
         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
     Spacer(Modifier.height(8.dp))
+    app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(key, { key = it }, label = { Text("Private key (PEM)") }, minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (key.isEmpty()) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
@@ -351,6 +352,7 @@ fun ImportCertForm(onCancel: () -> Unit, onImport: (CertImport) -> Unit) {
         Icon(Icons.Rounded.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Pick a file")
     }
     Spacer(Modifier.height(8.dp))
+    app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(passphrase, { passphrase = it }, label = { Text("Key passphrase (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
         visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
     Row(verticalAlignment = Alignment.CenterVertically) {

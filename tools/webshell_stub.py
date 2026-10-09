@@ -9,14 +9,20 @@ It serves two endpoints on one port, like TrueNAS nginx does:
                       frames to/from a real pty, resize through core.resize_shell, socket closed when the shell exits.
 
 Instead of `login -p -f`, `docker exec` or `incus exec` it runs /bin/sh locally (the command the client asked for
-is only checked, not run). Example data only. Needs aiohttp:  pip install aiohttp;  python3 webshell_stub.py 8081
-Sign in with any username and the password "demo". Tokens and terminal data are never printed.
+is only checked, not run). Example data only. Needs aiohttp:  pip install aiohttp
+
+  python3 webshell_stub.py 8443 --cert cert.pem --key key.pem
+
+WARNING: this gives whoever signs in a real shell on the machine running it. Since 1.7.1 it listens on 127.0.0.1 only
+(an Android emulator reaches it as https://10.0.2.2:8443), uses a random password printed at start-up, and serves
+HTTPS when --cert/--key are given (the app only signs in over HTTPS; trust the self-signed certificate once).
+Tokens and terminal data are never printed. Never run it on a shared or reachable network.
 """
 import asyncio, fcntl, json, os, queue, secrets, signal, struct, sys, termios, threading, time, uuid
 
 from aiohttp import web, WSMsgType
 
-PASSWORD = "demo"
+PASSWORD = os.environ.get("STUB_PASSWORD") or secrets.token_urlsafe(12)
 tokens = {}   # token -> {"origin": ip, "single_use": bool, "expires": ts, "username": str}
 shells = {}   # shell id -> ShellWorker
 APP_CONTAINERS = {"demo": {"3f2a9c1be0d4": {"service_name": "web"}, "8d41e7a0c9b2": {"service_name": "db"}}}
@@ -237,13 +243,25 @@ async def shell_handler(request):
 
 
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8081
+    import argparse, ssl
+    ap = argparse.ArgumentParser(description="Local TrueNAS web shell stub (testing only)")
+    ap.add_argument("port", nargs="?", type=int, default=8443)
+    ap.add_argument("--cert", help="PEM certificate for HTTPS")
+    ap.add_argument("--key", help="PEM private key for HTTPS")
+    a = ap.parse_args()
+    ctx = None
+    if a.cert and a.key:
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ctx.load_cert_chain(a.cert, a.key)
     app = web.Application()
     app.router.add_get("/api/current", api_handler)
     app.router.add_get("/websocket", api_handler)
     app.router.add_get("/websocket/shell/", shell_handler)
     app.router.add_get("/websocket/shell", shell_handler)
-    web.run_app(app, host="0.0.0.0", port=port, print=lambda *_: print(f"listening on :{port}", flush=True))
+    print(f"password for this run: {PASSWORD}", file=sys.stderr, flush=True)
+    scheme = "https" if ctx else "http (the app won't sign in without --cert/--key)"
+    web.run_app(app, host="127.0.0.1", port=a.port, ssl_context=ctx,
+                print=lambda *_: print(f"listening on 127.0.0.1:{a.port} ({scheme})", flush=True))
 
 
 if __name__ == "__main__":

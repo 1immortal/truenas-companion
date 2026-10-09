@@ -56,6 +56,7 @@ fun SecretTextField(
     hiddenByServer: Boolean = false,
 ) {
     var shown by rememberSaveable { mutableStateOf(false) }
+    app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(
         value = value, onValueChange = onValueChange, singleLine = singleLine, isError = isError,
         label = { Text(label, maxLines = 1) },

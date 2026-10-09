@@ -64,6 +64,7 @@ class SetupActions(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VpnSetupScreen(serverId: String, onBack: () -> Unit) {
+    app.truenascompanion.ui.components.SecureWindowEffect() // 1.7.1 (M-4)
     val vm = appViewModel(key = "vpn-setup-$serverId") { VpnSetupViewModel(it, serverId) }
     val vpn = appViewModel(key = "vpn-setup-tunnel-$serverId") { VpnViewModel(it, serverId) }
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -290,6 +291,7 @@ private fun WgExisting(ui: SetupUi, a: SetupActions) {
         value = ui.existingUser, onValueChange = { v -> a.update { it.copy(existingUser = v) } },
         label = { Text("wg-easy username") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
+    app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(
         value = ui.existingPassword, onValueChange = { v -> a.update { it.copy(existingPassword = v) } },
         label = { Text("wg-easy password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(),
@@ -402,6 +404,7 @@ private fun TsForm(ui: SetupUi, a: SetupActions) {
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { a.openUrl(VpnSetup.TS_KEYS_URL) }) { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Open the admin console") }
     }
+    app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(
         value = ui.authKey, onValueChange = { v -> a.update { it.copy(authKey = v.trim()) } },
         label = { Text("Auth key") }, placeholder = { Text("tskey-auth-…") }, singleLine = true,

@@ -258,6 +258,7 @@ fun VmCreateContent(ui: VmCreateUi, onChange: ((VmFormState) -> VmFormState) -> 
                 SwitchRow("Web display (SPICE)", f.display) { v -> onChange { it.copy(display = v) } }
                 if (f.display) {
                     var reveal by remember { mutableStateOf(false) }
+                    app.truenascompanion.ui.components.SecureWindowEffect()
                     OutlinedTextField(f.displayPassword, { v -> onChange { it.copy(displayPassword = v) } }, label = { Text("Display password *") }, singleLine = true,
                         isError = "displayPassword" in errors, supportingText = { Text(errors["displayPassword"] ?: "Asked when you open the display") },
                         visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),

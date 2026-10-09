@@ -121,6 +121,7 @@ fun PasswordDialog(
                     if (username.isNotBlank()) "Signing in as $username" else "Set a username for this server in its settings first.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                app.truenascompanion.ui.components.SecureWindowEffect()
                 OutlinedTextField(
                     value = password, onValueChange = { password = it },
                     label = { Text("Password") }, singleLine = true, enabled = !busy,

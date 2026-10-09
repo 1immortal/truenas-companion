@@ -71,7 +71,8 @@ sealed interface AuthPrompt {
     ) : AuthPrompt
 }
 
-fun ServerConfig.sessionTtlSeconds(): Long = sessionDays.coerceIn(1, 90) * 24L * 3600L
+/** 1.7.1 (security M-5): at most 30 days (the longest choice in the app; TrueNAS also caps the original login at 30). */
+fun ServerConfig.sessionTtlSeconds(): Long = sessionDays.coerceIn(1, 30) * 24L * 3600L
 
 /**
  * Owns the connection to the active server and hands out a live [TrueNasApi].

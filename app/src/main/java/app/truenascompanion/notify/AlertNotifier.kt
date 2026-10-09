@@ -136,9 +136,43 @@ class AlertNotifier(private val context: Context) {
             putExtra(DeepLink.EXTRA_DESTINATION, destination)
             serverId?.let { putExtra(DeepLink.EXTRA_SERVER_ID, it) }
             arg?.let { putExtra(DeepLink.EXTRA_ARG, it) }
+            DeepLinkGuard.sign(context, this)
         }
         return PendingIntent.getActivity(context, "$requestKey/$destination".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
+
+    /**
+     * 1.7.1 (security M-3): while the app lock is on (or its setting isn't loaded yet), alerts are only dismissed from
+     * inside the app, behind the lock; the notification has no Dismiss action then.
+     */
+    @Volatile var appLockOn: Boolean = true
+
+    /** Dismiss needs the phone unlocked: Android 12+ marks the action, older versions go through [AlertDismissActivity]. */
+    private fun dismissAction(serverId: String, uuids: List<String>, label: String): NotificationCompat.Action? {
+        if (appLockOn) return null
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            return NotificationCompat.Action.Builder(0, label, dismissIntent(serverId, uuids)).setAuthenticationRequired(true).build()
+        }
+        val intent = Intent(context, AlertDismissActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+            putExtra(AlertActionReceiver.EXTRA_SERVER_ID, serverId)
+            putExtra(AlertActionReceiver.EXTRA_UUIDS, uuids.toTypedArray())
+        }
+        val pi = PendingIntent.getActivity(context, "dismissui/$serverId/${uuids.joinToString(",")}".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return NotificationCompat.Action.Builder(0, label, pi).build()
+    }
+
+    /**
+     * 1.7.1 (security M-3): what the lock screen shows when the user hides sensitive notification content: the app and
+     * the severity, never the alert text, server or pool names.
+     */
+    private fun publicVersion(channel: String, title: String): android.app.Notification =
+        NotificationCompat.Builder(context, channel)
+            .setSmallIcon(R.drawable.ic_stat_notify)
+            .setColor(BRAND_COLOR)
+            .setContentTitle(title)
+            .setContentText("Unlock to see details")
+            .build()
 
     private fun dismissIntent(serverId: String, uuids: List<String>): PendingIntent {
         val intent = Intent(context, AlertActionReceiver::class.java).apply {
@@ -166,8 +200,16 @@ class AlertNotifier(private val context: Context) {
         .setSmallIcon(R.drawable.ic_stat_notify)
         .setColor(BRAND_COLOR)
         .setAutoCancel(true)
+        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        .setPublicVersion(publicVersion(channel, "TrueNAS Companion"))
 
     // --- alerts ---
+
+    /** Lock-screen title of a hidden alert, e.g. "TrueNAS: 1 critical alert" (pure, unit tested). */
+    fun publicAlertTitle(level: AlertLevel, count: Int): String {
+        val sev = when (level.group) { SeverityGroup.CRITICAL -> "critical"; SeverityGroup.WARNING -> "warning"; SeverityGroup.INFO -> "info" }
+        return "TrueNAS: $count $sev alert" + if (count == 1) "" else "s"
+    }
 
     fun buildAlert(server: ServerConfig, alert: AlertItem, title: String, silent: Boolean = false): NotificationCompat.Builder =
         buildGroup(server.id, server.name, listOf(alert), title, alertTag(server.id, alert.uuid), silent)
@@ -198,8 +240,9 @@ class AlertNotifier(private val context: Context) {
             .setSilent(silent)
             .setOnlyAlertOnce(true)
             .setNumber(count)
-            .addAction(0, if (count > 1) "Dismiss all" else "Dismiss", dismissIntent(serverId, uuids))
-            .addAction(0, "Snooze", snoozeIntent(serverId, serverName, uuids, tag))
+            .setPublicVersion(publicVersion(channelFor(level), publicAlertTitle(level, count)))
+        dismissAction(serverId, uuids, if (count > 1) "Dismiss all" else "Dismiss")?.let { b.addAction(it) }
+        b.addAction(0, "Snooze", snoozeIntent(serverId, serverName, uuids, tag))
             .addAction(0, "Open", open)
             .addExtras(android.os.Bundle().apply {
                 putString(X_SERVER_NAME, serverName)

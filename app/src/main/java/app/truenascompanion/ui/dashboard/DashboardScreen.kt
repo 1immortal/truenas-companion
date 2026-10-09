@@ -148,6 +148,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit) {
                 EditGrid(layout.widgets, vm)
             } else {
                 VpnFallbackNotice(server, route)
+                server?.let { app.truenascompanion.ui.servers.HttpsNoticeHost(it) }
                 PullToRefreshBox(isRefreshing = data.refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.fillMaxSize()) {
                     when {
                         data.error != null && data.system == null -> ScrollableErrorState(data.error!!, data.loginRequired) { vm.refresh() }

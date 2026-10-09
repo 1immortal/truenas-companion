@@ -124,6 +124,7 @@ fun shellSubtitle(target: ShellTarget): String = when (target) {
 
 @Composable
 fun ShellScreen(target: ShellTarget, key: String, onBack: () -> Unit) {
+    app.truenascompanion.ui.components.SecureWindowEffect() // 1.7.1 (M-4)
     ShellColors.applyToEmulator()
     val vm = appViewModel(key = "shell-$key") { ShellViewModel(it, target) }
     val ui by vm.ui.collectAsStateWithLifecycle()

@@ -1,6 +1,8 @@
 package app.truenascompanion
 
 import app.truenascompanion.data.net.RouteResolver
+import app.truenascompanion.data.net.HttpsUpgradeManager
+import app.truenascompanion.data.model.Route
 import app.truenascompanion.data.vpn.TunnelManager
 import app.truenascompanion.data.security.AppLock
 import android.app.Application
@@ -26,6 +28,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** A notification tap, app shortcut or tile asking the UI to show [destination] (with optional [arg]) for [serverId]. */
@@ -53,6 +56,15 @@ class AppContainer(app: Application) {
     val appLock = AppLock()
     /** In-app update check state (GitHub Releases of BuildConfig.UPDATE_REPO). */
     val updates = UpdateCenter()
+    /** 1.7.1: moves saved http:// addresses to HTTPS (one automatic attempt per server, then the banner's button). */
+    val httpsUpgrade = HttpsUpgradeManager(
+        servers = { settings.servers.first() },
+        update = { id, f -> settings.updateServer(id, f) },
+        onChanged = { id, route ->
+            routes.reset(id)
+            if (route == Route.REMOTE && repository.activeServer.value?.id == id) repository.disconnect()
+        },
+    )
     /** One-shot request for the Storage tab to show a segment (e.g. Protection from the dashboard card). */
     val storageTabRequest = MutableStateFlow<Int?>(null)
 }
@@ -71,7 +83,12 @@ class TrueNasApp : Application() {
         container.appScope.launch {
             container.settings.autoUpdateCheck.collect { UpdateCheckWorker.sync(this@TrueNasApp, it) }
         }
-        container.appScope.launch { container.settings.lockSettings.collect { container.appLock.onSettingsLoaded(it) } }
+        container.appScope.launch {
+            container.settings.lockSettings.collect {
+                container.appLock.onSettingsLoaded(it)
+                container.notifier.appLockOn = it.enabled
+            }
+        }
         // Keep WorkManager / the instant-alerts service in sync with the settings for the life of the process.
         container.appScope.launch {
             combine(container.settings.notificationPrefs, container.settings.servers) { p, s -> p to s }

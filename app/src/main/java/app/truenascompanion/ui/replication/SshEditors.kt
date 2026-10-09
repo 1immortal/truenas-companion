@@ -258,6 +258,7 @@ class SshConnectionEditorViewModel(private val c: AppContainer, private val id: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SshConnectionEditorScreen(id: Int?, onBack: () -> Unit) {
+    app.truenascompanion.ui.components.SecureWindowEffect() // 1.7.1 (M-4): private keys, passwords
     val vm = appViewModel(key = "ssh-conn:${id ?: "new"}") { SshConnectionEditorViewModel(it, id) }
     val state by vm.state.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()
@@ -498,6 +499,7 @@ fun keyPairErrors(f: KeyPairForm, editing: Boolean): Map<String, String> = build
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeyPairEditorScreen(id: Int?, onBack: () -> Unit) {
+    app.truenascompanion.ui.components.SecureWindowEffect() // 1.7.1 (M-4): private keys, passwords
     val vm = appViewModel(key = "ssh-key:${id ?: "new"}") { KeyPairEditorViewModel(it, id) }
     val state by vm.state.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()

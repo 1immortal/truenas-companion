@@ -235,6 +235,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
         },
     ) { padding ->
         app.truenascompanion.ui.auth.AuthPromptHost()
+        app.truenascompanion.ui.servers.HttpsUpgradeHost()
         app.truenascompanion.ui.quick.QuickActionHost(container, quick, onDone = { quick = null },
             onOpenShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) })
         app.truenascompanion.ui.connection.ConnectionOverlayHost(

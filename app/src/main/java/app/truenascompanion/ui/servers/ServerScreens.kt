@@ -232,6 +232,7 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                 )
             }
             if (s.authMethod == AuthMethod.API_KEY) {
+                app.truenascompanion.ui.components.SecureWindowEffect()
                 OutlinedTextField(
                     value = s.apiKey, onValueChange = { v -> vm.update { it.copy(apiKey = v) } },
                     label = { Text("API key") },
@@ -256,6 +257,7 @@ fun ServerEditScreen(serverId: String?, onDone: () -> Unit, onBack: (() -> Unit)
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, autoCorrectEnabled = false),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                app.truenascompanion.ui.components.SecureWindowEffect()
                 OutlinedTextField(
                     value = s.password, onValueChange = { v -> vm.update { it.copy(password = v) } },
                     label = { Text("Password") },

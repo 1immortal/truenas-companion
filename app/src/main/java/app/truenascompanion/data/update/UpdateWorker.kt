@@ -77,6 +77,7 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
                 putExtra(DeepLink.EXTRA_DESTINATION, DeepLink.DEST_SETTINGS)
                 // 1.4.1: open System › About (update channel and the update dialog) instead of the hub.
                 putExtra(DeepLink.EXTRA_ARG, app.truenascompanion.ui.system.SystemPage.ARG_APP_UPDATE)
+                app.truenascompanion.notify.DeepLinkGuard.sign(context, this)
             }
             val pi = PendingIntent.getActivity(context, 7001, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             val n = NotificationCompat.Builder(context, CHANNEL)

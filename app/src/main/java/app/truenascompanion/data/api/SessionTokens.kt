@@ -69,6 +69,20 @@ class SessionTokenManager(
 
     suspend fun clear(serverId: String) = lock(serverId).withLock { store.save(serverId, SessionTokens()) }
 
+    /**
+     * 1.7.1 (security M-5): ends every saved session on the NAS (server removed from the app), then forgets them.
+     * [logout] signs in with one token and calls `auth.logout`, which makes TrueNAS destroy that token. Best effort:
+     * tokens that can't be reached are still forgotten on the phone (they expire on their own).
+     */
+    suspend fun revokeAll(serverId: String, logout: suspend (token: String) -> Unit) = lock(serverId).withLock {
+        val saved = store.load(serverId)
+        for (t in saved.all()) {
+            if (t.expired()) continue
+            try { logout(t.token) } catch (e: CancellationException) { throw e } catch (_: Throwable) { }
+        }
+        withContext(NonCancellable) { store.save(serverId, SessionTokens()) }
+    }
+
     /** True if a non-expired token is saved. */
     suspend fun hasUsable(serverId: String): Boolean = store.load(serverId).all().any { !it.expired() }
 

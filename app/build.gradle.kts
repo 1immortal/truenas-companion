@@ -56,10 +56,16 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystoreProps != null) signingConfig = signingConfigs.getByName("release")
+            buildConfigField("boolean", "PREVIEW_CHANNEL", "false")
         }
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // 1.7.1 (security H-1): the published "Debug (preview builds)" APK is not debuggable, so other tools on a
+            // USB-connected computer can't attach to it or read its private data (run-as). Same package and signing key
+            // as before, so existing installs update in place. Its update channel comes from PREVIEW_CHANNEL.
+            isDebuggable = false
+            buildConfigField("boolean", "PREVIEW_CHANNEL", "true")
         }
     }
 

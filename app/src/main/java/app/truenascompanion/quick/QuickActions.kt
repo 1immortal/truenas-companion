@@ -41,6 +41,7 @@ object QuickActions {
             putExtra(DeepLink.EXTRA_DESTINATION, destination)
             arg?.let { putExtra(DeepLink.EXTRA_ARG, it) }
             serverId?.let { putExtra(DeepLink.EXTRA_SERVER_ID, it) }
+            app.truenascompanion.notify.DeepLinkGuard.sign(context, this)
         }
 
     /** Action of the configurable Quick Settings tile (plain SharedPreferences so the tile can read it synchronously). */

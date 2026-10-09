@@ -59,16 +59,8 @@ class AlertActionReceiver : BroadcastReceiver() {
         val serverId = intent.getStringExtra(EXTRA_SERVER_ID) ?: return
         val uuids = intent.getStringArrayExtra(EXTRA_UUIDS)?.toList()?.takeIf { it.isNotEmpty() }
             ?: listOfNotNull(intent.getStringExtra(EXTRA_UUID)).ifEmpty { return }
-        val container = (context.applicationContext as TrueNasApp).container
-        container.notifier.removeFromShade(serverId, uuids.toSet())
-        uuids.forEach { uuid ->
-            val request = OneTimeWorkRequestBuilder<DismissAlertWorker>()
-                .setInputData(workDataOf(DismissAlertWorker.KEY_SERVER to serverId, DismissAlertWorker.KEY_UUID to uuid))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("dismiss-$serverId-$uuid", ExistingWorkPolicy.KEEP, request)
-        }
+        // Android 12+: the action is marked "authentication required", so the system asks to unlock first.
+        enqueueDismiss(context, serverId, uuids)
     }
 
     companion object {
@@ -77,6 +69,44 @@ class AlertActionReceiver : BroadcastReceiver() {
         const val EXTRA_UUID = "uuid"
         /** Grouped notifications (1.2.0) dismiss every alert they cover. */
         const val EXTRA_UUIDS = "uuids"
+    }
+}
+
+/** Removes the alerts from the shade and dismisses them on the NAS (network-constrained, with retries). */
+fun enqueueDismiss(context: Context, serverId: String, uuids: List<String>) {
+    val container = (context.applicationContext as TrueNasApp).container
+    container.notifier.removeFromShade(serverId, uuids.toSet())
+    uuids.forEach { uuid ->
+        val request = OneTimeWorkRequestBuilder<DismissAlertWorker>()
+            .setInputData(workDataOf(DismissAlertWorker.KEY_SERVER to serverId, DismissAlertWorker.KEY_UUID to uuid))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork("dismiss-$serverId-$uuid", ExistingWorkPolicy.KEEP, request)
+    }
+}
+
+/**
+ * 1.7.1 (security M-3): the notification's Dismiss on Android 8–11, where actions can't require authentication. This
+ * invisible, non-exported activity first asks the system to unlock the phone, and only then dismisses the alert.
+ */
+class AlertDismissActivity : android.app.Activity() {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        val serverId = intent.getStringExtra(AlertActionReceiver.EXTRA_SERVER_ID)
+        val uuids = intent.getStringArrayExtra(AlertActionReceiver.EXTRA_UUIDS)?.toList().orEmpty()
+        if (serverId == null || uuids.isEmpty()) { finish(); return }
+        val km = getSystemService(android.app.KeyguardManager::class.java)
+        if (km?.isKeyguardLocked == true) {
+            km.requestDismissKeyguard(this, object : android.app.KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() { enqueueDismiss(this@AlertDismissActivity, serverId, uuids); finish() }
+                override fun onDismissCancelled() = finish()
+                override fun onDismissError() = finish()
+            })
+        } else {
+            enqueueDismiss(this, serverId, uuids)
+            finish()
+        }
     }
 }
 

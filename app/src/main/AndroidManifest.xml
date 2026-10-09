@@ -58,6 +58,15 @@
             android:taskAffinity=""
             android:theme="@style/Theme.TrueNASCompanion.Translucent" />
 
+        <!-- 1.7.1: the alert notification's Dismiss on Android 8-11 (asks to unlock the phone first) -->
+        <activity
+            android:name=".notify.AlertDismissActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TrueNASCompanion.Translucent" />
+
         <!-- Quick Settings tiles (1.2.0) -->
         <service
             android:name=".quick.StatusTileService"

@@ -51,13 +51,16 @@ class MainActivity : FragmentActivity() {
     /**
      * Recents privacy: on Android 13+ the app-switcher preview is simply disabled while the lock is on; older versions
      * only have FLAG_SECURE (which also blocks screenshots), so it's used while the lock is on and the privacy option
-     * is enabled. The lock screen itself is always FLAG_SECURE.
+     * is enabled. The lock screen itself is always FLAG_SECURE, and so are screens showing secrets (1.7.1).
      */
     private fun applyPrivacy(container: AppContainer) {
         lifecycleScope.launch {
-            combine(container.appLock.locked, container.appLock.settings) { locked, s -> locked to s }.collect { (locked, s) ->
+            combine(container.appLock.locked, container.appLock.settings, app.truenascompanion.ui.components.SecureWindow.requests) { locked, s, secrets ->
+                Triple(locked, s, secrets > 0)
+            }.collect { (locked, s, secretOnScreen) ->
                 val hide = s?.enabled == true && s.privacyScreen
-                val secure = locked || (hide && Build.VERSION.SDK_INT < 33)
+                // 1.7.1 (security M-4): screens with secrets are always FLAG_SECURE, whatever the lock setting.
+                val secure = locked || secretOnScreen || (hide && Build.VERSION.SDK_INT < 33)
                 if (secure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!hide)
@@ -72,11 +75,13 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val destination = intent?.getStringExtra(DeepLink.EXTRA_DESTINATION) ?: return
-        val serverId = intent.getStringExtra(DeepLink.EXTRA_SERVER_ID)
-        val arg = intent.getStringExtra(DeepLink.EXTRA_ARG)
-        (application as TrueNasApp).container.deepLinks.value = PendingDeepLink(serverId, destination, arg = arg)
-        intent.removeExtra(DeepLink.EXTRA_DESTINATION)
-        intent.removeExtra(DeepLink.EXTRA_ARG)
+        // 1.7.1 (security M-2): only intents signed by the app itself may switch servers or preselect a target.
+        val link = app.truenascompanion.notify.DeepLinkGuard.parse(this, intent)
+        runCatching {
+            intent?.removeExtra(DeepLink.EXTRA_DESTINATION)
+            intent?.removeExtra(DeepLink.EXTRA_ARG)
+            intent?.removeExtra(app.truenascompanion.notify.DeepLinkGuard.EXTRA_SIG)
+        }
+        if (link != null) (application as TrueNasApp).container.deepLinks.value = link
     }
 }

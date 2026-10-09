@@ -161,6 +161,7 @@ private fun TextField(q: Question, value: JsonElement?, readOnly: Boolean, error
     val s = q.schema
     val text = value?.takeUnless { it is JsonNull }?.display().orEmpty()
     var reveal by remember { mutableStateOf(false) }
+    if (s.private) app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(
         value = text, onValueChange = onText,
         label = { Text(q.label + if (s.required) " *" else "") },

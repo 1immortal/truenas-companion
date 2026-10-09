@@ -92,6 +92,7 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, enable
 @Composable
 private fun PasswordField(value: String, onChange: (String) -> Unit, label: String, enabled: Boolean = true, error: String? = null) {
     var visible by remember { mutableStateOf(false) }
+    app.truenascompanion.ui.components.SecureWindowEffect()
     OutlinedTextField(
         value, onChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),

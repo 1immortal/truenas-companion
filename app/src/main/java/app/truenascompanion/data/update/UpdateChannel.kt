@@ -17,7 +17,7 @@ enum class UpdateChannel {
     val label: String
         get() = when (this) {
             RELEASE -> "Release"
-            DEBUG -> "Debug"
+            DEBUG -> "Debug (preview builds)"
         }
 
     /** Unified asset name on every GitHub release (not versioned). */
@@ -36,7 +36,7 @@ enum class UpdateChannel {
     companion object {
         /** Default: Release builds track Release; debug builds track Debug. */
         fun defaultForBuild(): UpdateChannel =
-            if (BuildConfig.DEBUG) DEBUG else RELEASE
+            if (BuildConfig.PREVIEW_CHANNEL) DEBUG else RELEASE
 
         fun fromStorage(raw: String?): UpdateChannel =
             raw?.let { runCatching { valueOf(it) }.getOrNull() } ?: defaultForBuild()
