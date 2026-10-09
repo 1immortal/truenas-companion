@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Lock
@@ -107,6 +108,7 @@ fun StatusChip(health: Health, label: String, modifier: Modifier = Modifier, sho
             Icon(
                 imageVector = when (health) {
                     Health.HEALTHY -> Icons.Rounded.CheckCircle
+                    Health.INFO -> Icons.Rounded.Info
                     Health.WARNING -> Icons.Rounded.Warning
                     Health.CRITICAL -> Icons.Rounded.Error
                     Health.UNKNOWN -> Icons.AutoMirrored.Rounded.Help
@@ -116,6 +118,21 @@ fun StatusChip(health: Health, label: String, modifier: Modifier = Modifier, sho
         }
         Text(label, style = MaterialTheme.typography.labelMedium, color = fg, fontWeight = FontWeight.SemiBold)
     }
+}
+
+/**
+ * 1.8.0: neutral attribute label (SMB, SSH key, HDD, Admin, Web UI …). Status colors are only for state; use
+ * [StatusChip] for Online / Degraded / Running / Stopped.
+ */
+@Composable
+fun Tag(text: String, modifier: Modifier = Modifier, brand: Boolean = false) {
+    val bg = if (brand) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+    val fg = if (brand) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1,
+        modifier = modifier.clip(app.truenascompanion.ui.theme.Radius.tagShape).background(bg).padding(horizontal = 8.dp, vertical = 3.dp),
+    )
 }
 
 /** Round tinted icon "avatar" used as the leading element of cards. */
@@ -146,7 +163,9 @@ fun LetterAvatar(text: String, size: Dp = 44.dp) {
 fun ElevatedSection(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    contentPadding: Dp = 18.dp,
+    contentPadding: Dp = app.truenascompanion.ui.theme.CardPadding.comfortable,
+    /** 1.8.0: rows and tiles (compact padding) get the smaller row radius, content cards the card radius. */
+    shape: androidx.compose.ui.graphics.Shape = if (contentPadding <= 14.dp) app.truenascompanion.ui.theme.Radius.rowShape else app.truenascompanion.ui.theme.Radius.cardShape,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val brand = LocalBrandColors.current
@@ -154,15 +173,15 @@ fun ElevatedSection(
     val border = BorderStroke(1.dp, if (brand.dark) brand.cardBorder.copy(alpha = 0.55f) else brand.cardBorder)
     // Light mode: a soft blue-tinted shadow lifts the white cards off the tinted background.
     val shadowMod = if (brand.dark) Modifier else Modifier.shadow(
-        6.dp, MaterialTheme.shapes.large, clip = false,
+        6.dp, shape, clip = false,
         ambientColor = brand.glow.copy(alpha = 0.10f), spotColor = brand.glow.copy(alpha = 0.14f),
     )
     if (onClick != null) {
-        Card(onClick = onClick, modifier = modifier.then(shadowMod), shape = MaterialTheme.shapes.large, colors = colors, border = border) {
+        Card(onClick = onClick, modifier = modifier.then(shadowMod), shape = shape, colors = colors, border = border) {
             Column(Modifier.padding(contentPadding), content = content)
         }
     } else {
-        Card(modifier = modifier.then(shadowMod), shape = MaterialTheme.shapes.large, colors = colors, border = border) {
+        Card(modifier = modifier.then(shadowMod), shape = shape, colors = colors, border = border) {
             Column(Modifier.padding(contentPadding), content = content)
         }
     }
@@ -197,8 +216,8 @@ fun CapacityBar(fraction: Float, modifier: Modifier = Modifier, color: Color? = 
     val brand = LocalBrandColors.current
     val brush = when {
         color != null -> SolidColor(color)
-        fraction >= 0.9f -> SolidColor(status.critical)
-        fraction >= 0.8f -> SolidColor(status.warning)
+        fraction >= 0.9f -> SolidColor(status.criticalFill)
+        fraction >= 0.8f -> SolidColor(status.warningFill)
         else -> Brush.horizontalGradient(listOf(brand.gaugeStart, brand.gaugeEnd))
     }
     Box(

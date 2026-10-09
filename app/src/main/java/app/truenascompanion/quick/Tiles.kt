@@ -36,7 +36,7 @@ object StatusTileText {
         // The widget refresh stores errors without health data.
         if (s.error != null) return Display(name, if (s.error.contains("Sign in", ignoreCase = true)) "Sign in needed" else "Offline", false)
         val health = when (s.poolHealth) {
-            Health.HEALTHY -> "Healthy"
+            Health.HEALTHY, Health.INFO -> "Healthy"
             Health.WARNING -> "Warning"
             Health.CRITICAL -> "Degraded"
             Health.UNKNOWN -> "Unknown"

@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.certs
 
+import app.truenascompanion.ui.components.Tag
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -235,11 +236,11 @@ private fun CertCard(c: NasCertificate, now: Long, warnDays: Int, isWebUi: Boole
                 CertStatus.EXPIRED -> StatusChip(Health.CRITICAL, expiryLabel(c, now))
                 CertStatus.EXPIRING -> StatusChip(Health.WARNING, expiryLabel(c, now))
                 CertStatus.OK -> StatusChip(Health.HEALTHY, expiryLabel(c, now))
-                CertStatus.NOT_APPLICABLE -> StatusChip(Health.UNKNOWN, "Signing request", showIcon = false)
+                CertStatus.NOT_APPLICABLE -> Tag("Signing request")
             }
-            if (isWebUi) StatusChip(Health.HEALTHY, "Web UI", showIcon = false)
-            if (c.acme) StatusChip(Health.UNKNOWN, "ACME · auto-renew", showIcon = false)
-            if (c.selfSigned && c.kind != CertKind.CSR) StatusChip(Health.UNKNOWN, "Self-signed", showIcon = false)
+            if (isWebUi) Tag("Web UI", brand = true)
+            if (c.acme) Tag("ACME · auto-renew")
+            if (c.selfSigned && c.kind != CertKind.CSR) Tag("Self-signed")
         }
         if (c.kind != CertKind.CSR) {
             Spacer(Modifier.height(8.dp))

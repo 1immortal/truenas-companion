@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.alerts
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -225,7 +226,7 @@ fun AlertCard(
                     StatusChip(a.health, a.level.lowercase().replaceFirstChar { it.uppercase() })
                     if (snoozedUntil != null) {
                         Spacer(Modifier.width(6.dp))
-                        StatusChip(app.truenascompanion.data.model.Health.UNKNOWN, "Snoozed until ${snoozeText(snoozedUntil)}", showIcon = false)
+                        Tag("Snoozed until ${snoozeText(snoozedUntil)}")
                     }
                     Spacer(Modifier.weight(1f))
                     Text(Format.relativeTime(a.datetimeMillis), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -572,7 +572,7 @@ fun DiskDetailContent(
                     Text("No SMART or temperature alerts for this disk.", style = MaterialTheme.typography.bodyMedium)
                 } else {
                     data.alerts.forEach { a ->
-                        val h = when (a.level.uppercase()) { "INFO", "NOTICE" -> Health.HEALTHY; "WARNING" -> Health.WARNING; else -> Health.CRITICAL }
+                        val h = when (a.level.uppercase()) { "INFO", "NOTICE" -> Health.INFO; "WARNING" -> Health.WARNING; else -> Health.CRITICAL }
                         InfoBanner(a.text, health = h)
                         Spacer(Modifier.height(8.dp))
                     }

@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.storage
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -184,7 +185,7 @@ private fun DatasetCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (d.encrypted) StatusChip(if (d.locked) Health.WARNING else Health.HEALTHY, if (d.locked) "Locked" else "Encrypted", showIcon = false)
+            if (d.encrypted) { if (d.locked) StatusChip(Health.WARNING, "Locked") else Tag("Encrypted") }
             IconButton(onClick = { menu = true }, enabled = !busy) { Icon(Icons.Rounded.MoreVert, "Actions") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (!d.isVolume && !d.locked) DropdownMenuItem(text = { Text("Browse files") }, onClick = { menu = false; onBrowse() }, leadingIcon = { Icon(Icons.Rounded.FolderOpen, null) })

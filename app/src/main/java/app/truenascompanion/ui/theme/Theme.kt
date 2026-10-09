@@ -33,7 +33,8 @@ internal val LightColors = lightColorScheme(
     primary = Royal, onPrimary = Color.White,
     primaryContainer = Color(0xFFDCE4FF), onPrimaryContainer = Color(0xFF0A1F66),
     secondary = Color(0xFF0E7490), onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCFF7FE), onSecondaryContainer = Color(0xFF083344),
+    // 1.8.0: one selection color. Chips, segmented buttons, tonal buttons and the nav indicator use the brand blue.
+    secondaryContainer = Color(0xFFDCE4FF), onSecondaryContainer = Color(0xFF0A1F66),
     tertiary = Color(0xFF6D4AE6), onTertiary = Color.White,
     tertiaryContainer = Color(0xFFEBE3FF), onTertiaryContainer = Color(0xFF22005D),
     background = Color(0xFFF3F6FF), onBackground = Color(0xFF0E1A3A),
@@ -51,7 +52,7 @@ internal val DarkColors = darkColorScheme(
     primary = Color(0xFF6F8CFF), onPrimary = Color(0xFF0A1F66),
     primaryContainer = Color(0xFF1E3A8A), onPrimaryContainer = Color(0xFFDCE4FF),
     secondary = Cyan, onSecondary = Color(0xFF002A33),
-    secondaryContainer = Color(0xFF0B4A5E), onSecondaryContainer = Color(0xFFCFF7FE),
+    secondaryContainer = Color(0xFF243E8F), onSecondaryContainer = Color(0xFFDCE4FF),
     tertiary = Color(0xFFA78BFA), onTertiary = Color(0xFF22005D),
     tertiaryContainer = Color(0xFF3B2A7A), onTertiaryContainer = Color(0xFFEBE3FF),
     background = Color(0xFF0B1430), onBackground = Color(0xFFE6ECFF),
@@ -81,7 +82,7 @@ data class BrandColors(
 
 private val LightBrand = BrandColors(
     accent = Color(0xFF0891B2), gaugeStart = Royal, gaugeEnd = Color(0xFF06B6D4), glow = Color(0xFF3B82F6),
-    cardBorder = Color(0xFFDCE3F7), headerGlow = Color(0xFF4169E1),
+    cardBorder = Color(0xFFCBD5F0), headerGlow = Color(0xFF4169E1),
     chartRx = Color(0xFF0891B2), chartTx = Color(0xFF7C3AED), chartArc = Color(0xFF14B8A6), dark = false,
 )
 private val DarkBrand = BrandColors(
@@ -92,16 +93,23 @@ private val DarkBrand = BrandColors(
 
 val LocalBrandColors = staticCompositionLocalOf { LightBrand }
 
-/** Semantic status colors that read well in both light and dark themes. */
+/**
+ * Semantic status colors that read well in both light and dark themes.
+ * Text/icon colors ([healthy], [warning] …) are tuned for text on their containers; 1.8.0 adds `*Fill` colors for bars,
+ * gauges and stripes (a 10 dp bar in the light warning *text* color looked brown) and an [info] tone.
+ */
 @Immutable
 data class StatusColors(
     val healthy: Color, val healthyContainer: Color,
     val warning: Color, val warningContainer: Color,
     val critical: Color, val criticalContainer: Color,
     val neutral: Color, val neutralContainer: Color,
+    val info: Color = neutral, val infoContainer: Color = neutralContainer,
+    val healthyFill: Color = healthy, val warningFill: Color = warning, val criticalFill: Color = critical, val infoFill: Color = info,
 ) {
     fun of(h: Health) = when (h) {
         Health.HEALTHY -> healthy
+        Health.INFO -> info
         Health.WARNING -> warning
         Health.CRITICAL -> critical
         Health.UNKNOWN -> neutral
@@ -109,23 +117,37 @@ data class StatusColors(
 
     fun containerOf(h: Health) = when (h) {
         Health.HEALTHY -> healthyContainer
+        Health.INFO -> infoContainer
         Health.WARNING -> warningContainer
         Health.CRITICAL -> criticalContainer
         Health.UNKNOWN -> neutralContainer
     }
+
+    /** For bars, gauges, dots and stripes. */
+    fun fillOf(h: Health) = when (h) {
+        Health.HEALTHY -> healthyFill
+        Health.INFO -> infoFill
+        Health.WARNING -> warningFill
+        Health.CRITICAL -> criticalFill
+        Health.UNKNOWN -> neutral
+    }
 }
 
-private val LightStatus = StatusColors(
+internal val LightStatus = StatusColors(
     healthy = Color(0xFF1B7F4B), healthyContainer = Color(0xFFD3F5E0),
     warning = Color(0xFF8A5A00), warningContainer = Color(0xFFFFE8BF),
     critical = Color(0xFFB3261E), criticalContainer = Color(0xFFFFDAD6),
     neutral = Color(0xFF55618A), neutralContainer = Color(0xFFE3E9FA),
+    info = Royal, infoContainer = Color(0xFFDCE4FF),
+    healthyFill = Color(0xFF22A06B), warningFill = Color(0xFFF5A524), criticalFill = Color(0xFFE5484D), infoFill = Royal,
 )
-private val DarkStatus = StatusColors(
+internal val DarkStatus = StatusColors(
     healthy = Color(0xFF6EE7A8), healthyContainer = Color(0xFF0F3B33),
     warning = Color(0xFFFFCC66), warningContainer = Color(0xFF3F3113),
     critical = Color(0xFFFF9A91), criticalContainer = Color(0xFF4A1A2A),
     neutral = Color(0xFFB4C0E4), neutralContainer = Color(0xFF22305C),
+    info = Color(0xFFA9BCFF), infoContainer = Color(0xFF1E3A8A),
+    healthyFill = Color(0xFF4ADE80), warningFill = Color(0xFFFBBF24), criticalFill = Color(0xFFF87171), infoFill = Color(0xFF6F8CFF),
 )
 
 val LocalStatusColors = staticCompositionLocalOf { LightStatus }
@@ -134,7 +156,7 @@ private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(28.dp),
+    large = RoundedCornerShape(24.dp),
     extraLarge = RoundedCornerShape(32.dp),
 )
 
@@ -163,6 +185,19 @@ internal val AppTypography = Weighted.copy(
     labelLarge = Weighted.labelLarge.content(), labelMedium = Weighted.labelMedium.content(), labelSmall = Weighted.labelSmall.content(),
 )
 
+/**
+ * 1.8.0 (UI review P1-4): with wallpaper colors on, the brand layer (gauges, glow, card borders, charts) follows the
+ * wallpaper scheme too, instead of keeping the blue/cyan look next to wallpaper-colored buttons.
+ */
+internal fun brandFor(scheme: androidx.compose.material3.ColorScheme, dark: Boolean, dynamic: Boolean): BrandColors {
+    if (!dynamic) return if (dark) DarkBrand else LightBrand
+    return BrandColors(
+        accent = scheme.primary, gaugeStart = scheme.primary, gaugeEnd = scheme.tertiary, glow = scheme.primary,
+        cardBorder = scheme.outlineVariant, headerGlow = scheme.primary,
+        chartRx = scheme.primary, chartTx = scheme.tertiary, chartArc = scheme.secondary, dark = dark,
+    )
+}
+
 @Composable
 fun TrueNasTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, dynamicColor: Boolean = false, content: @Composable () -> Unit) {
     val dark = when (themeMode) {
@@ -179,7 +214,7 @@ fun TrueNasTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, dynamicColor: Boolean 
     }
     androidx.compose.runtime.CompositionLocalProvider(
         LocalStatusColors provides if (dark) DarkStatus else LightStatus,
-        LocalBrandColors provides if (dark) DarkBrand else LightBrand,
+        LocalBrandColors provides brandFor(colors, dark, dynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S),
     ) {
         MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes) {
             // Text without an explicit style (and text fields) follow the content direction too.

@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.dashboard
 
+import app.truenascompanion.ui.components.Tag
 import app.truenascompanion.ui.theme.LocalStatusColors
 import app.truenascompanion.ui.theme.LocalBrandColors
 import androidx.compose.ui.draw.clip
@@ -313,7 +314,7 @@ private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
                             Text(if (w.size == WidgetSize.FULL) w.type.title else w.type.shortTitle, style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            AnimatedVisibility(!w.visible) { StatusChip(Health.UNKNOWN, "Hidden", showIcon = false) }
+                            AnimatedVisibility(!w.visible) { Tag("Hidden") }
                             Spacer(Modifier.weight(1f))
                             IconButton(onClick = { vm.toggleSize(w.type) }) {
                                 Icon(

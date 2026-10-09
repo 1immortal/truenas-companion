@@ -178,7 +178,8 @@ data class MemoryBreakdown(val total: Long, val services: Long, val arc: Long, v
     val arcFraction get() = arc.toFloat() / total
 }
 
-enum class Health { HEALTHY, WARNING, CRITICAL, UNKNOWN }
+/** 1.8.0: [INFO] is a neutral "for your information" tone (info alerts), not "all good". Order = severity. */
+enum class Health { HEALTHY, INFO, WARNING, CRITICAL, UNKNOWN }
 
 data class Pool(
     val id: Long,
@@ -445,7 +446,7 @@ data class AlertItem(
 ) {
     val health: Health
         get() = when (level.uppercase()) {
-            "INFO", "NOTICE" -> Health.HEALTHY
+            "INFO", "NOTICE" -> Health.INFO
             "WARNING" -> Health.WARNING
             else -> Health.CRITICAL
         }

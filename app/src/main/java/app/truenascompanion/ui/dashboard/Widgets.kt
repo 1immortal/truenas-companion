@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.dashboard
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
@@ -223,9 +224,9 @@ private fun SystemWidget(d: DashboardData, flavor: ApiFlavor?, live: LiveStats) 
     Muted(s.version, maxLines = 1)
     Spacer(Modifier.height(10.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        StatusChip(Health.HEALTHY, "Up ${Format.uptime(s.uptimeSeconds)}")
-        s.cores?.let { StatusChip(Health.UNKNOWN, "$it threads", showIcon = false) }
-        s.physicalMemory?.let { StatusChip(Health.UNKNOWN, Format.bytes(it) + " RAM", showIcon = false) }
+        Tag("Up ${Format.uptime(s.uptimeSeconds)}")
+        s.cores?.let { Tag("$it threads") }
+        s.physicalMemory?.let { Tag(Format.bytes(it) + " RAM") }
     }
     s.cpuModel?.let { Spacer(Modifier.height(8.dp)); Muted(it, maxLines = 1) }
 }
@@ -233,7 +234,7 @@ private fun SystemWidget(d: DashboardData, flavor: ApiFlavor?, live: LiveStats) 
 @Composable
 private fun gaugeOverride(p: Double): Color? {
     val status = LocalStatusColors.current
-    return when { p >= 90 -> status.critical; p >= 75 -> status.warning; else -> null }
+    return when { p >= 90 -> status.criticalFill; p >= 75 -> status.warningFill; else -> null }
 }
 
 /** Sparkline scale: at least 0–20% so an idle CPU doesn't look like a flat line glued to the bottom or a wild spike. */

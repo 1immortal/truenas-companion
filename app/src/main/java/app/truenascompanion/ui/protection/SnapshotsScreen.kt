@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.protection
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -308,7 +309,7 @@ fun SnapshotsContent(
                         Text("${Format.bytes(s.usedBytes)} unique · ${Format.bytes(s.referencedBytes)} referenced",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (s.held) { Spacer(Modifier.width(8.dp)); StatusChip(Health.HEALTHY, "Held", showIcon = false) }
+                    if (s.held) { Spacer(Modifier.width(8.dp)); Tag("Held") }
                 }
             }
         }

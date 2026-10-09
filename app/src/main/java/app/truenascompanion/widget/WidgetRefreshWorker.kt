@@ -95,7 +95,7 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
         Health.CRITICAL -> 0
         Health.WARNING -> 1
         Health.UNKNOWN -> 2
-        Health.HEALTHY -> 3
+        Health.HEALTHY, Health.INFO -> 3
     }
 
     companion object {

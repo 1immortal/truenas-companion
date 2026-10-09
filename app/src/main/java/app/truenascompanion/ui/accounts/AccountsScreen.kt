@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.accounts
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -194,18 +195,19 @@ private fun UserCard(u: NasUser, groupNames: Map<Int, String>, onAction: (Accoun
         }
         val chips = buildList {
             if (u.locked) add(Health.CRITICAL to "Locked")
-            if (u.isAdmin) add(Health.WARNING to "Admin")
+            // 1.8.0: attributes are neutral tags; only "Locked" is a state.
+            if (u.isAdmin) add(Health.INFO to "Admin")
             if (u.builtin) add(Health.UNKNOWN to "Built-in")
-            if (u.smb) add(Health.HEALTHY to "SMB")
-            if (u.sshKeyCount > 0) add(Health.HEALTHY to "${u.sshKeyCount} SSH key${if (u.sshKeyCount > 1) "s" else ""}")
-            if (u.twoFactor) add(Health.HEALTHY to "2FA")
+            if (u.smb) add(Health.UNKNOWN to "SMB")
+            if (u.sshKeyCount > 0) add(Health.UNKNOWN to "${u.sshKeyCount} SSH key${if (u.sshKeyCount > 1) "s" else ""}")
+            if (u.twoFactor) add(Health.UNKNOWN to "2FA")
             if (u.passwordDisabled) add(Health.UNKNOWN to "No password")
         }
         val groups = (listOfNotNull(u.groupName) + u.groups.mapNotNull { groupNames[it] }).distinct()
         if (chips.isNotEmpty() || groups.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                chips.forEach { (h, t) -> StatusChip(h, t, showIcon = false) }
+                chips.forEach { (h, t) -> if (h == Health.CRITICAL) StatusChip(h, t) else Tag(t, brand = h == Health.INFO) }
             }
             if (groups.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
@@ -245,7 +247,7 @@ private fun GroupCard(g: NasGroup, users: List<NasUser>, onAction: (AccountActio
         }
         if (g.roles.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            StatusChip(Health.WARNING, g.roles.joinToString(", ") { it.lowercase().replace('_', ' ') }, showIcon = false)
+            Tag(g.roles.joinToString(", ") { it.lowercase().replace('_', ' ') }, brand = true)
         }
     }
 }

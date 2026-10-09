@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.tasks
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -403,7 +404,7 @@ private fun CronJobCard(
         if (j.isSmartTest) {
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusChip(Health.HEALTHY, "S.M.A.R.T. test", showIcon = false)
+                Tag("S.M.A.R.T. test")
                 Spacer(Modifier.width(8.dp))
                 Text("Easier to manage in Storage › Protection", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

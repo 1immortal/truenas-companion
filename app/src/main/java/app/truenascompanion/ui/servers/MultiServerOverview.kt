@@ -103,7 +103,7 @@ class MultiServerViewModel(private val c: AppContainer) : ViewModel() {
                 val pools = runCatching { api.pools() }.getOrDefault(emptyList())
                 val alerts = runCatching { api.alerts().count { !it.dismissed } }.getOrDefault(0)
                 val worst = pools.map { it.health }.minByOrNull {
-                    when (it) { Health.CRITICAL -> 0; Health.WARNING -> 1; Health.UNKNOWN -> 2; Health.HEALTHY -> 3 }
+                    when (it) { Health.CRITICAL -> 0; Health.WARNING -> 1; Health.UNKNOWN -> 2; Health.HEALTHY, Health.INFO -> 3 }
                 } ?: Health.UNKNOWN
                 ServerOverviewRow(
                     server = server,

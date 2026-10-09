@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.servers
 
+import app.truenascompanion.ui.components.Tag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.heightIn
 import app.truenascompanion.ui.components.GlowButton
@@ -143,7 +144,7 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     if (active) StatusChip(Health.HEALTHY, "Active")
                                     if (!server.isHttps) StatusChip(Health.CRITICAL, "HTTP: off")
-                                    else if (server.pinnedCertSha256 != null) StatusChip(Health.UNKNOWN, "Pinned cert", showIcon = false)
+                                    else if (server.pinnedCertSha256 != null) Tag("Pinned cert")
                                 }
                             }
                             IconButton(onClick = { onEdit(server.id) }) { Icon(Icons.Rounded.Edit, "Edit") }
