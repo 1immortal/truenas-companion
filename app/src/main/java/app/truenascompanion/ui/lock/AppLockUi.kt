@@ -79,7 +79,15 @@ import kotlinx.coroutines.launch
 
 /** Fingerprint / face with the device PIN, pattern or password as fallback. Works on every API level (26+). */
 object Biometrics {
-    const val AUTHENTICATORS = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
+    /**
+     * 1.8.0 (security review M-1): Class 3 ("strong") biometrics or the screen lock on Android 11+, where the two can
+     * be combined; Android 8–10 keep "weak" biometrics or the screen lock (the platform's only combination there).
+     */
+    val AUTHENTICATORS: Int get() = authenticatorsFor(Build.VERSION.SDK_INT)
+
+    fun authenticatorsFor(sdk: Int): Int =
+        if (sdk >= 30) androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or DEVICE_CREDENTIAL
+        else BIOMETRIC_WEAK or DEVICE_CREDENTIAL
 
     enum class Availability { READY, NO_SCREEN_LOCK, UNAVAILABLE }
 
@@ -103,8 +111,15 @@ object Biometrics {
     }
 
     fun authenticate(activity: FragmentActivity, title: String, subtitle: String?, onResult: (Result) -> Unit) {
+        // Android 11+: the prompt unlocks a Keystore key that only works right after you authenticate, and only a
+        // successful encryption with it counts (a hooked "success" callback alone isn't enough).
+        val cipher = if (Build.VERSION.SDK_INT >= 30) app.truenascompanion.data.security.AuthKey.cipherOrNull() else null
         val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onResult(Result.Success)
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                if (cipher == null) { onResult(Result.Success); return }
+                val ok = app.truenascompanion.data.security.AuthKey.verify(result.cryptoObject?.cipher)
+                onResult(if (ok) Result.Success else Result.Failed("Couldn't verify your fingerprint or screen lock. Try again."))
+            }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onResult(
                 when (errorCode) {
                     BiometricPrompt.ERROR_USER_CANCELED, BiometricPrompt.ERROR_NEGATIVE_BUTTON, BiometricPrompt.ERROR_CANCELED -> Result.Cancelled
@@ -121,7 +136,9 @@ object Biometrics {
             .setAllowedAuthenticators(AUTHENTICATORS)
             .setConfirmationRequired(false)
             .build()
-        runCatching { prompt.authenticate(info) }.onFailure { onResult(Result.Failed(it.message ?: "Authentication isn't available")) }
+        runCatching {
+            if (cipher != null) prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher)) else prompt.authenticate(info)
+        }.onFailure { onResult(Result.Failed(it.message ?: "Authentication isn't available")) }
     }
 
     fun enrollIntent(): Intent =
@@ -163,8 +180,10 @@ private fun rememberGuard(required: (app.truenascompanion.data.security.LockSett
         DangerGuard { reason, action ->
             val s = container.appLock.settings.value
             val activity = context.findFragmentActivity()
-            if (s == null || !required(s) || activity == null || Biometrics.availability(context) != Biometrics.Availability.READY) {
+            if (s == null || !required(s) || Biometrics.availability(context) != Biometrics.Availability.READY) {
                 action()
+            } else if (activity == null) {
+                // 1.8.0 (security review M-1): fail closed. Without a window to show the prompt, the action doesn't run.
             } else {
                 container.appLock.beginAuthentication()
                 Biometrics.authenticate(activity, "Confirm it's you", reason) { r ->

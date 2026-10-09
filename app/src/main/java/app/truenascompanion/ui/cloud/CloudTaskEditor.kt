@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.cloud
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import app.truenascompanion.ui.components.GlowButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -155,7 +157,7 @@ class CloudTaskEditorViewModel(private val c: AppContainer, private val id: Int?
 
     /** Reloads the credential list (back from adding one) without touching the form. */
     fun reloadCredentials() = viewModelScope.launch {
-        runCatching { c.repository.call { CloudSyncApi(it).credentials() } }.getOrNull()?.let { list ->
+        runCatchingCancellable { c.repository.call { CloudSyncApi(it).credentials() } }.getOrNull()?.let { list ->
             val before = _refs.value.credentials.map { it.id }.toSet()
             _refs.update { it.copy(credentials = list) }
             val added = list.firstOrNull { it.id !in before }

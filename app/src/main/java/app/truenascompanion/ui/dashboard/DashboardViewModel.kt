@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.dashboard
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import app.truenascompanion.ui.alerts.publishAlertBadge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -128,18 +130,18 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
         try {
             coroutineScope {
                 val sys = async { repo.call { it.systemInfo() } }
-                val pools = async { runCatching { repo.call { it.pools() } }.getOrNull() }
-                val apps = async { runCatching { repo.call { it.apps() } }.getOrNull() }
-                val alerts = async { runCatching { repo.call { it.alerts() } }.getOrNull() }
+                val pools = async { runCatchingCancellable { repo.call { it.pools() } }.getOrNull() }
+                val apps = async { runCatchingCancellable { repo.call { it.apps() } }.getOrNull() }
+                val alerts = async { runCatchingCancellable { repo.call { it.alerts() } }.getOrNull() }
                 val temps = async {
-                    runCatching {
+                    runCatchingCancellable {
                         repo.call { api -> api.diskTemperatures(api.diskNames()) }
                     }.getOrNull()
                 }
                 val wantProtection = layout.value.visibleWidgets.any { it.type == app.truenascompanion.data.model.WidgetType.PROTECTION }
                 val protection = if (!wantProtection) null else async {
                     suspend fun <T> part(block: suspend (app.truenascompanion.data.api.ProtectionApi) -> T): T? =
-                        runCatching { repo.call { block(app.truenascompanion.data.api.ProtectionApi(it)) } }.getOrNull()
+                        runCatchingCancellable { repo.call { block(app.truenascompanion.data.api.ProtectionApi(it)) } }.getOrNull()
                     val snaps = async { part { it.snapshotTasks() } }
                     val scrubs = async { part { it.scrubTasks() } }
                     val smart = async { part { it.smartSchedules() } }

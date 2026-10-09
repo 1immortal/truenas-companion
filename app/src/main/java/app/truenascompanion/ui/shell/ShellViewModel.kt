@@ -201,12 +201,9 @@ class ShellViewModel(private val c: AppContainer, val target: ShellTarget) : Vie
     override fun onSessionFinished(finishedSession: TerminalSession) = Unit
     override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
         val ctx = view?.context ?: return
-        val clip = ClipData.newPlainText("Terminal", text)
-        // Terminal output can contain secrets: keep it out of the clipboard preview.
-        clip.description.extras = PersistableBundle().apply {
-            putBoolean(if (Build.VERSION.SDK_INT >= 33) ClipDescription.EXTRA_IS_SENSITIVE else "android.content.extra.IS_SENSITIVE", true)
-        }
-        ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
+        // Only text you select (OSC 52 from the NAS is ignored by the emulator). Terminal output can contain secrets:
+        // hidden from the clipboard preview and cleared after a minute.
+        app.truenascompanion.util.SafeClipboard.copy(ctx, "Terminal", text, sensitive = true)
     }
     override fun onPasteTextFromClipboard(session: TerminalSession) {
         val ctx = view?.context ?: return

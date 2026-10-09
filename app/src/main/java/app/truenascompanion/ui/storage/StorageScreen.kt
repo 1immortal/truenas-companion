@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.storage
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -144,9 +146,9 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
                 // One pool.query for both the pool cards and the vdev trees.
                 val rawPools = async { c.repository.call { it.rpc("pool.query") } }
                 val disks = async { c.repository.call { DisksApi(it).disks() } }
-                val datasets = async { runCatching { c.repository.call { it.datasets() } }.getOrDefault(emptyList()) }
-                val smb = async { runCatching { c.repository.call { StorageApi(it).smbShares() } }.getOrDefault(emptyList()) }
-                val nfs = async { runCatching { c.repository.call { StorageApi(it).nfsShares() } }.getOrDefault(emptyList()) }
+                val datasets = async { runCatchingCancellable { c.repository.call { it.datasets() } }.getOrDefault(emptyList()) }
+                val smb = async { runCatchingCancellable { c.repository.call { StorageApi(it).smbShares() } }.getOrDefault(emptyList()) }
+                val nfs = async { runCatchingCancellable { c.repository.call { StorageApi(it).nfsShares() } }.getOrDefault(emptyList()) }
                 val poolObjs = rawPools.await().arr().orEmpty().mapNotNull { it.obj() }
                 _state.value = UiState.Success(
                     StorageData(
@@ -184,7 +186,7 @@ class StorageViewModel(private val c: AppContainer) : ViewModel() {
     fun deleteDataset(id: String, recursive: Boolean, force: Boolean) =
         action("ds:$id", "Dataset deleted") { it.deleteDataset(id, recursive, force) }
     suspend fun deleteImpact(id: String): app.truenascompanion.data.api.DatasetDeleteRemote? =
-        runCatching { c.repository.call { StorageApi(it).deleteImpact(id) } }.getOrNull()
+        runCatchingCancellable { c.repository.call { StorageApi(it).deleteImpact(id) } }.getOrNull()
     fun createSmb(input: SmbShareInput) = action("smb:new", "SMB share created") { it.createSmbShare(input) }
     fun updateSmb(id: Int, input: SmbShareInput) = action("smb:$id", "SMB share saved") { it.updateSmbShare(id, input) }
     fun deleteSmb(id: Int) = action("smb:$id", "SMB share deleted") { it.deleteSmbShare(id) }

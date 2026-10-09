@@ -153,16 +153,8 @@ fun VpnSetupScreen(serverId: String, onBack: () -> Unit) {
     }
 }
 
-private fun copy(context: Context, text: String, sensitive: Boolean) {
-    val cm = context.getSystemService(ClipboardManager::class.java) ?: return
-    val clip = ClipData.newPlainText("YTN", text)
-    if (sensitive) {
-        clip.description.extras = PersistableBundle().apply {
-            putBoolean(if (Build.VERSION.SDK_INT >= 33) ClipDescription.EXTRA_IS_SENSITIVE else "android.content.extra.IS_SENSITIVE", true)
-        }
-    }
-    cm.setPrimaryClip(clip)
-}
+private fun copy(context: Context, text: String, sensitive: Boolean) =
+    app.truenascompanion.util.SafeClipboard.copy(context, "YTN", text, sensitive)
 
 /** Stateless wizard body. */
 @Composable

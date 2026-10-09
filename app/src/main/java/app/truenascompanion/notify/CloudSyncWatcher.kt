@@ -46,8 +46,15 @@ object CloudSyncWatcher {
         val container = (context.applicationContext as TrueNasApp).container
         container.settings.updateCloudRunWatches { list -> list.filterNot { it.serverId == watch.serverId && it.jobId == watch.jobId } + watch }
         schedule(context, true)
-        container.appScope.launch { follow(context, watch) }
+        // One follower per run (a second tap on "Run now" must not start a second polling loop).
+        val key = "${watch.serverId}:${watch.jobId}"
+        synchronized(followers) {
+            if (followers[key]?.isActive == true) return
+            followers[key] = container.appScope.launch { try { follow(context, watch) } finally { synchronized(followers) { followers.remove(key) } } }
+        }
     }
+
+    private val followers = HashMap<String, kotlinx.coroutines.Job>()
 
     /** Removes the watch; true if it was still there (so the caller may notify). */
     suspend fun claim(context: Context, watch: CloudRunWatch): Boolean {
@@ -73,7 +80,11 @@ object CloudSyncWatcher {
             if (container.settings.cloudRunWatches().none { it.serverId == watch.serverId && it.jobId == watch.jobId }) return
             val server = container.settings.servers.first().firstOrNull { it.id == watch.serverId } ?: return
             try {
-                val j = container.alertChecker.withConnection(server) { api -> job(api, watch.jobId) }
+                // 1.8.0: only while the app's own connection is open. Signing in on a fresh socket every few seconds
+                // (for hours) cost battery and filled the NAS audit log; in the background the periodic
+                // CloudSyncWatchWorker (scheduled above) reports the result instead.
+                val j = container.alertChecker.withSharedConnection(server) { api -> job(api, watch.jobId) }
+                    ?: if (++failures > 3) return else continue
                 failures = 0
                 if (ended(j) && claim(context, watch)) {
                     post(context, server, watch, j!!)

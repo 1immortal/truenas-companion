@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.virt
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -179,7 +181,7 @@ class VirtViewModel(private val c: AppContainer, private val withContainers: Boo
 
     private suspend fun loadContainers() {
         try {
-            val state = runCatching { c.repository.call { it.containersState() } }.getOrNull()
+            val state = runCatchingCancellable { c.repository.call { it.containersState() } }.getOrNull()
             val msg = containersUnavailableMessage(state)
             _containers.value = if (msg != null) ContainersUi(UiState.Success(emptyList()), msg)
             else ContainersUi(UiState.Success(c.repository.call { it.virtInstances() }))

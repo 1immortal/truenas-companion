@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.disks
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -133,14 +135,14 @@ class DisksViewModel(private val c: AppContainer, private val focusDisk: String?
             coroutineScope {
                 val pools = async { c.repository.call { DisksApi(it).pools() } }
                 val disks = async { c.repository.call { DisksApi(it).disks() } }
-                val slots = async { runCatching { c.repository.call { DisksApi(it).enclosureSlots() } }.getOrDefault(emptyList()) }
+                val slots = async { runCatchingCancellable { c.repository.call { DisksApi(it).enclosureSlots() } }.getOrDefault(emptyList()) }
                 var list = disks.await()
                 var alerts = emptyList<DiskAlert>()
                 if (focusDisk != null) {
                     val agg = c.repository.call { DisksApi(it).temperatureAgg(listOf(focusDisk)) }[focusDisk]
                     if (agg != null) list = list.map { d -> if (d.name == focusDisk) d.copy(tempMin = agg.first, tempMax = agg.second, tempAvg = agg.third) else d }
                     val serial = list.firstOrNull { it.name == focusDisk }?.serial
-                    alerts = runCatching { c.repository.call { DisksApi(it).alertsFor(focusDisk, serial) } }.getOrDefault(emptyList())
+                    alerts = runCatchingCancellable { c.repository.call { DisksApi(it).alertsFor(focusDisk, serial) } }.getOrDefault(emptyList())
                 }
                 _state.value = UiState.Success(DisksData(pools.await(), list, slots.await(), alerts))
             }

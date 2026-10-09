@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.virt
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -153,9 +155,9 @@ class VmCreateViewModel(private val c: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            val parents = runCatching { c.repository.call { it.zvolParents() } }.getOrElse { emptyList() }
-            val nics = runCatching { c.repository.call { it.nicAttachChoices() } }.getOrElse { emptyList() }
-            val existing = runCatching { c.repository.call { it.vms() }.map { it.name } }.getOrElse { emptyList() }
+            val parents = runCatchingCancellable { c.repository.call { it.zvolParents() } }.getOrElse { emptyList() }
+            val nics = runCatchingCancellable { c.repository.call { it.nicAttachChoices() } }.getOrElse { emptyList() }
+            val existing = runCatchingCancellable { c.repository.call { it.vms() }.map { it.name } }.getOrElse { emptyList() }
             _ui.update { u -> u.copy(parents = parents, nics = nics, existing = existing, loading = false,
                 form = u.form.copy(diskParent = u.form.diskParent ?: parents.firstOrNull(), nicAttach = u.form.nicAttach ?: nics.firstOrNull { !it.startsWith("lo") })) }
         }

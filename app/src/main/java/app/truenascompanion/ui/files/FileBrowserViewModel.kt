@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.files
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -205,7 +207,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
                     return@launch
                 }
                 if (s.pools.isEmpty()) {
-                    val pools = runCatching { c.repository.call { it.pools() }.map { p -> p.name } }.getOrDefault(emptyList())
+                    val pools = runCatchingCancellable { c.repository.call { it.pools() }.map { p -> p.name } }.getOrDefault(emptyList())
                     _ui.update { it.copy(pools = pools) }
                     if (pools.isNotEmpty() && !FilePolicy.isAllowed(s.path, pools.toSet(), s.showSystem)) {
                         _ui.update { it.copy(loading = false, error = "This folder isn't inside a pool.") }
@@ -240,7 +242,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
         mtimeJob?.cancel()
         mtimeJob = viewModelScope.launch {
             missing.chunked(60).forEach { chunk ->
-                val got = runCatching { c.repository.call { FilesApi(it).mtimes(chunk) } }.getOrDefault(emptyMap())
+                val got = runCatchingCancellable { c.repository.call { FilesApi(it).mtimes(chunk) } }.getOrDefault(emptyMap())
                 _ui.update { it.copy(mtimes = it.mtimes + got) }
             }
         }
@@ -375,6 +377,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
         val resolver = ctx.contentResolver
         transferJob = viewModelScope.launch {
             _ui.update { it.copy(transfer = TransferState(TransferKind.DOWNLOAD, entry.name, 0, entry.size, proxyHint = hint(entry.size))) }
+            app.truenascompanion.data.files.TransferService.start(ctx, "Downloading ${entry.name}")
             var ok = false
             try {
                 withContext(Dispatchers.IO) {
@@ -393,6 +396,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
             } finally {
                 // Never leave a half-written copy on the phone.
                 if (!ok) withContext(NonCancellable + Dispatchers.IO) { SaveTargets.discard(resolver, target) }
+                app.truenascompanion.data.files.TransferService.stop(ctx)
                 _ui.update { it.copy(transfer = null) }
             }
         }
@@ -485,6 +489,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
         val ctx = c.context
         transferJob = viewModelScope.launch {
             _ui.update { it.copy(transfer = TransferState(TransferKind.UPLOAD, p.name, 0, p.size, proxyHint = hint(p.size), target = p.target, replacing = p.exists)) }
+            app.truenascompanion.data.files.TransferService.start(ctx, "Uploading ${p.name}")
             try {
                 c.repository.withEndpoint { api, target ->
                     val files = FilesApi(api)
@@ -522,6 +527,7 @@ class FileBrowserViewModel(private val c: AppContainer, initialPath: String) : V
                     msg("Upload failed: ${FilePolicy.friendlyError(e)}")
                 }
             } finally {
+                app.truenascompanion.data.files.TransferService.stop(ctx)
                 _ui.update { it.copy(transfer = null) }
             }
         }

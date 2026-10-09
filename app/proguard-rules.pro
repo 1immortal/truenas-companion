@@ -13,3 +13,11 @@
 -keepclassmembers class com.wireguard.android.backend.GoBackend {
     static java.util.concurrent.CompletableFuture vpnService;
 }
+
+# 1.8.0 (security review): release builds drop verbose/debug/info logging (server names, routes, job details).
+# Warnings and errors stay for crash reports the user chooses to share.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}

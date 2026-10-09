@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.iscsi
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -150,7 +152,7 @@ class IscsiWizardViewModel(private val c: AppContainer) : ViewModel() {
                 } catch (e: Throwable) { WizardResult(false, error = e.userMessage()) }
             }
             _run.value = _run.value?.copy(result = result)
-            if (result.ok) runCatching { c.repository.call { IscsiApi(it).load() } }.getOrNull()?.let { _state.value = UiState.Success(it) }
+            if (result.ok) runCatchingCancellable { c.repository.call { IscsiApi(it).load() } }.getOrNull()?.let { _state.value = UiState.Success(it) }
         }
     }
 

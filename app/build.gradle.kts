@@ -83,6 +83,9 @@ android {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         // wireguard-android ships helpers for its root/kernel backend; only the userspace GoBackend (libwg-go) is used.
         jniLibs.excludes += listOf("**/libwg.so", "**/libwg-quick.so")
+        // 1.8.0: store native libraries compressed in the APK (smaller download; Android extracts them on install).
+        // x86_64 stays: one universal APK with fixed asset names is what older in-app updaters download.
+        jniLibs.useLegacyPackaging = true
     }
 }
 

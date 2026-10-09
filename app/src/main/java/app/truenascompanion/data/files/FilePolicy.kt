@@ -12,6 +12,11 @@ import java.util.Locale
  * turns on "Show system folders".
  */
 object FilePolicy {
+    /** Deletes NAS files copied to the cache for "Open with" (1.8.0, security review: don't keep NAS data around). */
+    fun clearOpenWithCache(context: android.content.Context) {
+        runCatching { java.io.File(context.cacheDir, "files").listFiles()?.forEach { it.deleteRecursively() } }
+    }
+
     const val ROOT = "/mnt"
 
     /**

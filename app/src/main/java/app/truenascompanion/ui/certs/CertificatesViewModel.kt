@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.certs
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
@@ -102,7 +104,7 @@ class CertificatesViewModel(private val c: AppContainer) : ViewModel() {
     fun loadCsrDomains(csrId: Int) {
         if (csrId in _csrDomains.value) return
         viewModelScope.launch {
-            runCatching { c.repository.call { CertificatesApi(it).domainNames(csrId) } }
+            runCatchingCancellable { c.repository.call { CertificatesApi(it).domainNames(csrId) } }
                 .onSuccess { d -> _csrDomains.value = _csrDomains.value + (csrId to d) }
                 .onFailure { _events.trySend(CertEvent.Message(it.userMessage())) }
         }

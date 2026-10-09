@@ -1,5 +1,6 @@
 package app.truenascompanion.ui.apps
 
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -224,7 +225,8 @@ fun LogsContent(
 ) {
     val shown = remember(ui.lines, query) { LogBuffer.filter(ui.lines, query) }
     val listState = rememberLazyListState()
-    LaunchedEffect(shown.size, follow) { if (follow && shown.isNotEmpty()) listState.scrollToItem(shown.lastIndex) }
+    // Keyed on the newest line, not the count: the buffer stays at MAX_LINES once full (code review P1-9).
+    LaunchedEffect(shown.lastOrNull()?.seq, follow) { if (follow && shown.isNotEmpty()) listState.scrollToItem(shown.lastIndex) }
     LaunchedEffect(listState) {
         var last = 0
         snapshotFlow { listState.isScrollInProgress to listState.firstVisibleItemIndex }.collect { (scrolling, idx) ->
@@ -263,8 +265,8 @@ fun LogsContent(
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(14.dp)),
         ) {
             LazyColumn(state = listState, contentPadding = PaddingValues(12.dp), modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(shown) { _, line ->
-                    val level = LogBuffer.level(line.text)
+                items(shown, key = { it.seq }, contentType = { 0 }) { line ->
+                    val level = remember(line.seq) { LogBuffer.level(line.text) }
                     val color = when (level) {
                         LogLevel.ERROR -> MaterialTheme.colorScheme.error
                         LogLevel.WARN -> app.truenascompanion.ui.theme.LocalStatusColors.current.of(app.truenascompanion.data.model.Health.WARNING)

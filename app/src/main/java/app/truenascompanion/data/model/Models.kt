@@ -384,7 +384,13 @@ data class AppEditData(
     val customApp: Boolean,
 )
 
-data class LogLine(val text: String, val timestamp: String?)
+/** [seq] (1.8.0) grows with every line, so the log list has stable keys and "follow" works once the buffer is full. */
+data class LogLine(val text: String, val timestamp: String?, val seq: Long = LogLine.nextSeq()) {
+    companion object {
+        private val counter = java.util.concurrent.atomic.AtomicLong()
+        fun nextSeq(): Long = counter.incrementAndGet()
+    }
+}
 
 /** `app.stats` sample for one app. */
 data class AppStats(

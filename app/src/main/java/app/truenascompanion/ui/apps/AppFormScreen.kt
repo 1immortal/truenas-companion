@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.apps
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -106,7 +108,7 @@ class AppFormViewModel(private val c: AppContainer, val mode: AppFormMode) : Vie
                     val d = c.repository.call { it.catalogAppDetails(mode.catalogApp, mode.train) }
                     version = d.version
                     val questions = AppForm.parseQuestions(d.schema)
-                    val installed = runCatching { c.repository.call { it.apps() } }.getOrDefault(emptyList()).map { it.name }.toSet()
+                    val installed = runCatchingCancellable { c.repository.call { it.apps() } }.getOrDefault(emptyList()).map { it.name }.toSet()
                     val name = generateSequence(1) { it + 1 }.map { if (it == 1) mode.catalogApp else "${mode.catalogApp}-$it" }.first { it !in installed }
                     _ui.update {
                         it.copy(

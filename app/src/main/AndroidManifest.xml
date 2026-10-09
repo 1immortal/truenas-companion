@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- File transfers (1.8.0): a foreground service keeps an upload/download running while you switch apps. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Only used to open the system "allow background activity" dialog when the user taps the hint. Not on Google Play. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
         tools:ignore="BatteryLife" />
@@ -98,6 +101,11 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Optional, user-enabled live connection to the user's own TrueNAS server to show its system alerts immediately (no push service exists for self-hosted servers)." />
         </service>
+
+        <service
+            android:name=".data.files.TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <receiver android:name=".notify.AlertActionReceiver" android:exported="false" />
 

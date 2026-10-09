@@ -95,6 +95,7 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun spareExpiry(id: String) = longPreferencesKey("session_spare_expiry_$id")
         val NOTIFICATIONS = stringPreferencesKey("notification_prefs")
         val LOCK = stringPreferencesKey("lock_settings")
+        val LOCK_TAG = stringPreferencesKey("lock_settings_tag")
         val CONNECTION_GIVE_UP_MS = longPreferencesKey("connection_give_up_ms")
         val UPDATE_AUTO = booleanPreferencesKey("update_auto_check")
         val UPDATE_NOTIFIED = stringPreferencesKey("update_notified_version")
@@ -136,8 +137,12 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
     }
 
     val lockSettings: Flow<app.truenascompanion.data.security.LockSettings> = store.data.map { prefs ->
-        prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
-            ?: app.truenascompanion.data.security.LockSettings()
+        val raw = prefs[Keys.LOCK]
+        val stored = raw?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
+        when (app.truenascompanion.data.security.LockIntegrity.verdict(raw, prefs[Keys.LOCK_TAG])) {
+            app.truenascompanion.data.security.LockIntegrity.Verdict.TAMPERED -> app.truenascompanion.data.security.LockIntegrity.failClosed(stored)
+            else -> stored ?: app.truenascompanion.data.security.LockSettings()
+        }
     }.distinctUntilChanged()
 
     // --- VPN (0.6) ---
@@ -207,9 +212,14 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
 
     suspend fun updateLockSettings(f: (app.truenascompanion.data.security.LockSettings) -> app.truenascompanion.data.security.LockSettings) {
         store.edit { prefs ->
-            val cur = prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
-                ?: app.truenascompanion.data.security.LockSettings()
-            prefs[Keys.LOCK] = json.encodeToString(f(cur))
+            val stored = prefs[Keys.LOCK]?.let { runCatching { json.decodeFromString<app.truenascompanion.data.security.LockSettings>(it) }.getOrNull() }
+            val cur = if (app.truenascompanion.data.security.LockIntegrity.verdict(prefs[Keys.LOCK], prefs[Keys.LOCK_TAG]) == app.truenascompanion.data.security.LockIntegrity.Verdict.TAMPERED)
+                app.truenascompanion.data.security.LockIntegrity.failClosed(stored)
+            else stored ?: app.truenascompanion.data.security.LockSettings()
+            val raw = json.encodeToString(f(cur))
+            prefs[Keys.LOCK] = raw
+            // 1.8.0: signed so an edited settings file is noticed (see LockIntegrity).
+            app.truenascompanion.data.security.LockIntegrity.signer.sign(raw)?.let { prefs[Keys.LOCK_TAG] = it } ?: prefs.remove(Keys.LOCK_TAG)
         }
     }
 

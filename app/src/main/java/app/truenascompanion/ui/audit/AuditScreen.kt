@@ -253,7 +253,9 @@ fun AuditDetailSheet(e: AuditEntry, onDismiss: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val json = remember(e) { AuditApi.prettyJson(e.raw) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        AuditDetailContent(e, json, onCopy = { clipboard.setText(AnnotatedString(json)) })
+        // Usernames and source addresses: sensitive, cleared after a minute (security review L-1).
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        AuditDetailContent(e, json, onCopy = { app.truenascompanion.util.SafeClipboard.copy(ctx, "Audit entry", json, sensitive = true) })
     }
 }
 

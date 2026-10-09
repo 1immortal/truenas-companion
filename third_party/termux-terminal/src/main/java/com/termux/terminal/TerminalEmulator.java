@@ -1976,14 +1976,9 @@ public final class TerminalEmulator {
                     }
                 }
                 break;
-            case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
-                int startIndex = textParameter.indexOf(";") + 1;
-                try {
-                    String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), 0), StandardCharsets.UTF_8);
-                    mSession.onCopyTextToClipboard(clipboardText);
-                } catch (Exception e) {
-                    mClient.logError(LOG_TAG, "OSC Manipulate selection, invalid string '" + textParameter + "");
-                }
+            case 52: // Manipulate Selection Data.
+                // YTN change (1.8.0, security review L-2): ignored. Output from the NAS or a container (a crafted
+                // file, app logs) must not be able to overwrite the phone's clipboard. Copying selected text still works.
                 break;
             case 104:
                 // "104;$c" → Reset Color Number $c. It is reset to the color specified by the corresponding X

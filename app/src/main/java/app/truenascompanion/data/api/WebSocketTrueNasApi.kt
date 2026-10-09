@@ -320,6 +320,7 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
                         "removed" -> jobs.remove(id)
                         else -> if (fields != null) jobs[id] = JsonObject((jobs[id] ?: emptyMap()) + fields)
                     }
+                    JobMerge.trim(jobs, MAX_JOBS * 2)
                     emitSnapshot()
                 }
             }
@@ -334,7 +335,8 @@ class WebSocketTrueNasApi internal constructor(private val rpc: JsonRpcClient) :
             put("limit", MAX_JOBS)
         }).arr().orEmpty()
         lock.withLock {
-            initial.forEach { e -> e.obj()?.let { o -> o.long("id")?.let { id -> jobs.putIfAbsent(id, o) } } }
+            JobMerge.mergeSnapshot(jobs, initial.mapNotNull { it.obj() })
+            JobMerge.trim(jobs, MAX_JOBS * 2)
             emitSnapshot()
         }
         awaitClose { runCatching { rpc.notify("core.unsubscribe", params(subId)) } }
@@ -553,3 +555,19 @@ internal fun jobPollDelayMs(poll: Int): Long = when {
 
 /** Large images (e.g. immich) can take many minutes to pull; middlewared allows compose 20 min. */
 private const val PULL_TIMEOUT_MS = 25 * 60_000L
+
+/**
+ * 1.8.0 (code review P1-10): the `core.get_jobs` snapshot and live events are merged field by field. An event that
+ * arrived before the snapshot (often progress only) used to make the snapshot's full job object be dropped. The
+ * map is also capped so a long session doesn't re-sort an ever-growing list on every event.
+ */
+internal object JobMerge {
+    fun mergeSnapshot(jobs: MutableMap<Long, JsonObject>, initial: List<JsonObject>) {
+        initial.forEach { o -> o.long("id")?.let { id -> jobs[id] = JsonObject(o + (jobs[id] ?: emptyMap())) } }
+    }
+
+    fun trim(jobs: MutableMap<Long, JsonObject>, max: Int) {
+        if (jobs.size <= max) return
+        jobs.keys.sortedDescending().drop(max).forEach(jobs::remove)
+    }
+}

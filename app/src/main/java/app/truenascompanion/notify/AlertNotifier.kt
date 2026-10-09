@@ -66,10 +66,12 @@ class AlertNotifier(private val context: Context) {
         const val CH_CLEARED = "alerts_cleared"
         const val CH_ACCOUNT = "account"
         const val CH_SERVICE = "instant_service"
+        const val CH_TRANSFER = "file_transfers"
         private const val GROUP_ALERTS = "alerts"
         private const val GROUP_APP = "app"
 
         const val ID_ALERT = 1
+        const val ID_TRANSFER = 0x7f0010
         const val ID_SUMMARY = 2
         const val ID_SIGN_IN = 3
         const val ID_CLEARED = 4
@@ -124,6 +126,7 @@ class AlertNotifier(private val context: Context) {
             ch(CH_CLEARED, "Cleared alerts", NotificationManager.IMPORTANCE_LOW, "An alert went away on the NAS", GROUP_ALERTS),
             ch(CH_ACCOUNT, "Sign-in reminders", NotificationManager.IMPORTANCE_DEFAULT, "The saved session expired and alerts are paused", GROUP_APP),
             ch(CH_SERVICE, "Instant alerts connection", NotificationManager.IMPORTANCE_MIN, "Silent notification shown while instant alerts keep a live connection", GROUP_APP),
+            ch(CH_TRANSFER, "File transfers", NotificationManager.IMPORTANCE_LOW, "Shown while a file is uploaded to or downloaded from the NAS", GROUP_APP),
         ))
     }
 
@@ -538,5 +541,16 @@ class AlertNotifier(private val context: Context) {
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
         .setContentIntent(openAppIntent(null, DeepLink.DEST_SETTINGS, "service"))
         .addAction(0, "Turn off", stopIntent)
+        .build()
+
+    /** 1.8.0: silent ongoing notification of [app.truenascompanion.data.files.TransferService]. */
+    fun buildTransfer(title: String) = base(CH_TRANSFER)
+        .setContentTitle(title)
+        .setContentText("Keep YTN open in the background until it finishes")
+        .setOngoing(true)
+        .setSilent(true)
+        .setProgress(0, 0, true)
+        .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        .setContentIntent(openAppIntent(null, DeepLink.DEST_DASHBOARD, "transfer"))
         .build()
 }

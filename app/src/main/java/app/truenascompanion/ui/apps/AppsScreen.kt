@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.apps
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -265,7 +267,7 @@ class AppsViewModel(private val c: AppContainer) : ViewModel() {
     fun requestUpgrade(app: AppInfo) {
         _dialog.value = UpgradeDialog(app)
         viewModelScope.launch {
-            val result = runCatching { c.repository.call { it.appUpgradeSummary(app) } }
+            val result = runCatchingCancellable { c.repository.call { it.appUpgradeSummary(app) } }
             _dialog.update { d ->
                 if (d?.app?.name != app.name) d
                 else result.fold({ d.copy(summary = it, loading = false) }, { d.copy(loading = false, error = it.userMessage()) })

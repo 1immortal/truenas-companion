@@ -128,6 +128,8 @@ class AlertChecker(
             } catch (e: TrueNasException.LoginRequired) {
                 onSignInNeeded(server)
                 return@withLock CheckOutcome.SIGN_IN_NEEDED
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e // 1.8.0: a cancelled check stops instead of reporting a network error
             } catch (e: Throwable) {
                 Log.i(TAG, "check ${server.name}: connect failed: ${e.message}")
                 return@withLock if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
@@ -136,6 +138,8 @@ class AlertChecker(
                 onConnected(server)
                 process(server, conn)
                 CheckOutcome.OK
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 Log.i(TAG, "check ${server.name}: ${e.message}")
                 if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
@@ -262,6 +266,15 @@ class AlertChecker(
      * 1.3.0: runs [block] on a connection to [server] for background work (resilver watch): borrows the app's shared
      * connection when it is open, else connects through the right route and closes again afterwards.
      */
+    /**
+     * 1.8.0 (code review P1-8): runs [block] only on an already open shared connection (the app on screen or instant
+     * alerts); returns null instead of signing in on a new socket. For frequent follow-up polling.
+     */
+    suspend fun <T> withSharedConnection(server: ServerConfig, block: suspend (TrueNasApi) -> T): T? = withContext(Dispatchers.IO) {
+        val api = shared.borrow(resolver.resolve(server)) ?: return@withContext null
+        block(api)
+    }
+
     suspend fun <T> withConnection(server: ServerConfig, block: suspend (TrueNasApi) -> T): T = withContext(Dispatchers.IO) {
         val borrowed = shared.borrow(resolver.resolve(server))
         var target: ServerConfig? = null

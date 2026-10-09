@@ -1,5 +1,7 @@
 package app.truenascompanion.data.repository
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import app.truenascompanion.data.api.Credentials
 import app.truenascompanion.data.api.LoginStep
 import app.truenascompanion.data.api.PendingOtp
@@ -251,7 +253,7 @@ class TrueNasRepository(
     }
 
     private suspend fun install(server: ServerConfig, newApi: TrueNasApi) {
-        val info = runCatching { newApi.systemInfo() }.getOrNull()
+        val info = runCatchingCancellable { newApi.systemInfo() }.getOrNull()
         api = newApi
         apiFor = server
         apiSource = activeServer.value?.takeIf { it.id == server.id }
@@ -305,7 +307,7 @@ class TrueNasRepository(
     suspend fun requestSignIn() {
         val server = activeServer.value ?: return
         if (server.authMethod != AuthMethod.PASSWORD || _prompt.value != null) return
-        runCatching { api() }
+        runCatchingCancellable { api() }
     }
 
     suspend fun submitPassword(password: String, remember: Boolean) = withContext(Dispatchers.IO) {
@@ -399,13 +401,7 @@ class TrueNasRepository(
     suspend fun <T> call(block: suspend (TrueNasApi) -> T): T = withContext(Dispatchers.IO) {
         activeCalls.incrementAndGet()
         try {
-            val tracker = app.truenascompanion.data.api.RequestTracker()
-            try {
-                withContext(tracker) { block(api()) }
-            } catch (e: TrueNasException.NotConnected) {
-                if (tracker.writeSent) throw TrueNasException.Interrupted()
-                block(api())
-            }
+            CallRetry.run({ api() }, block)
         } finally {
             activeCalls.decrementAndGet()
         }
@@ -542,6 +538,22 @@ class TrueNasRepository(
             TestResult(a.flavor, a.systemInfo())
         } finally {
             a.close()
+        }
+    }
+}
+
+/**
+ * The retry rule of [TrueNasRepository.call], separate so it's unit tested (1.8.0, code review: "repository retry"):
+ * one retry on a fresh connection after the socket dropped, unless a call that changes the NAS was already sent.
+ */
+internal object CallRetry {
+    suspend fun <A, T> run(api: suspend () -> A, block: suspend (A) -> T): T {
+        val tracker = app.truenascompanion.data.api.RequestTracker()
+        return try {
+            withContext(tracker) { block(api()) }
+        } catch (e: TrueNasException.NotConnected) {
+            if (tracker.writeSent) throw TrueNasException.Interrupted()
+            block(api())
         }
     }
 }

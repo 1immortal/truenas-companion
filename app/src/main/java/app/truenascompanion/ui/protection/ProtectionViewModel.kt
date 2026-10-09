@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.protection
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
@@ -52,7 +54,7 @@ data class ProtectionData(
 /** Loads everything the Protection overview needs; each part fails independently (e.g. missing permissions). */
 suspend fun loadProtection(c: AppContainer): ProtectionData = coroutineScope {
     suspend fun <T> part(block: suspend (ProtectionApi, TrueNasApi) -> T): T? =
-        runCatching { c.repository.call { api -> block(ProtectionApi(api), api) } }.getOrNull()
+        runCatchingCancellable { c.repository.call { api -> block(ProtectionApi(api), api) } }.getOrNull()
     val pools = async { c.repository.call { it.pools() } }
     val disks = async { part { _, api -> api.disks() } }
     val snaps = async { part { p, _ -> p.snapshotTasks() } }
@@ -89,7 +91,7 @@ class ProtectionViewModel(private val c: AppContainer) : ViewModel() {
             _state.value = UiState.Success(data)
             if (!cleaned && data.smart != null) {
                 cleaned = true
-                runCatching { c.repository.call { ProtectionApi(it).cleanupOneOffSmartJobs(data.smart) } }
+                runCatchingCancellable { c.repository.call { ProtectionApi(it).cleanupOneOffSmartJobs(data.smart) } }
             }
         } catch (e: Throwable) {
             if (_state.value !is UiState.Success) _state.value = UiState.Error(e.userMessage(), e)
@@ -99,8 +101,8 @@ class ProtectionViewModel(private val c: AppContainer) : ViewModel() {
     /** Light refresh while a scrub/backup runs (pools + backup tasks only). Called every few seconds while visible. */
     suspend fun poll() {
         val cur = (_state.value as? UiState.Success)?.data ?: return
-        val pools = runCatching { c.repository.call { it.pools() } }.getOrNull() ?: return
-        val backups = if (cur.backups.orEmpty().any { it.running }) runCatching { c.repository.call { ProtectionApi(it).backupTasks() } }.getOrNull() else null
+        val pools = runCatchingCancellable { c.repository.call { it.pools() } }.getOrNull() ?: return
+        val backups = if (cur.backups.orEmpty().any { it.running }) runCatchingCancellable { c.repository.call { ProtectionApi(it).backupTasks() } }.getOrNull() else null
         _state.value = UiState.Success(cur.copy(pools = pools, backups = backups ?: cur.backups, now = System.currentTimeMillis()))
     }
 

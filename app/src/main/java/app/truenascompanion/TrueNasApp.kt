@@ -1,5 +1,7 @@
 package app.truenascompanion
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import app.truenascompanion.data.net.RouteResolver
 import app.truenascompanion.data.net.HttpsUpgradeManager
 import app.truenascompanion.data.model.Route
@@ -80,8 +82,13 @@ class TrueNasApp : Application() {
         container = AppContainer(this)
         container.notifier.createChannels()
         // 1.7.1 (review P1-1): the widget job only exists while a widget is placed; no refresh on every process start.
-        WidgetRefreshWorker.sync(this)
-        UpdateCheckWorker.createChannel(this)
+        // 1.8.0 (code review): WorkManager calls run off the main thread so cold start isn't blocked by its database.
+        container.appScope.launch {
+            WidgetRefreshWorker.sync(this@TrueNasApp)
+            UpdateCheckWorker.createChannel(this@TrueNasApp)
+            // 1.8.0 (security review): NAS files opened with "Open with" don't stay in the cache across app starts.
+            app.truenascompanion.data.files.FilePolicy.clearOpenWithCache(this@TrueNasApp)
+        }
         container.appScope.launch {
             container.settings.autoUpdateCheck.collect { UpdateCheckWorker.sync(this@TrueNasApp, it) }
         }
@@ -107,7 +114,7 @@ class TrueNasApp : Application() {
                 if (st !is ConnectionState.Connected) return@collect
                 val server = container.repository.activeServer.value ?: return@collect
                 if (!server.uiCertCheckinPending || server.certReviewRequired) return@collect
-                runCatching { container.repository.call { CertificatesApi(it).checkin() } }
+                runCatchingCancellable { container.repository.call { CertificatesApi(it).checkin() } }
                     .onSuccess { container.settings.updateServer(server.id) { it.copy(uiCertCheckinPending = false) } }
             }
         }

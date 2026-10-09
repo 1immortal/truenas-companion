@@ -1,4 +1,4 @@
-TrueNAS Companion includes a modified copy of the Termux terminal-emulator and terminal-view libraries.
+YTN (formerly TrueNAS Companion) includes a modified copy of the Termux terminal-emulator and terminal-view libraries.
 
 Source: https://github.com/termux/termux-app (tag v0.118.0), directories terminal-emulator/ and terminal-view/
 Originally based on Jack Palevich's Android Terminal Emulator (https://github.com/jackpal/Android-Terminal-Emulator).
@@ -13,3 +13,4 @@ Modifications by TrueNAS Companion (2026):
   (the TrueNAS web shell WebSocket): input goes to a Transport, output is passed in with feed(), and size changes
   are forwarded to Transport.resize(). JNI.java and the native code were removed.
 - Both libraries are built as one Gradle module.
+- 1.8.0: OSC 52 ("set clipboard") escape sequences are ignored, so terminal output can't write to the clipboard.

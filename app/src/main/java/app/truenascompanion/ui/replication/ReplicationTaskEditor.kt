@@ -1,5 +1,7 @@
 package app.truenascompanion.ui.replication
 
+import app.truenascompanion.util.runCatchingCancellable
+
 import app.truenascompanion.ui.components.GlowButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -164,7 +166,7 @@ class ReplicationTaskEditorViewModel(private val c: AppContainer, private val id
 
     /** Back from adding a connection: pick it up without touching the rest of the form. */
     fun reloadConnections() = viewModelScope.launch {
-        runCatching { c.repository.call { ReplicationApi(it).connections() } }.getOrNull()?.let { list ->
+        runCatchingCancellable { c.repository.call { ReplicationApi(it).connections() } }.getOrNull()?.let { list ->
             val before = _refs.value.connections.map { it.id }.toSet()
             _refs.update { it.copy(connections = list) }
             val added = list.firstOrNull { it.id !in before }
