@@ -73,7 +73,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.EmptyState
 import app.truenascompanion.ui.components.StateContent
-import app.truenascompanion.ui.components.showUndo
 import app.truenascompanion.ui.components.ScrollableErrorState
 import app.truenascompanion.ui.components.isLoginRequired
 import app.truenascompanion.ui.components.SkeletonList
@@ -223,9 +222,7 @@ fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}, onPhoneAlertSettings:
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     val undoTimeout = app.truenascompanion.ui.components.undoTimeoutMs()
-    LaunchedEffect(Unit) {
-        vm.undo.collect { ev -> launch { if (snackbar.showUndo(ev.message, undoTimeout)) ev.undo() else ev.expired() } }
-    }
+    LaunchedEffect(Unit) { app.truenascompanion.ui.components.showUndoEvents(vm.undo, snackbar, undoTimeout) }
     val server by vm.server.collectAsStateWithLifecycle()
     val prefs by vm.notificationPrefs.collectAsStateWithLifecycle()
     val snoozes by vm.snoozes.collectAsStateWithLifecycle()

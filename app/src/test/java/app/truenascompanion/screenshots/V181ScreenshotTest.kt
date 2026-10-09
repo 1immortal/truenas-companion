@@ -65,7 +65,10 @@ class V181ScreenshotTest {
         Column {
             Box(Modifier.weight(1f)) {
                 Scaffold(topBar = { TopAppBar(title = { Text("Alerts") }) }, snackbarHost = { SnackbarHost(snackbar) }) { p ->
-                    LazyColumn(Modifier.padding(p), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyColumn(Modifier.padding(p), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item {
+                            Text("2 active", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+                        }
                         items(listOf(
                             alert("2", "WARNING", "SMART test on sdb (S/N EX4MPL3) failed: Short offline test failed at 10% remaining.", 38),
                             alert("3", "INFO", "An update is available for \"nextcloud\" application.", 300),
