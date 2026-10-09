@@ -245,6 +245,8 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
     ) { padding ->
         app.truenascompanion.ui.auth.AuthPromptHost()
         app.truenascompanion.ui.servers.HttpsUpgradeHost()
+        // 1.8.1: "Connecting…", "Connected via home address", "Connection lost" for TalkBack users.
+        app.truenascompanion.ui.connection.ConnectionAnnouncements(container)
         app.truenascompanion.ui.quick.QuickActionHost(container, quick, onDone = { quick = null },
             onOpenShell = { nav.navigate(Routes.shell(app.truenascompanion.data.shell.ShellTarget.Host)) })
         app.truenascompanion.ui.connection.ConnectionOverlayHost(

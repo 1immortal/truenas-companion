@@ -110,13 +110,45 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         val RESILVER_WATCHES = stringPreferencesKey("resilver_watches")
         val CLOUD_RUN_WATCHES = stringPreferencesKey("cloud_run_watches")
         val FILES_SHOW_SYSTEM = booleanPreferencesKey("files_show_system")
+        /** 1.8.1: servers removed with Undo still possible: id -> time of removal (JSON map). */
+        val PENDING_REMOVALS = stringPreferencesKey("pending_server_removals")
     }
 
+    /**
+     * Saved servers. 1.8.1: a server whose removal can still be undone is left out, so the whole app (screens, alert
+     * checks, widget, keep-alive) already treats it as gone; [allServers] still includes it.
+     */
     val servers: Flow<List<ServerConfig>> = store.data.map { prefs ->
-        prefs[Keys.SERVERS]?.let { runCatching { json.decodeFromString<List<ServerConfig>>(it) }.getOrNull() } ?: emptyList()
+        val pending = decodePendingRemovals(prefs)
+        decodeServers(prefs).filterNot { it.id in pending }
     }.distinctUntilChanged()
 
-    val activeServerId: Flow<String?> = store.data.map { it[Keys.ACTIVE] }.distinctUntilChanged()
+    /** Every saved server, including ones waiting to be removed (see [markPendingRemoval]). */
+    val allServers: Flow<List<ServerConfig>> = store.data.map { decodeServers(it) }.distinctUntilChanged()
+
+    /** 1.8.1: hides [id] everywhere until [clearPendingRemoval] (Undo) or [deleteServer] (removal finished). */
+    suspend fun markPendingRemoval(id: String, at: Long = System.currentTimeMillis()) {
+        store.edit { it[Keys.PENDING_REMOVALS] = json.encodeToString(decodePendingRemovals(it) + (id to at)) }
+    }
+
+    suspend fun clearPendingRemoval(id: String) {
+        store.edit { prefs ->
+            val left = decodePendingRemovals(prefs) - id
+            if (left.isEmpty()) prefs.remove(Keys.PENDING_REMOVALS) else prefs[Keys.PENDING_REMOVALS] = json.encodeToString(left)
+        }
+    }
+
+    suspend fun pendingRemovals(): Map<String, Long> = decodePendingRemovals(store.data.first())
+
+    private fun decodePendingRemovals(prefs: Preferences): Map<String, Long> =
+        prefs[Keys.PENDING_REMOVALS]?.let { runCatching { json.decodeFromString<Map<String, Long>>(it) }.getOrNull() } ?: emptyMap()
+
+    /** The active server's id; while it waits for removal (1.8.1), the first other server, as the repository uses. */
+    val activeServerId: Flow<String?> = store.data.map { prefs ->
+        val raw = prefs[Keys.ACTIVE]
+        val pending = decodePendingRemovals(prefs)
+        if (raw == null || raw !in pending) raw else decodeServers(prefs).firstOrNull { it.id !in pending }?.id
+    }.distinctUntilChanged()
 
     val appearance: Flow<AppearanceSettings> = store.data.map { prefs ->
         AppearanceSettings(
@@ -251,10 +283,13 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             prefs.remove(Keys.wireGuard(id))
             prefs.remove(Keys.vpnWorked(id))
             prefs.remove(Keys.vpnTipDismissed(id))
+            prefs.remove(Keys.snoozes(id))
+            val pending = decodePendingRemovals(prefs) - id
+            if (pending.isEmpty()) prefs.remove(Keys.PENDING_REMOVALS) else prefs[Keys.PENDING_REMOVALS] = json.encodeToString(pending)
             val np = decodeNotifications(prefs)
             if (id in np.enabledServers) prefs[Keys.NOTIFICATIONS] = json.encodeToString(np.copy(enabledServers = np.enabledServers - id))
             if (prefs[Keys.ACTIVE] == id) {
-                val next = list.firstOrNull()?.id
+                val next = (list.firstOrNull { it.id !in pending } ?: list.firstOrNull())?.id
                 if (next != null) prefs[Keys.ACTIVE] = next else prefs.remove(Keys.ACTIVE)
             }
         }

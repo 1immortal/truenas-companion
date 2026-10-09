@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import app.truenascompanion.ui.servers.ServerRemovals
+import app.truenascompanion.ui.servers.removeServer
 
 /** A notification tap, app shortcut or tile asking the UI to show [destination] (with optional [arg]) for [serverId]. */
 data class PendingDeepLink(val serverId: String?, val destination: String, val nonce: Long = System.nanoTime(), val arg: String? = null)
@@ -68,6 +70,14 @@ class AppContainer(app: Application) {
             routes.reset(id)
             if (route == Route.REMOTE && repository.activeServer.value?.id == id) repository.disconnect()
         },
+    )
+    /** 1.8.1: server removal with an Undo window (finished after it closes, or on the next start). */
+    val serverRemovals = ServerRemovals(
+        scope = appScope,
+        mark = { settings.markPendingRemoval(it) },
+        unmark = { settings.clearPendingRemoval(it) },
+        pending = { settings.pendingRemovals().keys },
+        finish = { removeServer(this, it) },
     )
     /** One-shot request for the Storage tab to show a segment (e.g. Protection from the dashboard card). */
     val storageTabRequest = MutableStateFlow<Int?>(null)
@@ -119,7 +129,10 @@ class TrueNasApp : Application() {
             }
         }
         container.appScope.launch {
-            container.settings.servers.collect { list -> QuickActions.pruneShortcuts(this@TrueNasApp, list.map { it.id }.toSet()) }
+            // allServers: a server inside its Undo window keeps its shortcuts until the removal really happens.
+            container.settings.allServers.collect { list -> QuickActions.pruneShortcuts(this@TrueNasApp, list.map { it.id }.toSet()) }
         }
+        // 1.8.1: a removal whose Undo window was cut short by the process dying is completed now.
+        container.appScope.launch { container.serverRemovals.finishLeftovers() }
     }
 }

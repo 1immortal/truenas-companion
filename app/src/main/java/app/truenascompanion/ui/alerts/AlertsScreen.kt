@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.truenascompanion.AppContainer
 import app.truenascompanion.data.api.userMessage
+import app.truenascompanion.data.api.restoreAlert
 import app.truenascompanion.data.model.AlertItem
 import app.truenascompanion.notify.AlertTarget
 import app.truenascompanion.notify.Snooze
@@ -71,6 +72,8 @@ import androidx.compose.material3.DropdownMenuItem
 import kotlinx.coroutines.flow.flatMapLatest
 import app.truenascompanion.ui.appViewModel
 import app.truenascompanion.ui.components.EmptyState
+import app.truenascompanion.ui.components.StateContent
+import app.truenascompanion.ui.components.showUndo
 import app.truenascompanion.ui.components.ScrollableErrorState
 import app.truenascompanion.ui.components.isLoginRequired
 import app.truenascompanion.ui.components.SkeletonList
@@ -117,6 +120,9 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
     val refreshing = _refreshing.asStateFlow()
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
+    /** 1.8.1: dismiss and snooze can be taken back from a snackbar. */
+    private val _undo = Channel<app.truenascompanion.ui.components.UndoEvent>(Channel.BUFFERED)
+    val undo = _undo.receiveAsFlow()
 
     init {
         viewModelScope.launch {
@@ -157,10 +163,17 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
     fun snooze(alert: AlertItem, option: Snooze.Option) = viewModelScope.launch {
         val id = server.value?.id ?: return@launch
         val until = System.currentTimeMillis() + option.millis
+        val previous = c.settings.snoozes(id)[alert.uuid]
         c.settings.updateSnoozes(id) { it + (alert.uuid to until) }
         c.notifier.removeFromShade(id, setOf(alert.uuid))
         (state.value as? UiState.Success)?.let { c.publishAlertBadge(id, it.data) }
-        _messages.trySend("Snoozed for ${option.label} on this phone")
+        // 1.8.1: Undo puts the previous snooze (or none) back. Snoozes are local, so nothing on the NAS changes.
+        _undo.trySend(app.truenascompanion.ui.components.UndoEvent("Snoozed for ${option.label} on this phone", undo = {
+            viewModelScope.launch {
+                c.settings.updateSnoozes(id) { if (previous != null) it + (alert.uuid to previous) else it - alert.uuid }
+                (state.value as? UiState.Success)?.let { c.publishAlertBadge(id, it.data) }
+            }
+        }))
     }
 
     fun unsnooze(alert: AlertItem) = viewModelScope.launch {
@@ -169,16 +182,35 @@ class AlertsViewModel(private val c: AppContainer) : ViewModel() {
         (state.value as? UiState.Success)?.let { c.publishAlertBadge(id, it.data) }
     }
 
+    /**
+     * 1.8.1: dismisses on the NAS straight away (so a closed app or a killed process can't lose it) and offers Undo,
+     * which calls `alert.restore`. That fully reverts it: TrueNAS shows the alert as active again.
+     */
     fun dismiss(alert: AlertItem) = viewModelScope.launch {
-        // Optimistic update, re-sync afterwards.
-        _state.update { s -> if (s is UiState.Success) UiState.Success(s.data.map { if (it.uuid == alert.uuid) it.copy(dismissed = true) else it }) else s }
+        setDismissed(alert.uuid, true)
         try {
             c.repository.call { it.dismissAlert(alert.uuid) }
+            _undo.trySend(app.truenascompanion.ui.components.UndoEvent("Alert dismissed", undo = { restore(alert) }))
         } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             _messages.trySend("Couldn't dismiss: ${e.userMessage()}")
         }
         load()
     }
+
+    fun restore(alert: AlertItem) = viewModelScope.launch {
+        setDismissed(alert.uuid, false)
+        try {
+            c.repository.call { it.restoreAlert(alert.uuid) }
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            _messages.trySend("Couldn't undo: ${e.userMessage()}")
+        }
+        load()
+    }
+
+    private fun setDismissed(uuid: String, dismissed: Boolean) =
+        _state.update { s -> if (s is UiState.Success) UiState.Success(s.data.map { if (it.uuid == uuid) it.copy(dismissed = dismissed) else it }) else s }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -190,6 +222,10 @@ fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}, onPhoneAlertSettings:
     var showDismissed by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    val undoTimeout = app.truenascompanion.ui.components.undoTimeoutMs()
+    LaunchedEffect(Unit) {
+        vm.undo.collect { ev -> launch { if (snackbar.showUndo(ev.message, undoTimeout)) ev.undo() else ev.expired() } }
+    }
     val server by vm.server.collectAsStateWithLifecycle()
     val prefs by vm.notificationPrefs.collectAsStateWithLifecycle()
     val snoozes by vm.snoozes.collectAsStateWithLifecycle()
@@ -209,19 +245,17 @@ fun AlertsScreen(onOpenTarget: (AlertTarget) -> Unit = {}, onPhoneAlertSettings:
         })
     }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh() }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val s = state) {
-                UiState.Loading -> SkeletonList(5, 90.dp)
-                is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> {
-                    val active = s.data.filter { !it.dismissed }
-                    val list = if (showDismissed) s.data else active
+            StateContent(state, onRetry = { vm.refresh() }, skeletonCount = 5, skeletonHeight = 90.dp) { data ->
+                run {
+                    val active = data.filter { !it.dismissed }
+                    val list = if (showDismissed) data else active
                     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
                         if (showPrompt) item(key = "phone-alerts-prompt") {
                             PhoneAlertsPromptCard(server?.name ?: "your NAS", onEnable = enableAlerts, onDismiss = { vm.dismissPrompt() }, modifier = Modifier.animateItem())
                         }
                         if (list.isNotEmpty()) item {
                             Text(
-                                if (showDismissed) "${active.size} active · ${s.data.size - active.size} dismissed" else "${active.size} active",
+                                if (showDismissed) "${active.size} active · ${data.size - active.size} dismissed" else "${active.size} active",
                                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp),
                             )
                         }

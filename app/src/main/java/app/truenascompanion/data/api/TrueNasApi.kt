@@ -126,3 +126,8 @@ interface TrueNasApi : AutoCloseable {
 
     override fun close()
 }
+
+/** 1.8.1: takes an alert dismissal back (`alert.restore`, TrueNAS 25.04+); used by the Undo snackbar. */
+suspend fun TrueNasApi.restoreAlert(uuid: String) {
+    rpc("alert.restore", kotlinx.serialization.json.JsonPrimitive(uuid))
+}

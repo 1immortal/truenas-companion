@@ -59,6 +59,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.launch
+import app.truenascompanion.ui.components.showUndo
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -102,6 +104,19 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
     val activeId by vm.activeId.collectAsStateWithLifecycle()
     var toDelete by remember { mutableStateOf<ServerConfig?>(null) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    // 1.8.1: removing a server can be undone for a few seconds (longer with TalkBack on).
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val undoScope = androidx.compose.runtime.rememberCoroutineScope()
+    val undoTimeout = app.truenascompanion.ui.components.undoTimeoutMs()
+    val remove: (ServerConfig) -> Unit = { s ->
+        vm.delete(s.id, undoTimeout)
+        undoScope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            if (snackbar.showUndo("Removed ${s.name}", undoTimeout) && !vm.undoDelete(s.id)) {
+                snackbar.showSnackbar("Too late to undo: ${s.name} was already removed")
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
@@ -115,6 +130,7 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add server") })
         },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
     ) { padding ->
         val list = servers
         when {
@@ -158,9 +174,9 @@ fun ServerListScreen(onAdd: () -> Unit, onEdit: (String) -> Unit, onOpen: () -> 
     toDelete?.let { s ->
         ConfirmDialog(
             title = "Remove ${s.name}?",
-            text = "The saved API key and dashboard layout for this server will be deleted from this phone.",
+            text = "Its saved sign-in, keys and settings are deleted from this phone, and the app's saved sessions are signed out on the NAS. You can undo this for a few seconds.",
             confirmLabel = "Remove", destructive = true, icon = Icons.Rounded.Delete,
-            onConfirm = { vm.delete(s.id); toDelete = null }, onDismiss = { toDelete = null },
+            onConfirm = { remove(s); toDelete = null }, onDismiss = { toDelete = null },
         )
     }
 }
