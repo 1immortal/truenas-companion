@@ -41,6 +41,10 @@
   - For Google Drive, Dropbox, OneDrive and other sign-in providers, paste a token from `rclone authorize` or add the credential once in the web UI. The app explains how.
   - Create and edit tasks: push or pull, sync/copy/move explained in plain words, the NAS folder picked from your pools, bucket and folder picked by browsing the cloud, a schedule picker, snapshot first, include/exclude, bandwidth limits, encryption and scripts.
   - **Run now**, **Dry run**, **Abort** and **Restore**, with live progress. You can get a notification when a run you started finishes.
+- **Replicate snapshots to another NAS.** Storage › Protection › **Replication** sets up ZFS replication from your phone.
+  - SSH connections: connect to another TrueNAS by signing in to it once (the app has the NAS generate a key and install it there), or set up any SSH server by hand with **Discover** for its host key. Generate or paste key pairs; private keys stay hidden until you tap **Show**. A connection or key that's still in use can't be deleted.
+  - Create and edit tasks: push or pull, over SSH, SSH+netcat or to another pool on this NAS. Pick the source datasets from a tree and browse the target datasets on the other system. Run after a periodic snapshot task, on a schedule or only when started; retention, encryption, properties, compression and speed limit. *Allow from scratch* comes with a strong warning.
+  - **Run now** and **Replicate once without saving**, with live progress, the last log and an optional notification when it finishes. **Restore…** creates the reverse task.
 - **Keep an eye on storage.** Pools, disks with temperatures, and a full dataset/ZVOL browser (used/available, compression). Create, rename and delete datasets; manage SMB and NFS shares linked to them.
 - **Browse your files.** Open any pool or dataset in **Storage › Files**, or tap *Browse files* on a dataset or share.
   - Folders and files with size, date and type; sort by name, size or date and search the folder you're in.

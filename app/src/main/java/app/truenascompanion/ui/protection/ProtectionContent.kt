@@ -355,7 +355,7 @@ private fun SmartCard(s: SmartSchedule, data: ProtectionData, busy: Boolean, act
 }
 
 private fun BackupKind.icon(): ImageVector = when (this) {
-    BackupKind.REPLICATION -> Icons.Rounded.Backup
+    BackupKind.REPLICATION -> Icons.Rounded.SyncAlt
     BackupKind.CLOUD_SYNC -> Icons.Rounded.Backup
     BackupKind.RSYNC -> Icons.Rounded.Backup
 }
