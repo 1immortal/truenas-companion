@@ -31,9 +31,11 @@ class MemoryStore : TokenStore {
     val saves = AtomicInteger()
     override suspend fun load(serverId: String) = data[serverId] ?: SessionTokens()
     override suspend fun save(serverId: String, tokens: SessionTokens) { saves.incrementAndGet(); data[serverId] = tokens }
-    override suspend fun remove(serverId: String, tokens: Set<String>) = synchronized(data) {
-        val cur = data[serverId] ?: return
-        data[serverId] = SessionTokens(cur.primary?.takeUnless { it.token in tokens }, cur.spare?.takeUnless { it.token in tokens })
+    override suspend fun remove(serverId: String, tokens: Set<String>) {
+        synchronized(data) {
+            val cur = data[serverId] ?: return
+            data[serverId] = SessionTokens(cur.primary?.takeUnless { it.token in tokens }, cur.spare?.takeUnless { it.token in tokens })
+        }
     }
 }
 

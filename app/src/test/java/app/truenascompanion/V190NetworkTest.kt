@@ -142,7 +142,7 @@ class V190NetworkTest {
                 if (m.startsWith("app.") || m.startsWith("android.")) continue
                 assertTrue("${f.name} names $m, which isn't an allowed read method", m in NetworkApi.READ_METHODS)
             }
-            if (f.parentFile.name == "network") {
+            if (f.parentFile?.name == "network") {
                 assertFalse("${f.name} must not call the API directly", Regex("""\.(rpc|callJob)\(""").containsMatchIn(text))
             }
         }
