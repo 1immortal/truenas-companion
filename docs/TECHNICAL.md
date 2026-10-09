@@ -6,7 +6,7 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 
 *TrueNAS Companion* is now **YTN** ("Your TrueNAS companion"). What changed and what deliberately didn't:
 
-- **Same app underneath.** The package ids (`app.truenascompanion`, `app.truenascompanion.debug`) and both signing keys are unchanged, so 1.8.0 installs over 1.7.x and keeps every server and setting. Only the launcher label ("YTN", "YTN Preview" for the debug channel), the widget names, notification texts, the About screen and the icon changed.
+- **Same app underneath.** The package ids (`app.truenascompanion`, `app.truenascompanion.debug`) and both signing keys are unchanged, so 1.8.0 installs over 1.7.x and keeps every server and setting. Only the launcher label ("YTN", "YTN Preview" for the debug channel), the widget names, notification texts, the About screen, the launcher icon and the status-bar notification icon (now the Y glyph) changed. One internal string keeps the old name on purpose: the description of the temporary one-off SMART test cron job (`S.M.A.R.T. Test: one-off (TrueNAS Companion)`), so jobs created by older versions are still recognised and cleaned up.
 - **Repository.** `1immortal/truenas-companion` was renamed to [`1immortal/ytn`](https://github.com/1immortal/ytn). Every URL in the app and the docs points to the new name. GitHub keeps redirecting the old name, which matters for installs that haven't updated yet: their updater still asks `api.github.com/repos/1immortal/truenas-companion/releases/latest`. Before the release this was checked with `curl -L`: the old API URL answers with a redirect to the renamed repository's API and returns the latest release, and the old asset download URLs redirect to the same files (OkHttp follows these redirects).
 - **Release asset names stay `truenas-companion-release.apk` and `truenas-companion-debug.apk`** (each with a `.sha256` file). Older updaters look for exactly these names in the latest release; renaming them to `ytn-*.apk` would leave every 1.7.x install stuck. They will keep these names.
 - **Trademark.** YTN is an independent project, not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc.
@@ -22,7 +22,6 @@ The in-depth companion to the [README](../README.md): how each feature works, si
 - **Accessibility.** Headings on screen titles, section labels and hub groups; switch and check-box rows are one TalkBack item; expandable cards say *Expanded/Collapsed*; navigation labels, dashboard titles and alert timestamps are capped or wrap at 200 % font; 48 dp touch targets for path segments; content is limited to 840 dp wide on tablets.
 - **Widget** redesign: rounded corners, theme navy (or light), theme status colours and a real preview image in the widget picker.
 
-## Features in detail
 ## Features in detail
 
 **Design**
@@ -474,6 +473,5 @@ DataStore, AndroidX Biometric, [wireguard-android](https://git.zx2c4.com/wiregua
 - The shell (0.7) follows TrueNAS 25.10.3 `apps/webshell_app.py` and the web UI's `auth.generate_token` / `/websocket/shell/` calls. Handshake, resize, binary frames and a real pty were tested with unit tests and `tools/webshell_stub.py`. **It has not been tried on a live NAS.** A program path can't take arguments. Incus and classic VMs have no in-app console. If a reverse proxy doesn't forward WebSockets, the shell says so instead of connecting.
 - The VPN features (0.6) were built from the wg-easy 15.4.0 and TrueNAS apps catalog sources and the wireguard-android library. The tunnel itself (bring-up, handshake, split tunnel, reference counting, fallback on a failed handshake) was tested on an Android 14 emulator against a real WireGuard peer (see [Building](BUILDING.md#testing-the-wireguard-tunnel)). **Unverified:** installing wg-easy and Tailscale on a real TrueNAS 25.10, the background tunnel for alert checks on a real Android 14+ phone, real Tailscale detection, and QR scanning on a real camera. If another VPN app takes over while the tunnel is up, the status may only update once a connection fails.
 - The legacy DDP WebSocket (`/websocket`) of pre-25.04 releases is not used, and neither is the REST API (removed in 1.1.0), so those releases are not supported.
-- No home-screen widgets yet.
 - Phone alerts depend on Android letting the app run in the background. Aggressive OEM battery savers (some Xiaomi, Huawei and Samsung settings) can delay or stop checks unless the app is allowed to run in the background. Instant mode only reconnects after a reboot if Android lets it start a foreground service at boot.
 

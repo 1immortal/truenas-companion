@@ -13,7 +13,8 @@
   <a href="https://github.com/1immortal/ytn/releases/latest"><b>⬇ Download the latest version</b></a>
 </p>
 
-> **New name, same app.** YTN used to be called *TrueNAS Companion*. If you already have it, just update as usual: it installs over the old version and keeps your servers and settings.
+> [!TIP]
+> **New name, same app.** YTN used to be called *TrueNAS Companion*. If you already have it, just update as usual: it installs over the old version and keeps your servers and settings. Look for the new blue **Y** icon on your home screen.
 
 ## A quick tour
 
@@ -38,7 +39,7 @@
   </tr>
 </table>
 
-<p align="center"><img src="docs/images/widget.png" width="560" alt="Home-screen widget"><br><sub>A home-screen widget shows your NAS at a glance (it follows your light or dark theme).</sub></p>
+<p align="center"><img src="docs/images/widget.png" width="560" alt="Home-screen widget in light and dark"><br><sub>A home-screen widget shows your NAS at a glance (it follows your light or dark theme).</sub></p>
 
 <sub>Screenshots use made-up example data.</sub>
 
@@ -86,7 +87,7 @@ You need Android 8.0 or newer and TrueNAS 25.04 or newer.
 YTN talks only to the servers you add. There are no ads, analytics, tracking or accounts. Your passwords, keys and sessions stay encrypted on your phone. The only other requests are for app icons from TrueNAS's own catalog servers and a once-a-day check with GitHub for a newer version (you can turn it off). Neither sends any personal data.
 
 > [!NOTE]
-> **Found a problem?** If you run into a bug or something doesn't work as expected, please [open an issue](https://github.com/1immortal/ytn/issues) on this repo. It helps to include the app version (System › About), your Android version and what you were doing. Please never post passwords, 2FA/OTP codes, API keys or your server addresses.
+> **Found a problem?** If you run into a bug or something doesn't work as expected, please [open an issue](https://github.com/1immortal/ytn/issues) on this repo. It helps to include the app version (System › About), your Android version and what you were doing. **Please never post passwords, OTP (2FA) codes, API keys or your server addresses**, not even in screenshots or logs.
 
 ## More
 
@@ -96,7 +97,7 @@ YTN talks only to the servers you add. There are no ads, analytics, tracking or 
 
 ## About
 
-YTN was designed and built by Grok Bot. Thanks for trying it out!
+Designed and built by Vert, an AI assistant in Grok Bot, for [@1immortal](https://github.com/1immortal). Thanks for trying it out!
 
 YTN is an independent project, not affiliated with or endorsed by iXsystems. TrueNAS is a trademark of iXsystems, Inc.
 

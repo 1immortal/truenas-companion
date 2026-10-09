@@ -71,15 +71,15 @@ fun NotificationShadeMock(dark: Boolean) {
             }
         }
 
-        Notif(true, false, "TrueNAS Companion · homenas · Critical · now", "Pool Status Is Not Healthy",
+        Notif(true, false, "YTN · homenas · Critical · now", "Pool Status Is Not Healthy",
             "Pool tank state is DEGRADED: One or more devices are faulted in response to persistent errors.", listOf("Dismiss", "Open"))
-        Notif(false, false, "TrueNAS Companion · homenas · Warning · 2m", "Pool Space Usage Is Above 80%",
+        Notif(false, false, "YTN · homenas · Warning · 2m", "Pool Space Usage Is Above 80%",
             "Space usage for pool \"fast\" is 88%. Optimal pool performance requires used space remain below 80%.", listOf("Dismiss", "Open"), maxText = 2)
-        Notif(false, true, "TrueNAS Companion · homenas · 5m", "Sign in to keep receiving alerts",
+        Notif(false, true, "YTN · homenas · 5m", "Sign in to keep receiving alerts",
             "Your session with homenas expired. Open the app and sign in to keep receiving alerts.", listOf("Sign in"), maxText = 2)
         Spacer(Modifier.height(16.dp))
         Text("Silent", color = sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
-        Notif(true, true, "TrueNAS Companion", "Instant alerts on", "homenas · connected", listOf("Turn off"))
+        Notif(true, true, "YTN", "Instant alerts on", "homenas · connected", listOf("Turn off"))
         Spacer(Modifier.height(8.dp))
         Text("Preview mock: the system draws the real notifications.", color = sub.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
     }

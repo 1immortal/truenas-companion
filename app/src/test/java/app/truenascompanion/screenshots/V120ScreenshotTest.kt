@@ -255,9 +255,9 @@ class V120ScreenshotTest {
                     Row(Modifier.padding(start = 48.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) { actions.forEach { Text(it, color = action, fontSize = 14.sp, fontWeight = FontWeight.Medium) } }
                 }
             }
-            Notif(true, false, "TrueNAS Companion · Example NAS · Warning · now", "SMART test failed · 3",
+            Notif(true, false, "YTN · Example NAS · Warning · now", "SMART test failed · 3",
                 listOf("SMART test on sdb failed", "SMART test on sdc failed", "SMART test on sdd failed"), listOf("Dismiss all", "Snooze", "Open"))
-            Notif(false, true, "TrueNAS Companion · Example NAS · Certificates · 1h", "Certificate expires in 9 days",
+            Notif(false, true, "YTN · Example NAS · Certificates · 1h", "Certificate expires in 9 days",
                 listOf("truenas_default (localhost) expires in 9 days."), emptyList())
             Spacer(Modifier.height(8.dp))
             Text("Preview mock: the system draws the real shade and tiles.", color = sub.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
