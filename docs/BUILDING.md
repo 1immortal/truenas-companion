@@ -18,7 +18,26 @@ Debug builds use the application id `app.truenascompanion.debug` (launcher label
 
 Every push to `main` runs `.github/workflows/android.yml`: it validates the Gradle wrapper, then runs `./gradlew assembleDebug testDebugUnitTest lintDebug` and uploads the debug APK and the test/lint reports as artifacts. CI builds are signed with the runner's own debug key, so they can't be installed over release APKs.
 
-Supply-chain hygiene (1.8.0): every GitHub Action is pinned to a full commit SHA (the tag is kept as a comment), checkout doesn't keep the token (`persist-credentials: false`), the workflow only has `contents: read`, `gradle-wrapper.properties` carries `distributionSha256Sum` so the wrapper refuses a tampered Gradle download, and Dependabot (`.github/dependabot.yml`) proposes weekly updates for the actions and the Gradle dependencies.
+Supply-chain hygiene (1.8.0): every GitHub Action is pinned to a full commit SHA (the tag is kept as a comment), checkout doesn't keep the token (`persist-credentials: false`), the workflow only has `contents: read`, `gradle-wrapper.properties` carries `distributionSha256Sum` so the wrapper refuses a tampered Gradle download, and Dependabot (`.github/dependabot.yml`) proposes weekly updates for the actions and the Gradle dependencies. Since 1.8.1 the dependencies themselves are checksum-verified too (see [Dependency verification](#dependency-verification)); a Dependabot pull request fails CI until the checksums are regenerated.
+
+## Dependency verification
+
+Since 1.8.1 every dependency and plugin the build downloads is checked against a SHA-256 checksum in [`gradle/verification-metadata.xml`](../gradle/verification-metadata.xml) (Gradle [dependency verification](https://docs.gradle.org/current/userguide/dependency_verification.html)). If a file from Maven Central, Google Maven or the Gradle Plugin Portal doesn't match, the build stops with *Dependency verification failed* and points to an HTML report. CI and local builds use the same file.
+
+**When you add or update a dependency or plugin** (or merge a Dependabot pull request), regenerate the checksums with the tasks that resolve every configuration, then review the diff:
+
+```bash
+./gradlew --write-verification-metadata sha256 \
+    assembleDebug assembleRelease assembleDebugAndroidTest testDebugUnitTest lintDebug -Pscreenshots
+git diff gradle/verification-metadata.xml   # only the new/changed versions should appear
+```
+
+- The command adds entries and keeps existing ones. Old versions you no longer use stay in the file; that's harmless, but you can delete the file and run the command again for a clean list. Run it once with an empty Gradle cache (`GRADLE_USER_HOME=$(mktemp -d)`, plus any init scripts you use) before relying on it: a fresh download fetches a few extra metadata files (BOMs, `.module` files) that a warm cache never asks for, and CI always starts fresh.
+- `assembleRelease` needs a signing config; without one, leave it out (it resolves the same libraries as `assembleDebug`).
+- `aapt2` comes as a separate jar per operating system. Gradle records only the one for your machine, so the file also lists the macOS and Windows jars of the current version, taken from Google Maven. After an Android Gradle Plugin update, add them again (`https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/<version>/aapt2-<version>-{osx,windows}.jar`, `sha256sum` each).
+- Sources and javadoc jars (downloaded by IDEs) are trusted without checksums; they never end up in the APK.
+- Robolectric downloads its Android framework jars (`android-all-instrumented`) itself at test time, outside Gradle, so they aren't in this file.
+- Never "fix" a failure by copying the reported checksum without checking why it changed. A mismatch for a version you already had means the downloaded file isn't the one that was published.
 
 ## UI previews
 

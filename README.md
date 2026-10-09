@@ -46,7 +46,7 @@
 ## What you can do
 
 - 📊 **See how your NAS is doing** at a glance: health, pools, free space, apps, CPU, memory, network and temperatures, plus reports for the last hour, day, week or month.
-- 🔔 **Get alerts on your phone** when a pool degrades, a disk runs hot or space runs low, straight from your NAS with no cloud service in between. Snooze or dismiss them in one tap.
+- 🔔 **Get alerts on your phone** when a pool degrades, a disk runs hot or space runs low, straight from your NAS with no cloud service in between. Snooze or dismiss them in one tap, and undo it if you tapped the wrong one.
 - 💾 **Look after your storage**: pools and disks, datasets, SMB, NFS and iSCSI shares, a file browser, and a step-by-step guide for replacing a failing disk.
 - 🛟 **Keep your data safe**: snapshots, scrubs, SMART tests, replication to another NAS and cloud sync, with a clear "when did this last run" overview.
 - 🧩 **Manage apps, VMs and containers**: install and update apps, read logs, start and stop VMs, open a terminal.

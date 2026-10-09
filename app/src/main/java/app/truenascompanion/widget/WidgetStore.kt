@@ -1,5 +1,6 @@
 package app.truenascompanion.widget
 
+import androidx.core.content.edit
 import android.content.Context
 import app.truenascompanion.data.model.Health
 import org.json.JSONObject
@@ -44,7 +45,7 @@ object WidgetStore {
             .put("routeLabel", snap.routeLabel)
             .put("error", snap.error)
             .put("updatedAt", snap.updatedAt)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, o.toString()).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY, o.toString()) }
         // 1.2.0: the status tile shows the same data; ask the system to refresh it if it's in the shade.
         runCatching {
             android.service.quicksettings.TileService.requestListeningState(context, android.content.ComponentName(context, app.truenascompanion.quick.StatusTileService::class.java))
