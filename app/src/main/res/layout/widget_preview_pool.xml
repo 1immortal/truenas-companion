@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.10.0 widget picker preview (Android 12+), example data only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="HardcodedText"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="8dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="tank" android:textColor="@color/widget_on" android:textSize="14sp" android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="82%" android:textColor="@color/widget_warning" android:textSize="14sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="4dp" android:background="@drawable/widget_bar_track" android:orientation="horizontal" android:weightSum="100">
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="82" android:background="@drawable/widget_bar_fill_warning" />
+    </LinearLayout>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:maxLines="1"
+        android:text="+1 more on Home NAS" android:textColor="@color/widget_muted" android:textSize="11sp" />
+</LinearLayout>

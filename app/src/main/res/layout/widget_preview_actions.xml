@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.10.0 widget picker preview (Android 12+), example data only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="HardcodedText"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="6dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingHorizontal="4dp" android:orientation="horizontal">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="● " android:textColor="@color/widget_healthy" android:textSize="12sp" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Home NAS" android:textColor="@color/widget_on" android:textSize="13sp" android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Updated 13:40" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="horizontal">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"  android:background="@drawable/widget_button" android:gravity="center" android:orientation="vertical" android:paddingVertical="6dp">
+            <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_widget_refresh" android:importantForAccessibility="no" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Refresh" android:textColor="@color/widget_on" android:textSize="11sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:background="@drawable/widget_button" android:gravity="center" android:orientation="vertical" android:paddingVertical="6dp">
+            <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_shortcut_alerts" android:importantForAccessibility="no" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Alerts" android:textColor="@color/widget_on" android:textSize="11sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:background="@drawable/widget_button" android:gravity="center" android:orientation="vertical" android:paddingVertical="6dp">
+            <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_shortcut_scrub" android:importantForAccessibility="no" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Scrub pool…" android:textColor="@color/widget_on" android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

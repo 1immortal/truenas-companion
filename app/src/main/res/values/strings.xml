@@ -13,5 +13,14 @@
     <string name="shortcut_scrub_long">Scrub a pool…</string>
     <string name="tile_status_label">NAS status</string>
     <string name="tile_action_label">TrueNAS action</string>
+    <!-- 1.10.0 widgets -->
+    <string name="widget_dot_label">YTN status dot</string>
+    <string name="widget_dot_description">One dot: green when pools are healthy and there are no alerts</string>
+    <string name="widget_pool_label">YTN pool usage</string>
+    <string name="widget_pool_description">How full your fullest pool is</string>
+    <string name="widget_dashboard_label">YTN dashboard</string>
+    <string name="widget_dashboard_description">Alerts, apps and pool usage for your active server</string>
+    <string name="widget_actions_label">YTN actions</string>
+    <string name="widget_actions_description">Refresh, open alerts and your quick action (restart and scrub still ask in the app)</string>
 </resources>
 

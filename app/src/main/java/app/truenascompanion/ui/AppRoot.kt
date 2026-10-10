@@ -226,6 +226,10 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 container.repository.requestSignIn()
             }
             DeepLink.DEST_DASHBOARD -> nav.switchTab(Tab.DASHBOARD.route)
+            DeepLink.DEST_STORAGE -> {
+                container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.POOLS
+                nav.switchTab(Tab.STORAGE.route)
+            }
             DeepLink.DEST_RULES -> { nav.switchTab(Tab.SYSTEM.route); nav.navigate(Routes.ALERT_RULES) }
             DeepLink.DEST_TASKS -> { nav.switchTab(Tab.SYSTEM.route); nav.navigate(Routes.JOBS) }
             DeepLink.DEST_SHELL, DeepLink.DEST_RESTART_APP, DeepLink.DEST_SCRUB_POOL ->

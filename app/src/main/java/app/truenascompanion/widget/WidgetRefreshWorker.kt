@@ -37,7 +37,7 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
         val server = servers.firstOrNull { it.id == activeId } ?: servers.firstOrNull()
         if (server == null) {
             WidgetStore.save(applicationContext, WidgetSnapshot(error = "Add a server in the app."))
-            NasStatusWidget().updateAll(applicationContext)
+            updateAllWidgets(applicationContext)
             return Result.success()
         }
         var target = server
@@ -47,6 +47,8 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
             try {
                 val pools = runCatching { api.pools() }.getOrDefault(emptyList())
                 val alerts = runCatching { api.alerts().filter { !it.dismissed } }.getOrDefault(emptyList())
+                // 1.10.0: apps only when the dashboard widget is placed (one extra read-only call).
+                val apps = if (placed(applicationContext, DashboardWidgetReceiver::class.java)) runCatching { api.apps() }.getOrNull() else null
                 val worst = pools.map { it.health }.minByOrNull { rank(it) } ?: Health.UNKNOWN
                 val label = when {
                     pools.isEmpty() -> "No pools"
@@ -67,12 +69,15 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
                             Route.REMOTE -> "remote"
                         },
                         updatedAt = System.currentTimeMillis(),
+                        pools = pools.map { WidgetPool(it.name, (it.usedFraction * 100).toInt(), it.health) },
+                        appsRunning = apps?.count { it.state == app.truenascompanion.data.model.AppState.RUNNING },
+                        appsTotal = apps?.size,
                     ),
                 )
             } finally {
                 api.close()
             }
-            NasStatusWidget().updateAll(applicationContext)
+            updateAllWidgets(applicationContext)
             Result.success()
         } catch (e: TrueNasException.SessionNotOnThisRoute) {
             // 1.7.1: the saved session didn't work on the local/VPN address; the next attempt uses the remote one.
@@ -80,11 +85,11 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
             if (runAttemptCount < 3) Result.retry() else Result.success()
         } catch (e: TrueNasException.LoginRequired) {
             WidgetStore.save(applicationContext, WidgetSnapshot(serverName = server.name, error = "Sign in again in the app"))
-            NasStatusWidget().updateAll(applicationContext)
+            updateAllWidgets(applicationContext)
             Result.success()
         } catch (e: Throwable) {
             WidgetStore.save(applicationContext, WidgetSnapshot(serverName = server.name, error = "Can't reach the NAS right now"))
-            NasStatusWidget().updateAll(applicationContext)
+            updateAllWidgets(applicationContext)
             if (runAttemptCount < 3) Result.retry() else Result.success()
         } finally {
             runCatching { c.routes.release(target, TunnelHolder.CHECK) }
@@ -103,11 +108,28 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
 
         private const val UNIQUE_NOW = "nas-status-widget-now"
 
-        /** 1.7.1 (review P1-1): true only if the widget is placed on a home screen. */
-        fun hasWidgets(context: Context): Boolean = runCatching {
+        /** 1.10.0: every home-screen widget; they all share this worker and the one cached snapshot. */
+        val RECEIVERS: List<Class<out android.content.BroadcastReceiver>> = listOf(
+            NasStatusWidgetReceiver::class.java, StatusDotWidgetReceiver::class.java, PoolUsageWidgetReceiver::class.java,
+            DashboardWidgetReceiver::class.java, ActionsWidgetReceiver::class.java,
+        )
+
+        fun placed(context: Context, receiver: Class<out android.content.BroadcastReceiver>): Boolean = runCatching {
             android.appwidget.AppWidgetManager.getInstance(context)
-                .getAppWidgetIds(android.content.ComponentName(context, NasStatusWidgetReceiver::class.java)).isNotEmpty()
+                .getAppWidgetIds(android.content.ComponentName(context, receiver)).isNotEmpty()
         }.getOrDefault(false)
+
+        /** 1.7.1 (review P1-1): true only if a widget is placed on a home screen (1.10.0: any of them). */
+        fun hasWidgets(context: Context): Boolean = RECEIVERS.any { placed(context, it) }
+
+        /** Redraws every placed widget from the cached snapshot. */
+        suspend fun updateAllWidgets(context: Context) {
+            NasStatusWidget().updateAll(context)
+            StatusDotWidget().updateAll(context)
+            PoolUsageWidget().updateAll(context)
+            NasDashboardWidget().updateAll(context)
+            ActionsWidget().updateAll(context)
+        }
 
         /** Periodic refresh while a widget is placed; nothing (and the job cancelled) otherwise. */
         fun sync(context: Context, placed: Boolean = hasWidgets(context)) {

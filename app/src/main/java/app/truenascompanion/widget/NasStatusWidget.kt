@@ -62,6 +62,7 @@ class NasStatusWidget : GlanceAppWidget() {
 
 /** Widget colors = the app's theme (light / dark follow the system), same values as StatusColors. */
 internal object WidgetColors {
+    val track = c(0xFFDCE3F7, 0xFF1E2A4F)
     private fun c(day: Long, night: Long) = ColorProvider(day = Color(day), night = Color(night))
     val bg = c(0xFFF3F6FF, 0xFF0B1430)
     val on = c(0xFF0E1A3A, 0xFFE6ECFF)
@@ -151,6 +152,7 @@ class NasStatusWidgetReceiver : GlanceAppWidgetReceiver() {
 
     override fun onDisabled(context: android.content.Context) {
         super.onDisabled(context)
-        WidgetRefreshWorker.sync(context, placed = false)
+        // 1.10.0: other widgets may still be placed; they share the refresh job.
+        WidgetRefreshWorker.sync(context)
     }
 }

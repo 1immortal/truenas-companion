@@ -43,6 +43,8 @@ object DeepLink {
     const val DEST_RESTART_APP = "quick_restart_app"
     const val DEST_SCRUB_POOL = "quick_scrub_pool"
     const val DEST_DASHBOARD = "dashboard"
+    /** 1.10.0: the Storage tab (pool-usage widget). */
+    const val DEST_STORAGE = "storage"
     // 1.5.0: Storage › Protection › Cloud sync (finished manual runs, CloudSyncTaskFailed alerts)
     const val DEST_CLOUD_SYNC = "cloud_sync"
     // 1.6.0: Storage › Protection › Replication (finished manual runs, ReplicationFailed / ReplicationSuccess alerts)
