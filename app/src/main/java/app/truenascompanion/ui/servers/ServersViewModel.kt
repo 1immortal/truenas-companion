@@ -65,6 +65,7 @@ suspend fun removeServer(c: AppContainer, id: String) {
     }
     if (c.repository.activeServer.value?.id == id) c.repository.disconnect()
     c.settings.deleteServer(id)
+    runCatching { c.runway.delete(id) }.getOrNull()
 }
 
 sealed interface TestOutcome {

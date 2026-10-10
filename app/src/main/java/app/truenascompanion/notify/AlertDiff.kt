@@ -32,12 +32,28 @@ enum class SeverityGroup { CRITICAL, WARNING, INFO }
 @Serializable
 data class SeenAlert(val uuid: String, val level: String, val title: String, val dismissed: Boolean = false)
 
-/** Simple daily quiet window in minutes after midnight; may wrap past midnight (e.g. 22:00–07:00). */
-data class QuietHours(val enabled: Boolean = false, val startMinute: Int = 22 * 60, val endMinute: Int = 7 * 60) {
-    fun contains(minuteOfDay: Int): Boolean {
-        if (!enabled || startMinute == endMinute) return false
-        return if (startMinute < endMinute) minuteOfDay in startMinute until endMinute
-        else minuteOfDay >= startMinute || minuteOfDay < endMinute
+/**
+ * Quiet window in minutes after midnight; may wrap past midnight (e.g. 22:00–07:00).
+ * 1.10.0: [days] (ISO 1 = Monday … 7 = Sunday) are the days the window *starts* on, so "Fri 22:00–07:00" also covers
+ * Saturday morning. [criticalBreaksThrough]: Error/Critical and more severe still notify during quiet hours.
+ */
+data class QuietHours(
+    val enabled: Boolean = false,
+    val startMinute: Int = 22 * 60,
+    val endMinute: Int = 7 * 60,
+    val days: Set<Int> = ALL_DAYS,
+    val criticalBreaksThrough: Boolean = true,
+) {
+    /** [isoDay] 0 = unknown (days are ignored). */
+    fun contains(minuteOfDay: Int, isoDay: Int = 0): Boolean {
+        if (!enabled || startMinute == endMinute || days.isEmpty()) return false
+        fun on(day: Int) = isoDay == 0 || day in days
+        return if (startMinute < endMinute) minuteOfDay in startMinute until endMinute && on(isoDay)
+        else (minuteOfDay >= startMinute && on(isoDay)) || (minuteOfDay < endMinute && on(if (isoDay == 1) 7 else isoDay - 1))
+    }
+
+    companion object {
+        val ALL_DAYS: Set<Int> = (1..7).toSet()
     }
 }
 
@@ -46,9 +62,13 @@ data class AlertFilter(
     val notifyOnClear: Boolean = false,
     val quietHours: QuietHours = QuietHours(),
 ) {
-    /** Critical and above always come through during quiet hours. */
-    fun allows(level: AlertLevel, minuteOfDay: Int): Boolean =
-        level.rank >= minLevel.rank && (!quietHours.contains(minuteOfDay) || level.rank >= AlertLevel.CRITICAL.rank)
+    /** Critical and above come through during quiet hours unless the user turned "critical breaks through" off. */
+    fun allows(level: AlertLevel, minuteOfDay: Int, isoDay: Int = 0): Boolean =
+        level.rank >= minLevel.rank && !quiet(level, minuteOfDay, isoDay)
+
+    /** True when [level] is held back by quiet hours right now (independent of the minimum level). */
+    fun quiet(level: AlertLevel, minuteOfDay: Int, isoDay: Int = 0): Boolean =
+        quietHours.contains(minuteOfDay, isoDay) && !(quietHours.criticalBreaksThrough && level.rank >= AlertLevel.CRITICAL.rank)
 }
 
 data class AlertDiffResult(
@@ -77,6 +97,7 @@ object AlertDiff {
         current: List<AlertItem>,
         filter: AlertFilter,
         minuteOfDay: Int,
+        isoDay: Int = 0,
         titleOf: (AlertItem) -> String,
     ): AlertDiffResult {
         val seen = current.filter { it.uuid.isNotBlank() }
@@ -89,12 +110,12 @@ object AlertDiff {
 
         val fresh = current.filter { it.uuid.isNotBlank() && !it.dismissed && it.uuid !in prev }
         val atLevel = fresh.filter { AlertLevel.parse(it.level).rank >= filter.minLevel.rank }
-        val toNotify = atLevel.filter { filter.allows(AlertLevel.parse(it.level), minuteOfDay) }
+        val toNotify = atLevel.filter { filter.allows(AlertLevel.parse(it.level), minuteOfDay, isoDay) }
             .sortedByDescending { AlertLevel.parse(it.level).rank }
 
         val gone = previous.filter { it.uuid !in currentIds }
         val cleared = if (!filter.notifyOnClear) emptyList() else gone.filter {
-            !it.dismissed && filter.allows(AlertLevel.parse(it.level), minuteOfDay)
+            !it.dismissed && filter.allows(AlertLevel.parse(it.level), minuteOfDay, isoDay)
         }
         val newlyDismissed = current.filter { it.dismissed && prev[it.uuid]?.dismissed == false }.map { it.uuid }
 

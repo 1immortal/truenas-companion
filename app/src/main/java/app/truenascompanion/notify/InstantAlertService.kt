@@ -27,7 +27,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.filter
@@ -54,6 +56,7 @@ class InstantAlertService : Service() {
         private const val MAX_BACKOFF_MS = 5 * 60_000L
         private const val SIGN_IN_RETRY_MS = 30 * 60_000L
         private const val REST_POLL_MS = 2 * 60_000L
+        private const val PROGRESS_POLL_MS = 60_000L
 
         @Volatile
         var running = false
@@ -162,6 +165,16 @@ class InstantAlertService : Service() {
                             if (server.hasAlternativeRoutes && container.routes.resolve(server) != target) throw RouteChanged()
                         }
                     }
+                    // 1.10.0: while a scrub, resilver, replication, cloud sync or update runs, refresh its progress
+                    // notification every minute over this socket (nothing runs otherwise).
+                    val progressLoop = launch {
+                        checker.progressRunning.map { server.id in it }.distinctUntilChanged().collectLatest { on ->
+                            while (on) {
+                                delay(PROGRESS_POLL_MS)
+                                checker.refreshProgress(server, live)
+                            }
+                        }
+                    }
                     try {
                         // Bursts of events (e.g. several alerts at once) collapse into one check.
                         live.alertEvents().conflate().collect {
@@ -176,6 +189,7 @@ class InstantAlertService : Service() {
                         }
                     }
                     routeWatch.cancel()
+                    progressLoop.cancel()
                 }
             } catch (e: CancellationException) {
                 throw e

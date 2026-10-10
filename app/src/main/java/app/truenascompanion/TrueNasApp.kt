@@ -1,5 +1,6 @@
 package app.truenascompanion
 
+import app.truenascompanion.data.runway.RunwayStore
 import app.truenascompanion.util.runCatchingCancellable
 
 import app.truenascompanion.data.net.RouteResolver
@@ -54,7 +55,9 @@ class AppContainer(app: Application) {
     val routes = RouteResolver(app)
     /** The built-in WireGuard tunnel (0.6), shared by the app, background checks and instant alerts. */
     val tunnels = TunnelManager(app) { s -> settings.wireGuard(s.id) }.also { routes.tunnels = it }
-    val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections, routes)
+    /** 1.10.0: daily pool usage samples (storage runway). */
+    val runway = RunwayStore(app)
+    val alertChecker = AlertChecker(settings, backgroundConnector, notifier, sharedConnections, routes, runway)
     val repository = TrueNasRepository(settings, appScope, onSignedIn = { alertChecker.onSignedIn(it) }, shared = sharedConnections, resolver = routes, sessions = sessions)
     val deepLinks = MutableStateFlow<PendingDeepLink?>(null)
     /** 1.8.0: open (not dismissed, not snoozed) alerts of the active server, shown as a badge on the Alerts tab. */

@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.time.LocalTime
 import java.util.concurrent.ConcurrentHashMap
 
 enum class CheckOutcome { OK, SIGN_IN_NEEDED, NETWORK_ERROR, FAILED }
@@ -103,6 +102,8 @@ class AlertChecker(
     private val notifier: AlertNotifier,
     private val shared: SharedConnections = SharedConnections(),
     private val resolver: app.truenascompanion.data.net.RouteResolver = app.truenascompanion.data.net.RouteResolver(null),
+    /** 1.10.0: daily pool usage samples for the storage runway (null in tests). */
+    private val runway: app.truenascompanion.data.runway.RunwayStore? = null,
 ) {
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val classTitles = ConcurrentHashMap<String, Map<String, String>>()
@@ -132,7 +133,12 @@ class AlertChecker(
                 throw e // 1.8.0: a cancelled check stops instead of reporting a network error
             } catch (e: Throwable) {
                 Log.i(TAG, "check ${server.name}: connect failed: ${e.message}")
-                return@withLock if (e.isNetwork()) CheckOutcome.NETWORK_ERROR else CheckOutcome.FAILED
+                if (e.isNetwork()) {
+                    // 1.10.0: "NAS unreachable for N min" rules count from the first failed check.
+                    runCatching { evaluateRules(server, null) }.onFailure { Log.i(TAG, "rules ${server.name}: ${it.message}") }
+                    return@withLock CheckOutcome.NETWORK_ERROR
+                }
+                return@withLock CheckOutcome.FAILED
             }
             try {
                 onConnected(server)
@@ -157,16 +163,17 @@ class AlertChecker(
         val prefs = settings.notificationPrefs.first()
         if (server.id !in prefs.enabledServers) return
         val previous = settings.seenAlerts(server.id)
-        val now = LocalTime.now()
+        val now = java.time.LocalDateTime.now()
         val minute = now.hour * 60 + now.minute
+        val day = now.dayOfWeek.value
         // Cheap titles first (remembered or derived from the class name): most checks find nothing new, and then the
         // check is a single `alert.list` call. Class titles are fetched (once per process) only when notifying.
         val known = previous.orEmpty().associate { it.uuid to it.title }
-        var result = AlertDiff.compute(previous, alerts, prefs.filter, minute) { known[it.uuid] ?: AlertDiff.title(it, emptyMap()) }
+        var result = AlertDiff.compute(previous, alerts, prefs.filter, minute, day) { known[it.uuid] ?: AlertDiff.title(it, emptyMap()) }
         if (result.toNotify.isNotEmpty()) {
             val titles = classTitles[server.id] ?: api.alertClassTitles().also { if (it.isNotEmpty()) classTitles[server.id] = it }
             if (titles.isNotEmpty()) {
-                result = AlertDiff.compute(previous, alerts, prefs.filter, minute) { known[it.uuid] ?: AlertDiff.title(it, titles) }
+                result = AlertDiff.compute(previous, alerts, prefs.filter, minute, day) { known[it.uuid] ?: AlertDiff.title(it, titles) }
             }
         }
         if (result.seen != previous) settings.saveSeenAlerts(server.id, result.seen)
@@ -178,7 +185,7 @@ class AlertChecker(
             val nowMs = System.currentTimeMillis()
             val active = alerts.filter { !it.dismissed }.associateBy { it.uuid }
             val plan = Snooze.plan(snoozes, active.keys, nowMs) { uuid ->
-                active[uuid]?.let { prefs.filter.allows(AlertLevel.parse(it.level), minute) } == true
+                active[uuid]?.let { prefs.filter.allows(AlertLevel.parse(it.level), minute, day) } == true
             }
             toNotify = toNotify.filter { !Snooze.isSnoozed(snoozes, it.uuid, nowMs) } +
                 plan.wake.mapNotNull { active[it] }.filter { w -> toNotify.none { it.uuid == w.uuid } }
@@ -187,7 +194,12 @@ class AlertChecker(
         notifier.withdraw(server, result.withdrawn)
         notifier.postAlerts(server, toNotify, byUuid)
         notifier.postCleared(server, result.cleared)
-        runCatching { checkCertificates(server, api, prefs, minute) }.onFailure { Log.i(TAG, "cert check ${server.name}: ${it.message}") }
+        runCatching { checkCertificates(server, api, prefs, minute, day) }.onFailure { Log.i(TAG, "cert check ${server.name}: ${it.message}") }
+        // 1.10.0: phone rules, progress and the daily runway sample share one set of lazily loaded data.
+        val data = app.truenascompanion.notify.rules.ApiRuleData(api)
+        runCatching { evaluateRules(server, data) }.onFailure { Log.i(TAG, "rules ${server.name}: ${it.message}") }
+        runCatching { refreshProgress(server, api, data) }.onFailure { Log.i(TAG, "progress ${server.name}: ${it.message}") }
+        runCatching { sampleRunway(server, data) }.onFailure { Log.i(TAG, "runway ${server.name}: ${it.message}") }
         Log.d(TAG, "check ${server.name}: ${alerts.size} alerts, ${toNotify.size} new, baseline=${result.isBaseline}")
     }
 
@@ -195,19 +207,88 @@ class AlertChecker(
      * Certificate expiry warnings (1.2.0), folded into a check that runs anyway: at most every 12 hours one
      * `certificate.query` on the same connection, no extra wakeups. Expiring certificates wait for the end of quiet hours.
      */
-    private suspend fun checkCertificates(server: ServerConfig, api: TrueNasApi, prefs: NotificationPrefs, minute: Int) {
+    private suspend fun checkCertificates(server: ServerConfig, api: TrueNasApi, prefs: NotificationPrefs, minute: Int, day: Int) {
         if (!prefs.certWarnEnabled) return
         val state = settings.certCheck(server.id)
         val nowMs = System.currentTimeMillis()
         if (!CertExpiry.due(state, nowMs)) return
         val warnings = CertExpiry.evaluate(CertificatesApi(api).certificates(), prefs.certWarnDays, nowMs)
         val (fresh, kept) = CertExpiry.diff(warnings, state)
-        val quiet = prefs.filter.quietHours.contains(minute)
+        val quiet = prefs.filter.quietHours.contains(minute, day)
         val (post, deferred) = fresh.partition { it.expired || !quiet }
         post.forEach { notifier.postCertificate(server, it) }
         val notified = kept + post.associate { it.cert.id.toString() to it.state }
         // Deferred warnings keep the old timestamp so the next check (after quiet hours) posts them.
         settings.saveCertCheck(server.id, CertCheckState(if (deferred.isEmpty()) nowMs else state.lastCheck, notified))
+    }
+
+    // --- 1.10.0: phone alert rules ---
+
+    private val lastRuleEval = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Evaluates the server's phone rules ([data] null: the NAS couldn't be reached). Notifies on transitions only;
+     * at most once a minute with a connection, since instant alerts can run several checks in a row.
+     */
+    private suspend fun evaluateRules(server: ServerConfig, data: app.truenascompanion.notify.rules.RuleData?) {
+        val rules = settings.alertRules(server.id).first()
+        val saved = settings.ruleState(server.id)
+        if (rules.isEmpty() && saved == app.truenascompanion.notify.rules.RuleState()) return
+        val now = System.currentTimeMillis()
+        var state = if (data != null) saved.copy(unreachableSince = null) else saved.copy(unreachableSince = saved.unreachableSince ?: now)
+        if (data != null && now - (lastRuleEval[server.id] ?: 0L) in 0 until RULE_MIN_INTERVAL_MS) {
+            if (state != saved) settings.saveRuleState(server.id, state)
+            return
+        }
+        if (data != null) lastRuleEval[server.id] = now
+        val prefs = settings.notificationPrefs.first()
+        val findings = rules.filter { it.enabled }.associate { r ->
+            r.id to app.truenascompanion.notify.rules.RuleFindings.evaluate(r, data, state.unreachableSince, now)
+        }
+        val step = app.truenascompanion.notify.rules.RuleEngine.step(rules, findings, state, now)
+        step.dropped.forEach { notifier.cancelRule(server.id, it) }
+        val time = java.time.LocalDateTime.now()
+        val minute = time.hour * 60 + time.minute
+        val day = time.dayOfWeek.value
+        // Held back by quiet hours: stays "not notified" and is posted by the first check after them.
+        val post = step.fire.filter { !prefs.filter.quiet(it.rule.severity.level, minute, day) }
+        post.forEach { notifier.postRule(server, it) }
+        step.recovered.forEach {
+            if (prefs.filter.quiet(AlertLevel.INFO, minute, day)) notifier.cancelRule(server.id, it.key) else notifier.postRuleRecovered(server, it)
+        }
+        state = app.truenascompanion.notify.rules.RuleEngine.markNotified(step.state, post.map { it.key })
+        if (state != saved) settings.saveRuleState(server.id, state)
+    }
+
+    // --- 1.10.0: live progress ---
+
+    /** Server ids with progress notifications showing (instant alerts refresh those every minute). */
+    val progressRunning = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+
+    private suspend fun refreshProgress(server: ServerConfig, api: TrueNasApi, data: app.truenascompanion.notify.rules.RuleData) {
+        val prefs = settings.notificationPrefs.first()
+        val shown = notifier.shownProgress(server.id)
+        val items = if (!prefs.progressEnabled || server.id !in prefs.enabledServers) emptyList()
+        else ProgressTracker.items(data.pools(), runCatching { ProgressTracker.runningJobs(api) }.getOrNull())
+        items.forEach { notifier.postProgress(server, it) }
+        (shown - items.map { it.key }.toSet()).forEach { notifier.cancelProgress(server.id, it) }
+        progressRunning.value = if (items.isEmpty()) progressRunning.value - server.id else progressRunning.value + server.id
+    }
+
+    /** Instant alerts: refreshes the progress notifications over the live socket (only while something runs). */
+    suspend fun refreshProgress(server: ServerConfig, api: TrueNasApi) = withContext(Dispatchers.IO) {
+        runCatching { refreshProgress(server, api, app.truenascompanion.notify.rules.ApiRuleData(api)) }
+            .onFailure { Log.i(TAG, "progress ${server.name}: ${it.message}") }
+        Unit
+    }
+
+    // --- 1.10.0: storage runway ---
+
+    private suspend fun sampleRunway(server: ServerConfig, data: app.truenascompanion.notify.rules.RuleData) {
+        val store = runway ?: return
+        val today = app.truenascompanion.data.runway.Runway.today()
+        if (store.lastDay(server.id) == today) return
+        data.pools()?.let { store.record(server.id, it, today) }
     }
 
     /** Emits a server id after the user signed in interactively (lets instant mode retry right away). */
@@ -317,6 +398,7 @@ class AlertChecker(
 
     private companion object {
         const val TAG = "AlertChecker"
+        const val RULE_MIN_INTERVAL_MS = 60_000L
     }
 }
 

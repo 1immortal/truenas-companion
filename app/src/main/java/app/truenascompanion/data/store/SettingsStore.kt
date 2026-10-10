@@ -65,8 +65,13 @@ data class NotificationPrefs(
     /** 1.2.0: warn [certWarnDays] before a certificate expires (checked at most twice a day inside the alert check). */
     val certWarnEnabled: Boolean = true,
     val certWarnDays: Int = 14,
+    /** 1.10.0: quiet hours only on these ISO days (1 = Monday), and whether Critical alerts still come through. */
+    val quietDays: Set<Int> = QuietHours.ALL_DAYS,
+    val quietCriticalBreaksThrough: Boolean = true,
+    /** 1.10.0: ongoing progress notifications for scrubs, resilvers, replication, cloud sync and TrueNAS updates. */
+    val progressEnabled: Boolean = true,
 ) {
-    val filter: AlertFilter get() = AlertFilter(minLevel, notifyOnClear, QuietHours(quietEnabled, quietStart, quietEnd))
+    val filter: AlertFilter get() = AlertFilter(minLevel, notifyOnClear, QuietHours(quietEnabled, quietStart, quietEnd, quietDays, quietCriticalBreaksThrough))
     fun isEnabled(serverId: String?) = serverId != null && serverId in enabledServers
 
     companion object {
@@ -103,6 +108,9 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
         fun seenAlerts(id: String) = stringPreferencesKey("seen_alerts_$id")
         fun snoozes(id: String) = stringPreferencesKey("alert_snooze_$id")
         fun certCheck(id: String) = stringPreferencesKey("cert_check_$id")
+        // 1.10.0: phone alert rules and their state (per server)
+        fun rules(id: String) = stringPreferencesKey("alert_rules_$id")
+        fun ruleState(id: String) = stringPreferencesKey("alert_rule_state_$id")
         fun signInNotified(id: String) = booleanPreferencesKey("signin_notified_$id")
         fun wireGuard(id: String) = stringPreferencesKey("wireguard_conf_$id")
         fun vpnWorked(id: String) = booleanPreferencesKey("vpn_worked_$id")
@@ -284,6 +292,9 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
             prefs.remove(Keys.vpnWorked(id))
             prefs.remove(Keys.vpnTipDismissed(id))
             prefs.remove(Keys.snoozes(id))
+            prefs.remove(Keys.certCheck(id))
+            prefs.remove(Keys.rules(id))
+            prefs.remove(Keys.ruleState(id))
             val pending = decodePendingRemovals(prefs) - id
             if (pending.isEmpty()) prefs.remove(Keys.PENDING_REMOVALS) else prefs[Keys.PENDING_REMOVALS] = json.encodeToString(pending)
             val np = decodeNotifications(prefs)
@@ -425,6 +436,28 @@ class SettingsStore(context: Context, private val cipher: SecretCipher) {
 
     suspend fun saveCertCheck(serverId: String, state: app.truenascompanion.notify.CertCheckState) {
         store.edit { it[Keys.certCheck(serverId)] = json.encodeToString(state) }
+    }
+
+    // --- 1.10.0: phone alert rules ---
+
+    fun alertRules(serverId: String): Flow<List<app.truenascompanion.notify.rules.AlertRule>> = store.data.map { p ->
+        p[Keys.rules(serverId)]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.notify.rules.AlertRule>>(it) }.getOrNull() } ?: emptyList()
+    }.distinctUntilChanged()
+
+    suspend fun updateAlertRules(serverId: String, transform: (List<app.truenascompanion.notify.rules.AlertRule>) -> List<app.truenascompanion.notify.rules.AlertRule>) {
+        store.edit { p ->
+            val cur = p[Keys.rules(serverId)]?.let { runCatching { json.decodeFromString<List<app.truenascompanion.notify.rules.AlertRule>>(it) }.getOrNull() } ?: emptyList()
+            val next = transform(cur)
+            if (next.isEmpty()) p.remove(Keys.rules(serverId)) else p[Keys.rules(serverId)] = json.encodeToString(next)
+        }
+    }
+
+    suspend fun ruleState(serverId: String): app.truenascompanion.notify.rules.RuleState =
+        store.data.first()[Keys.ruleState(serverId)]?.let { runCatching { json.decodeFromString<app.truenascompanion.notify.rules.RuleState>(it) }.getOrNull() }
+            ?: app.truenascompanion.notify.rules.RuleState()
+
+    suspend fun saveRuleState(serverId: String, state: app.truenascompanion.notify.rules.RuleState) {
+        store.edit { if (state == app.truenascompanion.notify.rules.RuleState()) it.remove(Keys.ruleState(serverId)) else it[Keys.ruleState(serverId)] = json.encodeToString(state) }
     }
 
     // --- 1.3.0: resilver watches (notify when a disk replacement finishes) and file browser options ---

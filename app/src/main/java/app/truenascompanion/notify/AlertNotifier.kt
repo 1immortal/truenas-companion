@@ -47,6 +47,9 @@ object DeepLink {
     const val DEST_CLOUD_SYNC = "cloud_sync"
     // 1.6.0: Storage › Protection › Replication (finished manual runs, ReplicationFailed / ReplicationSuccess alerts)
     const val DEST_REPLICATION = "replication"
+    // 1.10.0: phone alert rules editor, Updates page and Running jobs
+    const val DEST_RULES = "alert_rules"
+    const val DEST_TASKS = "tasks"
 }
 
 /** Builds and posts all app notifications (alerts, sign-in reminder, test, instant-mode service). */
@@ -67,6 +70,8 @@ class AlertNotifier(private val context: Context) {
         const val CH_ACCOUNT = "account"
         const val CH_SERVICE = "instant_service"
         const val CH_TRANSFER = "file_transfers"
+        /** 1.10.0: ongoing progress (scrub, resilver, replication, cloud sync, TrueNAS update). */
+        const val CH_PROGRESS = "progress"
         private const val GROUP_ALERTS = "alerts"
         private const val GROUP_APP = "app"
 
@@ -80,6 +85,8 @@ class AlertNotifier(private val context: Context) {
         const val ID_RESILVER = 7
         const val ID_CLOUD_SYNC = 8
         const val ID_REPLICATION = 9
+        const val ID_RULE = 10
+        const val ID_PROGRESS = 11
         const val ID_SERVICE = 1001
 
         /** Individual notifications per check; the rest are only listed in the group summary. */
@@ -120,10 +127,13 @@ class AlertNotifier(private val context: Context) {
                 enableLights(importance >= NotificationManager.IMPORTANCE_DEFAULT)
             }
         m.createNotificationChannels(listOf(
-            ch(CH_CRITICAL, "Critical & errors", NotificationManager.IMPORTANCE_HIGH, "Error, Critical, Alert and Emergency alerts", GROUP_ALERTS),
+            ch(CH_CRITICAL, "Critical", NotificationManager.IMPORTANCE_HIGH, "Error, Critical, Alert and Emergency alerts", GROUP_ALERTS),
             ch(CH_WARNING, "Warnings", NotificationManager.IMPORTANCE_DEFAULT, "Warning alerts", GROUP_ALERTS),
-            ch(CH_INFO, "Info & notices", NotificationManager.IMPORTANCE_LOW, "Info and Notice alerts", GROUP_ALERTS),
-            ch(CH_CLEARED, "Cleared alerts", NotificationManager.IMPORTANCE_LOW, "An alert went away on the NAS", GROUP_ALERTS),
+            ch(CH_INFO, "Info", NotificationManager.IMPORTANCE_LOW, "Info and Notice alerts", GROUP_ALERTS),
+            // 1.10.0: same id as before (so the user's sound/vibration choices are kept), now named "Recovered" and
+            // also used when a phone alert rule's condition ends.
+            ch(CH_CLEARED, "Recovered", NotificationManager.IMPORTANCE_LOW, "An alert went away on the NAS, or a phone alert rule recovered", GROUP_ALERTS),
+            ch(CH_PROGRESS, "Progress", NotificationManager.IMPORTANCE_LOW, "Ongoing scrubs, resilvers, replications, cloud syncs and TrueNAS updates", GROUP_ALERTS),
             ch(CH_ACCOUNT, "Sign-in reminders", NotificationManager.IMPORTANCE_DEFAULT, "The saved session expired and alerts are paused", GROUP_APP),
             ch(CH_SERVICE, "Instant alerts connection", NotificationManager.IMPORTANCE_MIN, "Silent notification shown while instant alerts keep a live connection", GROUP_APP),
             ch(CH_TRANSFER, "File transfers", NotificationManager.IMPORTANCE_LOW, "Shown while a file is uploaded to or downloaded from the NAS", GROUP_APP),
@@ -487,6 +497,118 @@ class AlertNotifier(private val context: Context) {
             .build()
         nm.notify(summaryTag, ID_SUMMARY, n)
     }
+
+    // --- 1.10.0: phone alert rules ---
+
+    fun ruleTag(serverId: String, key: String) = "rule/$serverId/$key"
+
+    /** Lock-screen title of a rule notification: severity only, never the NAS, pool or disk names (1.7.1 rules). */
+    fun publicRuleTitle(severity: app.truenascompanion.notify.rules.RuleSeverity) = "YTN: ${severity.label.lowercase()} (phone rule)"
+
+    fun buildRule(server: ServerConfig, e: app.truenascompanion.notify.rules.RuleEvent): NotificationCompat.Builder {
+        val level = e.rule.severity.level
+        val channel = channelFor(level)
+        val tag = ruleTag(server.id, e.key)
+        val open = openAppIntent(server.id, ruleDestination(e.rule.kind), tag, e.subject.takeIf { it.isNotEmpty() && e.rule.kind.opensSubject() })
+        return base(channel)
+            .setContentTitle(app.truenascompanion.notify.rules.RuleEngine.title(e))
+            .setContentText(e.text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(e.text))
+            .setSubText("${server.name} · ${e.rule.severity.label} · Phone rule")
+            .setCategory(if (level.group == SeverityGroup.CRITICAL) NotificationCompat.CATEGORY_ERROR else NotificationCompat.CATEGORY_STATUS)
+            .setPriority(if (level.group == SeverityGroup.CRITICAL) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(open)
+            .addAction(0, "Edit rule", openAppIntent(server.id, DeepLink.DEST_RULES, "$tag/rules"))
+            .setPublicVersion(publicVersion(channel, publicRuleTitle(e.rule.severity)))
+    }
+
+    @SuppressLint("MissingPermission")
+    fun postRule(server: ServerConfig, e: app.truenascompanion.notify.rules.RuleEvent) {
+        if (!canPost()) return
+        nm.notify(ruleTag(server.id, e.key), ID_RULE, buildRule(server, e).build())
+    }
+
+    /** The rule's condition ended: the notification turns into a quiet "Recovered" one. */
+    @SuppressLint("MissingPermission")
+    fun postRuleRecovered(server: ServerConfig, e: app.truenascompanion.notify.rules.RuleEvent) {
+        if (!canPost()) return
+        val tag = ruleTag(server.id, e.key)
+        val text = "Back to normal: ${e.rule.summary().replaceFirstChar { it.lowercase() }} is no longer true."
+        val n = base(CH_CLEARED)
+            .setContentTitle("Recovered: " + app.truenascompanion.notify.rules.RuleEngine.title(e))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setSubText("${server.name} · Phone rule")
+            .setContentIntent(openAppIntent(server.id, DeepLink.DEST_DASHBOARD, "$tag/recovered"))
+            .setPublicVersion(publicVersion(CH_CLEARED, "YTN: recovered (phone rule)"))
+            .build()
+        nm.notify(tag, ID_RULE, n)
+    }
+
+    fun cancelRule(serverId: String, key: String) = nm.cancel(ruleTag(serverId, key), ID_RULE)
+
+    private fun ruleDestination(kind: app.truenascompanion.notify.rules.RuleKind): String = when (kind) {
+        app.truenascompanion.notify.rules.RuleKind.POOL_USAGE, app.truenascompanion.notify.rules.RuleKind.SCRUB_AGE -> DeepLink.DEST_POOL
+        app.truenascompanion.notify.rules.RuleKind.DISK_TEMP -> DeepLink.DEST_DISK
+        app.truenascompanion.notify.rules.RuleKind.APP_NOT_RUNNING -> DeepLink.DEST_APP
+        app.truenascompanion.notify.rules.RuleKind.BACKUP_FAILED, app.truenascompanion.notify.rules.RuleKind.BACKUP_STALE -> DeepLink.DEST_REPLICATION
+        app.truenascompanion.notify.rules.RuleKind.CERT_EXPIRY -> DeepLink.DEST_CERTIFICATE
+        else -> DeepLink.DEST_DASHBOARD
+    }
+
+    private fun app.truenascompanion.notify.rules.RuleKind.opensSubject() = this == app.truenascompanion.notify.rules.RuleKind.POOL_USAGE ||
+        this == app.truenascompanion.notify.rules.RuleKind.SCRUB_AGE || this == app.truenascompanion.notify.rules.RuleKind.DISK_TEMP ||
+        this == app.truenascompanion.notify.rules.RuleKind.APP_NOT_RUNNING || this == app.truenascompanion.notify.rules.RuleKind.CERT_EXPIRY
+
+    // --- 1.10.0: live progress ---
+
+    fun progressTag(serverId: String, key: String) = "progress/$serverId/$key"
+
+    /**
+     * An ongoing, silent progress notification. On Android 16+ it asks to be promoted to a Live Update (status-bar
+     * chip and lock screen) with the platform progress style; older versions show a normal progress bar. Not a
+     * foreground service: it's posted by checks that run anyway (see [ProgressTracker]).
+     */
+    fun buildProgress(server: ServerConfig, p: ProgressItem): NotificationCompat.Builder {
+        val tag = progressTag(server.id, p.key)
+        val pct = p.percent?.coerceIn(0, 100)
+        val b = base(CH_PROGRESS)
+            .setContentTitle(p.title)
+            .setContentText(listOfNotNull(pct?.let { "$it%" }, p.detail).joinToString(" · ").ifEmpty { "Running…" })
+            .setSubText("${server.name} · ${p.kind.label}")
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(openAppIntent(server.id, p.destination, tag, p.arg))
+            .setPublicVersion(publicVersion(CH_PROGRESS, "YTN: ${p.kind.label.lowercase()} in progress"))
+            .setRequestPromotedOngoing(true)
+        pct?.let { b.setShortCriticalText("$it%") }
+        if (Build.VERSION.SDK_INT >= 36) {
+            b.setStyle(NotificationCompat.ProgressStyle().setProgress(pct ?: 0).setProgressIndeterminate(pct == null).setStyledByProgress(true))
+        } else {
+            b.setProgress(100, pct ?: 0, pct == null)
+        }
+        return b
+    }
+
+    @SuppressLint("MissingPermission")
+    fun postProgress(server: ServerConfig, p: ProgressItem) {
+        if (!canPost()) return
+        nm.notify(progressTag(server.id, p.key), ID_PROGRESS, buildProgress(server, p).build())
+    }
+
+    /** Keys of the progress notifications of [serverId] currently shown. */
+    fun shownProgress(serverId: String): Set<String> {
+        val prefix = "progress/$serverId/"
+        return runCatching { nm.activeNotifications }.getOrDefault(emptyList())
+            .filter { it.id == ID_PROGRESS && it.tag?.startsWith(prefix) == true }.map { it.tag!!.removePrefix(prefix) }.toSet()
+    }
+
+    fun cancelProgress(serverId: String, key: String) = nm.cancel(progressTag(serverId, key), ID_PROGRESS)
 
     // --- sign-in reminder ---
 

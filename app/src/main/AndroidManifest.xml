@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Phone alerts (v0.3): notifications, background checks, optional instant mode. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 1.10.0: Android 16 Live Updates for progress notifications (scrub, resilver, replication, cloud sync, update). -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
