@@ -6,6 +6,8 @@ enum class ReportRange(val label: String, val seconds: Long) {
     DAY("1d", 86_400),
     WEEK("1w", 7 * 86_400),
     MONTH("1m", 30 * 86_400),
+    /** 1.10.0: TrueNAS keeps 30 days by default (`reporting.config` `tier1_days`); the page says when history is shorter. */
+    YEAR("1y", 365 * 86_400),
 }
 
 /** `reporting.netdata_graphs` entry. */

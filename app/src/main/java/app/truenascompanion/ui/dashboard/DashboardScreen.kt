@@ -85,6 +85,15 @@ import app.truenascompanion.ui.components.ScrollableErrorState
 import app.truenascompanion.ui.components.SkeletonCard
 import app.truenascompanion.ui.components.StatusChip
 import sh.calvin.reorderable.ReorderableItem
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.stateDescription
+import app.truenascompanion.data.model.DashboardDensity
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -149,7 +158,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit, onConne
                     modifier = Modifier.padding(top = 48.dp),
                 )
             } else if (editing) {
-                EditGrid(layout.widgets, vm)
+                EditGrid(layout, vm::moveByKey, vm::moveBy, vm::toggleVisible, vm::toggleSize, vm::setDensity)
             } else {
                 VpnFallbackNotice(server, route)
                 server?.let { app.truenascompanion.ui.servers.HttpsNoticeHost(it) }
@@ -157,7 +166,7 @@ fun DashboardScreen(onOpen: (WidgetType) -> Unit, onServers: () -> Unit, onConne
                     when {
                         data.error != null && data.system == null -> ScrollableErrorState(data.error!!, data.loginRequired) { vm.refresh() }
                         data.loading && data.system == null -> SkeletonGrid()
-                        else -> WidgetGrid(layout.visibleWidgets, data, live, flavor, onOpen, onEdit = { vm.setEditing(true) })
+                        else -> WidgetGrid(layout.visibleWidgets, data, live, flavor, onOpen, onEdit = { vm.setEditing(true) }, compact = layout.density == DashboardDensity.COMPACT)
                     }
                 }
             }
@@ -243,12 +252,14 @@ internal fun WidgetGrid(
     flavor: app.truenascompanion.data.model.ApiFlavor?,
     onOpen: (WidgetType) -> Unit,
     onEdit: () -> Unit,
+    compact: Boolean = false,
 ) {
+    val gap = if (compact) 8.dp else 12.dp
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = if (compact) 12.dp else 16.dp, end = if (compact) 12.dp else 16.dp, top = 8.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
         modifier = Modifier.fillMaxSize(),
     ) {
         if (data.error != null) {
@@ -266,24 +277,35 @@ internal fun WidgetGrid(
         items(widgets, key = { it.type.name }, span = { GridItemSpan(if (it.size == WidgetSize.FULL) 2 else 1) }) { w ->
             val target: (() -> Unit)? = when (w.type) {
                 WidgetType.POOLS, WidgetType.APPS, WidgetType.ALERTS, WidgetType.TEMPERATURE, WidgetType.PROTECTION,
-                WidgetType.REPORTS, WidgetType.CPU, WidgetType.MEMORY, WidgetType.NETWORK -> ({ onOpen(w.type) })
+                WidgetType.REPORTS, WidgetType.CPU, WidgetType.MEMORY, WidgetType.NETWORK, WidgetType.RUNWAY, WidgetType.ARC -> ({ onOpen(w.type) })
                 else -> null
             }
             DashboardWidget(
                 type = w.type, full = w.size == WidgetSize.FULL, data = data, live = live, flavor = flavor,
-                onClick = target, modifier = Modifier.animateItem().animateContentSize(),
+                onClick = target, modifier = Modifier.animateItem().animateContentSize(), compact = compact,
             )
         }
     }
 }
 
-/** Edit mode: long-press (or drag the handle) to reorder, toggle visibility and size per block. */
+/**
+ * Edit mode: long-press (or drag the handle) to reorder, toggle visibility and size per block. 1.10.0: TalkBack and
+ * switch-access users get "Move up" / "Move down" actions on every block, and a density choice.
+ */
 @Composable
-private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
+internal fun EditGrid(
+    layout: app.truenascompanion.data.model.DashboardLayout,
+    onMoveKey: (String?, String?) -> Unit,
+    onMoveBy: (WidgetType, Int) -> Unit,
+    onToggleVisible: (WidgetType) -> Unit,
+    onToggleSize: (WidgetType) -> Unit,
+    onDensity: (DashboardDensity) -> Unit,
+) {
+    val widgets = layout.widgets
     val haptics = LocalHapticFeedback.current
     val gridState = rememberLazyGridState()
     val reorderState = rememberReorderableLazyGridState(gridState) { from, to ->
-        vm.moveByKey(from.key as? String, to.key as? String)
+        onMoveKey(from.key as? String, to.key as? String)
         haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
     }
     LazyVerticalGrid(
@@ -295,21 +317,38 @@ private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
         modifier = Modifier.fillMaxSize(),
     ) {
         item(span = { GridItemSpan(2) }, key = "hint") {
-            Text(
-                "Long-press and drag to reorder. Tap the eye to show or hide a block and the arrows to switch between half and full width.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
+            Column {
+                Text(
+                    "Long-press and drag to reorder (or use the Move up / Move down actions). Tap the eye to show or hide a block and the arrows to switch between half and full width. Layouts are saved per server.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                    DashboardDensity.entries.forEachIndexed { i, d ->
+                        SegmentedButton(
+                            selected = layout.density == d, onClick = { onDensity(d) },
+                            shape = SegmentedButtonDefaults.itemShape(i, DashboardDensity.entries.size), icon = {},
+                        ) { Text(if (d == DashboardDensity.COMPACT) "Compact" else "Comfortable", maxLines = 1) }
+                    }
+                }
+            }
         }
-        items(widgets, key = { it.type.name }, span = { GridItemSpan(if (it.size == WidgetSize.FULL) 2 else 1) }) { w ->
+        itemsIndexed(widgets, key = { _, w -> w.type.name }, span = { _, w -> GridItemSpan(if (w.size == WidgetSize.FULL) 2 else 1) }) { index, w ->
             ReorderableItem(reorderState, key = w.type.name) { dragging ->
                 val elevation by animateDpAsState(if (dragging) 10.dp else 0.dp, label = "elev")
                 val alpha by animateFloatAsState(if (w.visible) 1f else 0.5f, label = "alpha")
+                val title = w.type.title
                 Card(
                     modifier = Modifier.fillMaxWidth().longPressDraggableHandle(
                         onDragStarted = { haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate) },
                         onDragStopped = { haptics.performHapticFeedback(HapticFeedbackType.GestureEnd) },
-                    ),
+                    ).semantics {
+                        stateDescription = "Position ${index + 1} of ${widgets.size}" + if (w.visible) "" else ", hidden"
+                        customActions = buildList {
+                            if (index > 0) add(CustomAccessibilityAction("Move $title up") { onMoveBy(w.type, -1); true })
+                            if (index < widgets.size - 1) add(CustomAccessibilityAction("Move $title down") { onMoveBy(w.type, 1); true })
+                        }
+                    }.testTag("edit_${w.type.name}"),
                     shape = MaterialTheme.shapes.large,
                     elevation = CardDefaults.cardElevation(defaultElevation = elevation),
                     colors = CardDefaults.cardColors(
@@ -328,15 +367,15 @@ private fun EditGrid(widgets: List<WidgetConfig>, vm: DashboardViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AnimatedVisibility(!w.visible) { Tag("Hidden") }
                             Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { vm.toggleSize(w.type) }) {
+                            IconButton(onClick = { onToggleSize(w.type) }) {
                                 Icon(
                                     if (w.size == WidgetSize.FULL) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull,
-                                    if (w.size == WidgetSize.FULL) "Make half width" else "Make full width",
+                                    if (w.size == WidgetSize.FULL) "Make $title half width" else "Make $title full width",
                                     Modifier.size(20.dp),
                                 )
                             }
-                            IconButton(onClick = { vm.toggleVisible(w.type) }) {
-                                Icon(if (w.visible) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, if (w.visible) "Hide" else "Show", Modifier.size(20.dp))
+                            IconButton(onClick = { onToggleVisible(w.type) }) {
+                                Icon(if (w.visible) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, if (w.visible) "Hide $title" else "Show $title", Modifier.size(20.dp))
                             }
                         }
                     }

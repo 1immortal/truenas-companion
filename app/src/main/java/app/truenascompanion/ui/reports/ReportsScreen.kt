@@ -79,7 +79,17 @@ data class ReportsUi(
     val iface: String? = null,
     val disk: String? = null,
     val charts: Map<ReportKind, ReportData> = emptyMap(),
-)
+    /** 1.10.0: one disk on the temperature chart (null = up to 8 disks, one line each). */
+    val tempDisk: String? = null,
+    /** 1.10.0: when the requested range started (epoch s), to tell the user when the NAS keeps less history. */
+    val requestedStart: Long = 0,
+) {
+    /** Oldest data point across the charts (epoch s), or null without data. */
+    val historyStart: Long? get() = charts.values.mapNotNull { d -> d.times.indices.firstOrNull { i -> d.series.any { !it.values[i].isNaN() } }?.let { d.times[it] } }.minOrNull()
+
+    /** True when the NAS returned noticeably less history than the range asks for. */
+    val historyShorter: Boolean get() = range.seconds >= ReportRange.WEEK.seconds && historyStart?.let { it > requestedStart + 2 * 86_400 } == true
+}
 
 class ReportsViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow<UiState<ReportsUi>>(UiState.Loading)
@@ -95,6 +105,7 @@ class ReportsViewModel(private val c: AppContainer) : ViewModel() {
     fun setRange(r: ReportRange) { if (r != ui.range) { ui = ui.copy(range = r); _state.value = UiState.Loading; viewModelScope.launch { load() } } }
     fun setIface(i: String) { ui = ui.copy(iface = i); viewModelScope.launch { load() } }
     fun setDisk(d: String) { ui = ui.copy(disk = d); viewModelScope.launch { load() } }
+    fun setTempDisk(d: String?) { ui = ui.copy(tempDisk = d); viewModelScope.launch { load() } }
     fun refresh() = viewModelScope.launch { _refreshing.value = true; load(); _refreshing.value = false }
 
     private suspend fun load() {
@@ -113,7 +124,9 @@ class ReportsViewModel(private val c: AppContainer) : ViewModel() {
             val byName = graphs.associateBy { it.name }
             val iface = cur.iface?.takeIf { byName["interface"]?.identifiers?.contains(it) == true } ?: byName["interface"]?.identifiers?.firstOrNull()
             val disk = cur.disk?.takeIf { byName["disk"]?.identifiers?.contains(it) == true } ?: byName["disk"]?.identifiers?.firstOrNull()
-            val diskTemps = byName["disktemp"]?.identifiers.orEmpty().take(8)
+            val allTemps = byName["disktemp"]?.identifiers.orEmpty()
+            val tempDisk = cur.tempDisk?.takeIf { it in allTemps }
+            val diskTemps = if (tempDisk != null) listOf(tempDisk) else allTemps.take(8)
             val req = buildList {
                 ReportKind.entries.forEach { k ->
                     if (k.graph !in byName) return@forEach
@@ -125,7 +138,8 @@ class ReportsViewModel(private val c: AppContainer) : ViewModel() {
                     }
                 }
             }
-            val results = r.data(req, cur.range)
+            val end = System.currentTimeMillis() / 1000
+            val results = r.data(req, cur.range, endSec = end)
             val charts = LinkedHashMap<ReportKind, ReportData>()
             ReportKind.entries.forEach { k ->
                 val rs = results.filter { it.name == k.graph }
@@ -133,7 +147,7 @@ class ReportsViewModel(private val c: AppContainer) : ViewModel() {
                 val d = if (k == ReportKind.DISK_TEMP) mergeByIdentifier(rs) else rs.first()
                 charts[k] = ReportingApi.downsample(pickSeries(k, d))
             }
-            return cur.copy(graphs = graphs, iface = iface, disk = disk, charts = charts)
+            return cur.copy(graphs = graphs, iface = iface, disk = disk, charts = charts, tempDisk = tempDisk, requestedStart = end - cur.range.seconds)
         }
 
         /** CPU reports every core plus the total: show the total only when present. */
@@ -155,7 +169,7 @@ class ReportsViewModel(private val c: AppContainer) : ViewModel() {
                     if (j < 0) j = (-j - 1).coerceIn(0, d.times.size - 1)
                     if (kotlin.math.abs(d.times[j] - t) > 600) Float.NaN else s.values[j]
                 }
-                ReportSeries(d.identifier ?: s.label, values, s.min, s.mean, s.max)
+                ReportSeries(d.identifier?.substringBefore(" | ")?.trim() ?: s.label, values, s.min, s.mean, s.max)
             }
             return base.copy(identifier = null, series = series)
         }
@@ -177,7 +191,7 @@ class ReportsViewModel(private val c: AppContainer) : ViewModel() {
         }
 
         fun timeFormatter(range: ReportRange, zone: ZoneId = ZoneId.systemDefault()): (Long) -> String {
-            val f = DateTimeFormatter.ofPattern(when (range) { ReportRange.HOUR, ReportRange.DAY -> "HH:mm"; ReportRange.WEEK -> "EEE HH:mm"; ReportRange.MONTH -> "d MMM" }, Locale.getDefault())
+            val f = DateTimeFormatter.ofPattern(when (range) { ReportRange.HOUR, ReportRange.DAY -> "HH:mm"; ReportRange.WEEK -> "EEE HH:mm"; ReportRange.MONTH -> "d MMM"; ReportRange.YEAR -> "MMM yy" }, Locale.getDefault())
             return { t -> f.format(Instant.ofEpochSecond(t).atZone(zone)) }
         }
     }
@@ -200,7 +214,7 @@ fun ReportsScreen(onBack: () -> Unit) {
                     repeat(3) { SkeletonCard(height = 230.dp) }
                 }
                 is UiState.Error -> ScrollableErrorState(s.message, s.isLoginRequired) { vm.refresh() }
-                is UiState.Success -> ReportsContent(s.data, vm::setRange, vm::setIface, vm::setDisk)
+                is UiState.Success -> ReportsContent(s.data, vm::setRange, vm::setIface, vm::setDisk, vm::setTempDisk)
             }
         }
     }
@@ -219,7 +233,7 @@ private fun RangePicker(range: ReportRange, onRange: (ReportRange) -> Unit) {
 
 /** Stateless content (also rendered by the screenshot tests with example data). */
 @Composable
-fun ReportsContent(ui: ReportsUi, onRange: (ReportRange) -> Unit, onIface: (String) -> Unit, onDisk: (String) -> Unit) {
+fun ReportsContent(ui: ReportsUi, onRange: (ReportRange) -> Unit, onIface: (String) -> Unit, onDisk: (String) -> Unit, onTempDisk: (String?) -> Unit = {}) {
     val viewports = remember { mutableStateMapOf<ReportKind, ChartViewport>() }
     val fmtTime = remember(ui.range) { ReportsViewModel.timeFormatter(ui.range) }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
@@ -228,6 +242,12 @@ fun ReportsContent(ui: ReportsUi, onRange: (ReportRange) -> Unit, onIface: (Stri
             Text("Pinch to zoom, drag with two fingers to pan, touch for values. Double-tap resets.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
         }
+        if (ui.historyShorter) item {
+            app.truenascompanion.ui.components.InfoBanner(
+                "This NAS keeps history from ${historyDate(ui.historyStart!!)}. TrueNAS stores 30 days by default; you can keep more in the web UI under Reporting settings.",
+                health = app.truenascompanion.data.model.Health.INFO,
+            )
+        }
         if (ui.charts.isEmpty()) item {
             ElevatedSection { Text("No reporting data yet. TrueNAS collects history with netdata; check System › Advanced › Reporting on the NAS.", style = MaterialTheme.typography.bodyMedium) }
         }
@@ -235,18 +255,25 @@ fun ReportsContent(ui: ReportsUi, onRange: (ReportRange) -> Unit, onIface: (Stri
             val choices = when (kind) {
                 ReportKind.NETWORK -> ui.graphs.firstOrNull { it.name == "interface" }?.identifiers.orEmpty() to ui.iface
                 ReportKind.DISK -> ui.graphs.firstOrNull { it.name == "disk" }?.identifiers.orEmpty() to ui.disk
+                // 1.10.0: per-disk temperature history ("All" = up to 8 disks, one line each)
+                ReportKind.DISK_TEMP -> ui.graphs.firstOrNull { it.name == "disktemp" }?.identifiers.orEmpty().let { ids -> if (ids.size > 1) listOf(ALL_DISKS) + ids else ids } to (ui.tempDisk ?: ALL_DISKS)
                 else -> emptyList<String>() to null
             }
             ChartCard(
                 kind = kind, data = data, formatTime = fmtTime,
                 viewport = viewports[kind] ?: ChartViewport(), onViewport = { viewports[kind] = it },
                 choices = choices.first, selected = choices.second,
-                onChoose = { if (kind == ReportKind.NETWORK) onIface(it) else onDisk(it) },
+                onChoose = { when (kind) { ReportKind.NETWORK -> onIface(it); ReportKind.DISK_TEMP -> onTempDisk(it.takeIf { c -> c != ALL_DISKS }); else -> onDisk(it) } },
             )
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
 }
+
+private const val ALL_DISKS = "All disks"
+
+private fun historyDate(sec: Long): String =
+    DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()).format(Instant.ofEpochSecond(sec).atZone(ZoneId.systemDefault()))
 
 @Composable
 fun reportPalette(): List<Color> {
@@ -277,7 +304,7 @@ fun ChartCard(
         }
         if (choices.size > 1) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                choices.forEach { c -> FilterChip(selected = c == selected, onClick = { onChoose(c) }, label = { Text(c, maxLines = 1) }) }
+                choices.forEach { c -> FilterChip(selected = c == selected, onClick = { onChoose(c) }, label = { Text(c.substringBefore(" | ").trim(), maxLines = 1) }) }
             }
         }
         Spacer(Modifier.height(8.dp))

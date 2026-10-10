@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
@@ -51,7 +52,23 @@ data class DashboardData(
     val alerts: AlertsSummary? = null,
     val hottestDisk: Pair<String, Double>? = null,
     val protection: app.truenascompanion.data.protection.ProtectionSummary? = null,
+    /** 1.10.0: storage runway per pool (null until loaded). */
+    val runway: List<PoolRunway>? = null,
 )
+
+/** One pool's runway: the forecast and its recent used-fraction samples (sparkline). */
+data class PoolRunway(val pool: String, val forecast: app.truenascompanion.data.runway.RunwayForecast, val usedFractions: List<Float>, val usedFraction: Float)
+
+fun poolRunways(pools: List<Pool>?, samples: app.truenascompanion.data.runway.RunwaySamples): List<PoolRunway> =
+    pools.orEmpty().map { p ->
+        val list = samples.pools[p.name].orEmpty()
+        PoolRunway(
+            pool = p.name,
+            forecast = app.truenascompanion.data.runway.Runway.forecast(list),
+            usedFractions = list.takeLast(90).map { (it.used.toDouble() / it.size).toFloat().coerceIn(0f, 1f) },
+            usedFraction = p.usedFraction,
+        )
+    }
 
 /** Rolling window of live samples for sparklines. */
 data class LiveStats(
@@ -59,9 +76,12 @@ data class LiveStats(
     val cpu: List<Float> = emptyList(),
     val rx: List<Float> = emptyList(),
     val tx: List<Float> = emptyList(),
+    /** 1.10.0: ARC hit ratio per second (seconds without reads are skipped). */
+    val arcHit: List<Float> = emptyList(),
 ) {
     fun add(s: RealtimeStats, max: Int = 40) = LiveStats(
         latest = s,
+        arcHit = (s.arcHitPercent?.let { arcHit + it.toFloat() } ?: arcHit).takeLast(max),
         cpu = (cpu + (s.cpuPercent?.toFloat() ?: 0f)).takeLast(max),
         rx = (rx + (s.netRxBytesPerSec?.toFloat() ?: 0f)).takeLast(max),
         tx = (tx + (s.netTxBytesPerSec?.toFloat() ?: 0f)).takeLast(max),
@@ -180,6 +200,7 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                     },
                     hottestDisk = temps.await()?.maxByOrNull { it.value }?.toPair(),
                     protection = protection?.await()?.let { app.truenascompanion.data.protection.ProtectionSummarizer.summarize(it, System.currentTimeMillis()) },
+                    runway = runway(pools.await()),
                 )
             }
         } catch (e: Throwable) {
@@ -187,6 +208,18 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
                 it.copy(loading = false, refreshing = false, error = e.userMessage(), loginRequired = e is app.truenascompanion.data.api.TrueNasException.LoginRequired)
             }
         }
+    }
+
+    /** 1.10.0: records today's pool sample (no extra call: the pools are loaded anyway) and builds the forecasts. */
+    private suspend fun runway(pools: List<Pool>?): List<PoolRunway>? {
+        val id = server.value?.id ?: return null
+        pools ?: return null
+        runCatchingCancellable {
+            val today = app.truenascompanion.data.runway.Runway.today()
+            if (c.runway.lastDay(id) != today) c.runway.record(id, pools, today)
+        }
+        val samples = runCatchingCancellable { c.runway.samples(id).first<app.truenascompanion.data.runway.RunwaySamples>() }.getOrNull() ?: return null
+        return poolRunways(pools, samples)
     }
 
     // --- layout editing ---
@@ -205,6 +238,9 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
     fun toggleSize(type: WidgetType) = draft.update {
         (it ?: layout.value).update(type) { w -> w.copy(size = if (w.size == WidgetSize.FULL) WidgetSize.HALF else WidgetSize.FULL) }
     }
+
+    fun moveBy(type: WidgetType, delta: Int) = draft.update { (it ?: layout.value).moveBy(type, delta) }
+    fun setDensity(d: app.truenascompanion.data.model.DashboardDensity) = draft.update { (it ?: layout.value).copy(density = d) }
 
     fun resetLayout() {
         draft.value = DashboardLayout.DEFAULT

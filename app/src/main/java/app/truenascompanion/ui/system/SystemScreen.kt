@@ -316,7 +316,7 @@ fun SystemScreen(
 /** A settings page opened from the hub. Pushed on top of the System tab, so the connection overlay still covers it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemPageScreen(page: SystemPage, onBack: () -> Unit, onEditServer: (String) -> Unit = {}, onVpn: (String) -> Unit = {}) {
+fun SystemPageScreen(page: SystemPage, onBack: () -> Unit, onEditServer: (String) -> Unit = {}, onVpn: (String) -> Unit = {}, onRules: () -> Unit = {}) {
     val vm = appViewModel { SystemViewModel(it) }
     val server by vm.server.collectAsStateWithLifecycle()
     val connection by vm.connection.collectAsStateWithLifecycle()
@@ -356,7 +356,7 @@ fun SystemPageScreen(page: SystemPage, onBack: () -> Unit, onEditServer: (String
                         onReboot = { confirm = "reboot" }, onShutdown = { confirm = "shutdown" },
                     )
                 }
-                SystemPage.ALERTS -> item { app.truenascompanion.ui.notifications.PhoneAlertsSettings(server, say) }
+                SystemPage.ALERTS -> item { app.truenascompanion.ui.notifications.PhoneAlertsSettings(server, say, onRules) }
                 SystemPage.SECURITY -> item { app.truenascompanion.ui.lock.SecuritySettings(say) }
                 SystemPage.CONNECTION -> {
                     // 1.8.0 (UX review P1-1): one Connection page — addresses, auto-switch, VPN/Tailscale and the retry timeout.

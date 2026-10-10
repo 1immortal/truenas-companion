@@ -88,6 +88,8 @@ private object Routes {
     const val REPORTS = "reports"
     const val AUDIT = "audit"
     const val NETWORK = "network"
+    // 1.10.0: phone alert rules (System › Phone alerts › Alert rules)
+    const val ALERT_RULES = "alert_rules"
     const val CERTIFICATES = "certificates?highlight={highlight}"
     fun certificates(highlight: String? = null) = if (highlight == null) "certificates" else "certificates?highlight=${enc(highlight)}"
     const val EDIT = "server_edit?id={id}"
@@ -224,6 +226,8 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 container.repository.requestSignIn()
             }
             DeepLink.DEST_DASHBOARD -> nav.switchTab(Tab.DASHBOARD.route)
+            DeepLink.DEST_RULES -> { nav.switchTab(Tab.SYSTEM.route); nav.navigate(Routes.ALERT_RULES) }
+            DeepLink.DEST_TASKS -> { nav.switchTab(Tab.SYSTEM.route); nav.navigate(Routes.JOBS) }
             DeepLink.DEST_SHELL, DeepLink.DEST_RESTART_APP, DeepLink.DEST_SCRUB_POOL ->
                 app.truenascompanion.quick.QuickAction.byDestination(link.destination)?.let { quick = app.truenascompanion.ui.quick.QuickRequest(it, link.arg) }
             else -> nav.openTarget(container, app.truenascompanion.notify.AlertTarget.decode(link.destination, link.arg))
@@ -271,11 +275,11 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     DashboardScreen(
                         onOpen = { type ->
                             when (type) {
-                                WidgetType.POOLS, WidgetType.TEMPERATURE -> nav.switchTab(Tab.STORAGE.route)
+                                WidgetType.POOLS, WidgetType.TEMPERATURE, WidgetType.RUNWAY -> nav.switchTab(Tab.STORAGE.route)
                                 WidgetType.APPS -> nav.switchTab(Tab.APPS.route)
                                 WidgetType.ALERTS -> nav.switchTab(Tab.ALERTS.route)
                                 WidgetType.PROTECTION -> { container.storageTabRequest.value = app.truenascompanion.ui.storage.StorageTabs.PROTECTION; nav.switchTab(Tab.STORAGE.route) }
-                                WidgetType.REPORTS, WidgetType.CPU, WidgetType.MEMORY, WidgetType.NETWORK -> nav.navigate(Routes.REPORTS)
+                                WidgetType.REPORTS, WidgetType.CPU, WidgetType.MEMORY, WidgetType.NETWORK, WidgetType.ARC -> nav.navigate(Routes.REPORTS)
                                 else -> Unit
                             }
                         },
@@ -473,6 +477,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                     else app.truenascompanion.ui.system.SystemPageScreen(
                         page, onBack = { nav.popBackStack() },
                         onEditServer = { nav.navigate(Routes.edit(it)) }, onVpn = { nav.navigate(Routes.vpn(it)) },
+                        onRules = { nav.navigate(Routes.ALERT_RULES) },
                     )
                 }
                 pushed(Routes.SERVICES) {
@@ -514,6 +519,7 @@ private fun AppContent(container: app.truenascompanion.AppContainer, list: List<
                 pushed(Routes.REPORTS) { app.truenascompanion.ui.reports.ReportsScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.AUDIT) { app.truenascompanion.ui.audit.AuditScreen(onBack = { nav.popBackStack() }) }
                 // 1.9.0: Network settings, view only.
+                pushed(Routes.ALERT_RULES) { app.truenascompanion.ui.notifications.AlertRulesScreen(onBack = { nav.popBackStack() }) }
                 pushed(Routes.NETWORK) { app.truenascompanion.ui.network.NetworkScreen(onBack = { nav.popBackStack() }, onReports = { nav.navigate(Routes.REPORTS) }) }
                 pushed(Routes.CERTIFICATES, "highlight?") { a ->
                     app.truenascompanion.ui.certs.CertificatesScreen(onBack = { nav.popBackStack() }, onReviewServer = { id -> nav.navigate(Routes.edit(id)) }, highlight = a["highlight"])

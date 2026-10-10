@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.HourglassBottom
+import androidx.compose.material.icons.rounded.Cached
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -95,6 +98,8 @@ fun WidgetType.icon(): ImageVector = when (this) {
     WidgetType.ALERTS -> Icons.Rounded.NotificationsActive
     WidgetType.PROTECTION -> Icons.Rounded.Shield
     WidgetType.REPORTS -> Icons.Rounded.Insights
+    WidgetType.RUNWAY -> Icons.Rounded.HourglassBottom
+    WidgetType.ARC -> Icons.Rounded.Cached
 }
 
 fun tempHealth(c: Double?): Health = when {
@@ -180,6 +185,7 @@ private const val LIVE_PULSE_MS = 1200
 private const val LIVE_REST_MS = 1800L
 
 private val WidgetMinHeight = 136.dp
+private val CompactMinHeight = 112.dp
 
 @Composable
 fun DashboardWidget(
@@ -190,8 +196,10 @@ fun DashboardWidget(
     flavor: ApiFlavor?,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** 1.10.0: compact density (less padding, lower minimum height). */
+    compact: Boolean = false,
 ) {
-    ElevatedSection(modifier = modifier.heightIn(min = WidgetMinHeight), onClick = onClick, contentPadding = 14.dp) {
+    ElevatedSection(modifier = modifier.heightIn(min = if (compact) CompactMinHeight else WidgetMinHeight), onClick = onClick, contentPadding = if (compact) 10.dp else 14.dp) {
         when (type) {
             WidgetType.SYSTEM -> SystemWidget(data, flavor, live)
             WidgetType.CPU -> CpuWidget(full, live, data, flavor)
@@ -203,6 +211,8 @@ fun DashboardWidget(
             WidgetType.ALERTS -> AlertsWidget(full, data)
             WidgetType.PROTECTION -> ProtectionWidget(full, data)
             WidgetType.REPORTS -> ReportsWidget(full, live)
+            WidgetType.RUNWAY -> RunwayWidget(full, data)
+            WidgetType.ARC -> ArcWidget(full, live, data, flavor)
         }
     }
 }
@@ -550,4 +560,79 @@ private fun ReportsWidget(full: Boolean, live: LiveStats) {
         BigValue("1h – 1m")
     }
     Muted(if (full) "CPU, memory, network, disks and temperatures over time" else "History & charts")
+}
+
+
+/** 1.10.0: "About N months until full" per pool, with a sparkline of the phone's daily samples. */
+@Composable
+private fun RunwayWidget(full: Boolean, d: DashboardData) {
+    WidgetHeader(WidgetType.RUNWAY, full)
+    Spacer(Modifier.height(10.dp))
+    val list = d.runway
+    when {
+        list == null && d.loading -> { SkeletonBlock(); Spacer(Modifier.height(8.dp)); SkeletonBlock(widthFraction = 0.7f) }
+        list == null -> Muted("Unavailable")
+        list.isEmpty() -> Muted("No pools yet")
+        !full -> {
+            val soonest = list.minByOrNull { (it.forecast as? app.truenascompanion.data.runway.RunwayForecast.Full)?.daysLeft ?: Long.MAX_VALUE }!!
+            Text(soonest.pool, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Muted(app.truenascompanion.data.runway.Runway.text(soonest.forecast), maxLines = 3)
+        }
+        else -> Column {
+            list.take(4).forEachIndexed { i, r ->
+                if (i > 0) androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                RunwayRow(r)
+            }
+            Spacer(Modifier.height(8.dp))
+            Muted("Estimated on this phone from one sample a day (TrueNAS doesn't keep pool usage history).", maxLines = 3)
+        }
+    }
+}
+
+@Composable
+fun RunwayRow(r: PoolRunway) {
+    val f = r.forecast
+    val tone = when (f) {
+        is app.truenascompanion.data.runway.RunwayForecast.Full -> when {
+            f.daysLeft < 30 -> Health.CRITICAL
+            f.daysLeft < 180 -> Health.WARNING
+            else -> Health.HEALTHY
+        }
+        app.truenascompanion.data.runway.RunwayForecast.AlreadyFull -> Health.CRITICAL
+        else -> Health.UNKNOWN
+    }
+    val text = app.truenascompanion.data.runway.Runway.text(f)
+    Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(r.pool, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = if (tone == Health.UNKNOWN) MaterialTheme.colorScheme.onSurfaceVariant else LocalStatusColors.current.of(tone))
+            Muted("${Format.percent(r.usedFraction * 100.0)} used now", maxLines = 1)
+        }
+        if (r.usedFractions.size >= 2) {
+            Spacer(Modifier.width(12.dp))
+            Sparkline(r.usedFractions, Modifier.width(96.dp).height(36.dp).clearAndSetSemantics {}, color = LocalBrandColors.current.accent, maxValue = 1f)
+        }
+    }
+}
+
+/** 1.10.0: ARC size (and share of RAM) plus the demand hit ratio over the last minute, from `reporting.realtime`. */
+@Composable
+private fun ArcWidget(full: Boolean, live: LiveStats, d: DashboardData, flavor: ApiFlavor?) {
+    WidgetHeader(WidgetType.ARC, full)
+    Spacer(Modifier.height(10.dp))
+    val s = live.latest ?: return NoLive(flavor)
+    val arc = s.arcSize
+    if (arc == null) { Muted("No ARC data from this NAS"); return }
+    BigValue(Format.bytes(arc))
+    val total = s.memoryTotal ?: d.system?.physicalMemory
+    total?.takeIf { it > 0 }?.let { Muted("${Format.percent(arc * 100.0 / it)} of RAM", maxLines = 1) }
+    Spacer(Modifier.height(6.dp))
+    val hit = live.arcHit.takeIf { it.isNotEmpty() }?.average()
+    if (hit != null) {
+        StatusChip(if (hit >= 90) Health.HEALTHY else if (hit >= 70) Health.WARNING else Health.INFO, "Hit ratio ${Format.percent(hit)}")
+        if (full && live.arcHit.size >= 2) {
+            Spacer(Modifier.height(6.dp))
+            Sparkline(live.arcHit, Modifier.fillMaxWidth().height(36.dp), color = LocalBrandColors.current.chartArc, maxValue = 100f)
+        }
+    } else Muted("Hit ratio: no reads right now", maxLines = 2)
 }

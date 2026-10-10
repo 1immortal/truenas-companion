@@ -31,6 +31,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Downloading
+import androidx.compose.material.icons.rounded.Rule
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -199,7 +205,7 @@ fun rememberNotificationAccess(onReady: () -> Unit): () -> Unit {
 
 /** Stateful "Phone alerts" section for the System screen. */
 @Composable
-fun PhoneAlertsSettings(server: ServerConfig?, onMessage: (String) -> Unit) {
+fun PhoneAlertsSettings(server: ServerConfig?, onMessage: (String) -> Unit, onRules: () -> Unit = {}) {
     val context = LocalContext.current
     val container = (context.applicationContext as TrueNasApp).container
     val prefs by container.settings.notificationPrefs.collectAsStateWithLifecycle(initialValue = null)
@@ -233,6 +239,7 @@ fun PhoneAlertsSettings(server: ServerConfig?, onMessage: (String) -> Unit) {
             if (container.notifier.postTest(server)) onMessage("Test notification sent")
             else allow()
         },
+        onRules = onRules,
     )
 }
 
@@ -249,6 +256,7 @@ fun PhoneAlertsSection(
     onBattery: () -> Unit,
     onChannels: () -> Unit,
     onTest: () -> Unit,
+    onRules: () -> Unit = {},
 ) {
     val enabled = prefs.isEnabled(server?.id)
     var pickTime by remember { mutableStateOf<String?>(null) }
@@ -312,6 +320,19 @@ fun PhoneAlertsSection(
                 Divider()
                 SettingRow(Icons.Rounded.CheckCircle, "Notify when an alert clears", checked = prefs.notifyOnClear, onCheckedChange = { on -> onUpdate { it.copy(notifyOnClear = on) } })
                 Divider()
+                // 1.10.0: phone alert rules and progress notifications
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().clickable(onClickLabel = "Open alert rules", onClick = onRules)) {
+                    SettingRow(Icons.Rounded.Rule, "Alert rules", "Your own rules, checked on this phone: pool usage, disk temperature, backups, scrubs and more") {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Divider()
+                SettingRow(
+                    Icons.Rounded.Downloading, "Progress notifications",
+                    "Shows running scrubs, resilvers, replications, cloud syncs and TrueNAS updates. Refreshed during the checks, every minute with instant alerts.",
+                    checked = prefs.progressEnabled, onCheckedChange = { on -> onUpdate { it.copy(progressEnabled = on) } },
+                )
+                Divider()
                 SettingRow(
                     Icons.Rounded.VerifiedUser, "Certificate expiry",
                     if (prefs.certWarnEnabled) "Warns ${prefs.certWarnDays} days before a certificate expires. Checked during the alert checks, at most twice a day."
@@ -329,12 +350,13 @@ fun PhoneAlertsSection(
                     }
                 }
                 Divider()
-                SettingRow(Icons.Rounded.Bedtime, "Quiet hours", "Only Critical and more severe alerts come through", checked = prefs.quietEnabled, onCheckedChange = { on -> onUpdate { it.copy(quietEnabled = on) } })
+                SettingRow(
+                    Icons.Rounded.Bedtime, "Quiet hours",
+                    if (prefs.quietCriticalBreaksThrough) "Only Critical and more severe alerts come through" else "Nothing comes through; held-back alerts arrive afterwards",
+                    checked = prefs.quietEnabled, onCheckedChange = { on -> onUpdate { it.copy(quietEnabled = on) } },
+                )
                 AnimatedVisibility(visible = prefs.quietEnabled) {
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TimeButton("From", prefs.quietStart, Modifier.weight(1f)) { pickTime = "start" }
-                        TimeButton("Until", prefs.quietEnd, Modifier.weight(1f)) { pickTime = "end" }
-                    }
+                    QuietHoursDetails(prefs, onUpdate, onPick = { pickTime = it })
                 }
                 Divider()
                 ActionTileSetting()
@@ -360,6 +382,38 @@ fun PhoneAlertsSection(
                 pickTime = null
                 onUpdate { if (which == "start") it.copy(quietStart = m) else it.copy(quietEnd = m) }
             },
+        )
+    }
+}
+
+/** 1.10.0: times, days and whether Critical breaks through. */
+@Composable
+fun QuietHoursDetails(prefs: NotificationPrefs, onUpdate: ((NotificationPrefs) -> NotificationPrefs) -> Unit, onPick: (String) -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TimeButton("From", prefs.quietStart, Modifier.weight(1f)) { onPick("start") }
+            TimeButton("Until", prefs.quietEnd, Modifier.weight(1f)) { onPick("end") }
+        }
+        Text("On", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val names = java.time.format.TextStyle.NARROW
+            (1..7).forEach { d ->
+                val day = java.time.DayOfWeek.of(d)
+                val on = d in prefs.quietDays
+                androidx.compose.material3.FilterChip(
+                    selected = on,
+                    onClick = { onUpdate { p -> p.copy(quietDays = if (on) p.quietDays - d else p.quietDays + d) } },
+                    label = { Text(day.getDisplayName(names, java.util.Locale.getDefault()), maxLines = 1) },
+                    modifier = Modifier.weight(1f).semantics { contentDescription = day.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault()) },
+                )
+            }
+        }
+        if (prefs.quietDays.isEmpty()) Text("Pick at least one day, or quiet hours never start.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Spacer(Modifier.height(4.dp))
+        SettingRow(
+            Icons.Rounded.PriorityHigh, "Critical breaks through",
+            "Error, Critical and more severe alerts still notify during quiet hours",
+            checked = prefs.quietCriticalBreaksThrough, onCheckedChange = { on -> onUpdate { it.copy(quietCriticalBreaksThrough = on) } },
         )
     }
 }

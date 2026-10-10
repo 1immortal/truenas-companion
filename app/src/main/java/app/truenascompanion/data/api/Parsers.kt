@@ -146,7 +146,20 @@ object Parsers {
             netTxBytesPerSec = if (anyIface) tx else null,
             cpuCores = cores,
             interfaces = perIface,
+            arcHitPercent = arcHitPercent(fields["zfs"].obj()),
         )
+    }
+
+    /**
+     * 1.10.0: ARC demand hit ratio from `reporting.realtime` `zfs` (25.10 `ReportingRealtimeEventSourceEventZFS`):
+     * (data hits + metadata hits) / demand accesses. Null when there were no reads in that second.
+     */
+    fun arcHitPercent(zfs: JsonObject?): Double? {
+        zfs ?: return null
+        val accesses = zfs.double("demand_accesses_per_second") ?: return null
+        if (accesses <= 0) return null
+        val hits = (zfs.double("demand_data_hits_per_second") ?: 0.0) + (zfs.double("demand_metadata_hits_per_second") ?: 0.0)
+        return (hits / accesses * 100).coerceIn(0.0, 100.0)
     }
 
     private fun collectDisks(e: JsonElement?, out: MutableList<String>) {

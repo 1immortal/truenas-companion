@@ -548,6 +548,13 @@ class AlertNotifier(private val context: Context) {
 
     fun cancelRule(serverId: String, key: String) = nm.cancel(ruleTag(serverId, key), ID_RULE)
 
+    /** A deleted rule: removes all its notifications (any subject). */
+    fun cancelRuleAll(serverId: String, ruleId: String) {
+        val prefix = ruleTag(serverId, "$ruleId|")
+        runCatching { nm.activeNotifications }.getOrDefault(emptyList())
+            .filter { it.id == ID_RULE && it.tag?.startsWith(prefix) == true }.forEach { nm.cancel(it.tag, ID_RULE) }
+    }
+
     private fun ruleDestination(kind: app.truenascompanion.notify.rules.RuleKind): String = when (kind) {
         app.truenascompanion.notify.rules.RuleKind.POOL_USAGE, app.truenascompanion.notify.rules.RuleKind.SCRUB_AGE -> DeepLink.DEST_POOL
         app.truenascompanion.notify.rules.RuleKind.DISK_TEMP -> DeepLink.DEST_DISK
