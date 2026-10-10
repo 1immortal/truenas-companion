@@ -72,9 +72,9 @@ fun NotificationShadeMock(dark: Boolean) {
         }
 
         Notif(true, false, "YTN · homenas · Critical · now", "Pool Status Is Not Healthy",
-            "Pool tank state is DEGRADED: One or more devices are faulted in response to persistent errors.", listOf("Dismiss", "Open"))
+            "Pool tank state is DEGRADED: One or more devices are faulted in response to persistent errors.", listOf("Acknowledge", "Open"))
         Notif(false, false, "YTN · homenas · Warning · 2m", "Pool Space Usage Is Above 80%",
-            "Space usage for pool \"fast\" is 88%. Optimal pool performance requires used space remain below 80%.", listOf("Dismiss", "Open"), maxText = 2)
+            "Space usage for pool \"fast\" is 88%. Optimal pool performance requires used space remain below 80%.", listOf("Acknowledge", "Open"), maxText = 2)
         Notif(false, true, "YTN · homenas · 5m", "Sign in to keep receiving alerts",
             "Your session with homenas expired. Open the app and sign in to keep receiving alerts.", listOf("Sign in"), maxText = 2)
         Spacer(Modifier.height(16.dp))

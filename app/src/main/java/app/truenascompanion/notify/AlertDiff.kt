@@ -97,7 +97,16 @@ object AlertDiff {
         current: List<AlertItem>,
         filter: AlertFilter,
         minuteOfDay: Int,
-        isoDay: Int = 0,
+        titleOf: (AlertItem) -> String,
+    ): AlertDiffResult = compute(previous, current, filter, minuteOfDay, 0, titleOf)
+
+    /** 1.10.0: [isoDay] (1 = Monday … 7 = Sunday) for quiet hours limited to some days; 0 ignores the days. */
+    fun compute(
+        previous: List<SeenAlert>?,
+        current: List<AlertItem>,
+        filter: AlertFilter,
+        minuteOfDay: Int,
+        isoDay: Int,
         titleOf: (AlertItem) -> String,
     ): AlertDiffResult {
         val seen = current.filter { it.uuid.isNotBlank() }

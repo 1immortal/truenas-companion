@@ -258,7 +258,7 @@ class AlertNotifier(private val context: Context) {
             .setOnlyAlertOnce(true)
             .setNumber(count)
             .setPublicVersion(publicVersion(channelFor(level), publicAlertTitle(level, count)))
-        dismissAction(serverId, uuids, if (count > 1) "Dismiss all" else "Dismiss")?.let { b.addAction(it) }
+        dismissAction(serverId, uuids, if (count > 1) "Acknowledge all" else "Acknowledge")?.let { b.addAction(it) }
         b.addAction(0, "Snooze", snoozeIntent(serverId, serverName, uuids, tag))
             .addAction(0, "Open", open)
             .addExtras(android.os.Bundle().apply {

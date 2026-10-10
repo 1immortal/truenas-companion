@@ -256,7 +256,7 @@ class V120ScreenshotTest {
                 }
             }
             Notif(true, false, "YTN · Example NAS · Warning · now", "SMART test failed · 3",
-                listOf("SMART test on sdb failed", "SMART test on sdc failed", "SMART test on sdd failed"), listOf("Dismiss all", "Snooze", "Open"))
+                listOf("SMART test on sdb failed", "SMART test on sdc failed", "SMART test on sdd failed"), listOf("Acknowledge all", "Snooze", "Open"))
             Notif(false, true, "YTN · Example NAS · Certificates · 1h", "Certificate expires in 9 days",
                 listOf("truenas_default (localhost) expires in 9 days."), emptyList())
             Spacer(Modifier.height(8.dp))

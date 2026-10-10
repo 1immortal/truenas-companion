@@ -271,6 +271,7 @@ fun cooldownLabel(minutes: Int): String = when {
     else -> "$minutes min"
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun RuleCard(r: AlertRule, firing: Boolean, onEdit: (AlertRule) -> Unit, onToggle: (AlertRule, Boolean) -> Unit, onDelete: (AlertRule) -> Unit) {
     ElevatedSection(onClick = { onEdit(r) }) {
@@ -286,11 +287,18 @@ private fun RuleCard(r: AlertRule, firing: Boolean, onEdit: (AlertRule) -> Unit,
                 modifier = Modifier.semantics { contentDescription = "${r.kind.title} rule"; stateDescription = if (r.enabled) "On" else "Off" },
             )
         }
-        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusChip(r.severity.health(), r.severity.label)
-            if (r.cooldownMinutes > 0) app.truenascompanion.ui.components.Tag("Cooldown ${cooldownLabel(r.cooldownMinutes)}")
-            if (firing && r.enabled) StatusChip(Health.CRITICAL, "Active now", showIcon = false)
-            Spacer(Modifier.weight(1f))
+        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Chips wrap (large fonts), the delete button always stays visible.
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusChip(r.severity.health(), r.severity.label)
+                if (r.cooldownMinutes > 0) app.truenascompanion.ui.components.Tag("Cooldown ${cooldownLabel(r.cooldownMinutes)}")
+                if (firing && r.enabled) StatusChip(Health.CRITICAL, "Active now", showIcon = false)
+            }
             IconButton(onClick = { onDelete(r) }) { Icon(Icons.Rounded.Delete, "Delete rule", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
@@ -342,50 +350,68 @@ fun RuleEditorDialog(initial: AlertRule, choices: RuleChoices, onDismiss: () -> 
         icon = { Icon(rule.kind.icon(), null) },
         title = { Text(rule.kind.title) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(if (problem == null) candidate.summary() else rule.kind.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val unit = rule.kind.unit
-                if (!unit.isNullOrEmpty()) OutlinedTextField(
-                    value = thresholdText, onValueChange = { thresholdText = it.take(8) },
-                    label = { Text(thresholdLabel(rule.kind)) }, suffix = { Text(unit) }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(),
-                )
-                if (rule.kind.usesMinutes) OutlinedTextField(
-                    value = minutesText, onValueChange = { minutesText = it.filter(Char::isDigit).take(4) },
-                    label = { Text(if (rule.kind == RuleKind.UNREACHABLE) "For at least" else "Over the last") }, suffix = { Text("min") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(),
-                    supportingText = { Text(minutesHint(rule.kind)) },
-                )
-                when (rule.kind) {
-                    RuleKind.APP_NOT_RUNNING -> Picker("App", rule.target, choices.apps.map { it to it }, choices.loading) { rule = rule.copy(target = it) }
-                    RuleKind.SERVICE_STOPPED -> Picker("Service", rule.target, choices.services, choices.loading) { rule = rule.copy(target = it) }
-                    RuleKind.BACKUP_FAILED, RuleKind.BACKUP_STALE -> {
-                        val opts = listOf(BackupTarget.ANY to "Both", BackupTarget.REPLICATION to "Replication", BackupTarget.CLOUD_SYNC to "Cloud sync")
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                            opts.forEachIndexed { i, (v, label) ->
-                                SegmentedButton(selected = (rule.target ?: BackupTarget.ANY) == v, onClick = { rule = rule.copy(target = v) },
-                                    shape = SegmentedButtonDefaults.itemShape(i, opts.size), icon = {}) { Text(label, maxLines = 1, softWrap = false) }
-                            }
-                        }
-                    }
-                    else -> Unit
-                }
-                Text("Severity", style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    RuleSeverity.entries.forEachIndexed { i, s ->
-                        SegmentedButton(selected = rule.severity == s, onClick = { rule = rule.copy(severity = s) },
-                            shape = SegmentedButtonDefaults.itemShape(i, RuleSeverity.entries.size), icon = {}) { Text(s.label, maxLines = 1, softWrap = false) }
-                    }
-                }
-                Picker("Cooldown after it recovers", rule.cooldownMinutes.toString(), COOLDOWNS.map { it.toString() to cooldownLabel(it) }, false) {
-                    rule = rule.copy(cooldownMinutes = it.toInt())
-                }
-                problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            }
+            RuleEditorFields(rule, thresholdText, minutesText, candidate, problem, choices,
+                onRule = { rule = it }, onThreshold = { thresholdText = it }, onMinutes = { minutesText = it })
         },
         confirmButton = { TextButton(onClick = { onSave(candidate) }, enabled = problem == null) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** The editor's fields (separate from the dialog so previews can render them). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RuleEditorFields(
+    rule: AlertRule,
+    thresholdText: String,
+    minutesText: String,
+    candidate: AlertRule,
+    problem: String?,
+    choices: RuleChoices,
+    onRule: (AlertRule) -> Unit,
+    onThreshold: (String) -> Unit,
+    onMinutes: (String) -> Unit,
+) {
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(if (problem == null) candidate.summary() else rule.kind.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val unit = rule.kind.unit
+        if (!unit.isNullOrEmpty()) OutlinedTextField(
+            value = thresholdText, onValueChange = { onThreshold(it.take(8)) },
+            label = { Text(thresholdLabel(rule.kind)) }, suffix = { Text(unit) }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(),
+        )
+        if (rule.kind.usesMinutes) OutlinedTextField(
+            value = minutesText, onValueChange = { onMinutes(it.filter(Char::isDigit).take(4)) },
+            label = { Text(if (rule.kind == RuleKind.UNREACHABLE) "For at least" else "Over the last") }, suffix = { Text("min") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(),
+            supportingText = { Text(minutesHint(rule.kind)) },
+        )
+        when (rule.kind) {
+            RuleKind.APP_NOT_RUNNING -> Picker("App", rule.target, choices.apps.map { it to it }, choices.loading) { onRule(rule.copy(target = it)) }
+            RuleKind.SERVICE_STOPPED -> Picker("Service", rule.target, choices.services, choices.loading) { onRule(rule.copy(target = it)) }
+            RuleKind.BACKUP_FAILED, RuleKind.BACKUP_STALE -> {
+                val opts = listOf(BackupTarget.ANY to "Both", BackupTarget.REPLICATION to "Replication", BackupTarget.CLOUD_SYNC to "Cloud sync")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    opts.forEachIndexed { i, (v, label) ->
+                        SegmentedButton(selected = (rule.target ?: BackupTarget.ANY) == v, onClick = { onRule(rule.copy(target = v)) },
+                            shape = SegmentedButtonDefaults.itemShape(i, opts.size), icon = {}) { Text(label, maxLines = 1, softWrap = false) }
+                    }
+                }
+            }
+            else -> Unit
+        }
+        Text("Severity", style = MaterialTheme.typography.labelLarge)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            RuleSeverity.entries.forEachIndexed { i, s ->
+                SegmentedButton(selected = rule.severity == s, onClick = { onRule(rule.copy(severity = s)) },
+                    shape = SegmentedButtonDefaults.itemShape(i, RuleSeverity.entries.size), icon = {}) { Text(s.label, maxLines = 1, softWrap = false) }
+            }
+        }
+        Picker("Cooldown after it recovers", rule.cooldownMinutes.toString(), COOLDOWNS.map { it.toString() to cooldownLabel(it) }, false) {
+            onRule(rule.copy(cooldownMinutes = it.toInt()))
+        }
+        problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    }
 }
 
 private fun thresholdLabel(k: RuleKind) = when (k) {

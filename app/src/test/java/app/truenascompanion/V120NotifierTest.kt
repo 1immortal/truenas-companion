@@ -66,7 +66,7 @@ class V120NotifierTest {
         notifier.postAlerts(server, listOf(alert("u1", "SMARTTestFailed", "SMART test failed on sda", """{"name":"sda"}""")), mapOf("u1" to "SMART test failed"))
         assertEquals(listOf("alert/s1/u1"), alertNotifications().map { it.tag })
         val single = alertNotifications().single().notification
-        assertEquals(listOf("Dismiss", "Snooze", "Open"), single.actions.map { it.title.toString() })
+        assertEquals(listOf("Acknowledge", "Snooze", "Open"), single.actions.map { it.title.toString() })
         assertEquals(DeepLink.DEST_DISK, shadowOf(single.contentIntent).savedIntent.getStringExtra(DeepLink.EXTRA_DESTINATION))
         assertEquals("sda", shadowOf(single.contentIntent).savedIntent.getStringExtra(DeepLink.EXTRA_ARG))
 
@@ -75,7 +75,7 @@ class V120NotifierTest {
         assertEquals("alert/s1/k:SMARTTestFailed", grouped.tag)
         assertEquals("SMART test failed · 2", grouped.notification.extras.getCharSequence(NotificationCompat.EXTRA_TITLE).toString())
         assertEquals(2, grouped.notification.number)
-        assertEquals("Dismiss all", grouped.notification.actions[0].title.toString())
+        assertEquals("Acknowledge all", grouped.notification.actions[0].title.toString())
         // Different disks: the group opens the disk list.
         val open = shadowOf(grouped.notification.contentIntent).savedIntent
         assertEquals(DeepLink.DEST_DISK, open.getStringExtra(DeepLink.EXTRA_DESTINATION))
