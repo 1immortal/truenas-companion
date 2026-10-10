@@ -4,6 +4,5 @@
     <color name="widget_muted">#FF4A5680</color>
     <color name="widget_healthy">#FF1B7F4B</color>
     <color name="widget_warning">#FF8A5A00</color>
-    <color name="widget_critical">#FFB3261E</color>
     <color name="widget_track">#FFDCE3F7</color>
 </resources>

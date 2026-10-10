@@ -352,7 +352,7 @@ fun PhoneAlertsSection(
                 Divider()
                 SettingRow(
                     Icons.Rounded.Bedtime, "Quiet hours",
-                    if (prefs.quietCriticalBreaksThrough) "Only Critical and more severe alerts come through" else "Nothing comes through; held-back alerts arrive afterwards",
+                    if (prefs.quietCriticalBreaksThrough) "Only Critical and more severe alerts come through" else "Nothing comes through; alerts wait on the Alerts tab",
                     checked = prefs.quietEnabled, onCheckedChange = { on -> onUpdate { it.copy(quietEnabled = on) } },
                 )
                 AnimatedVisibility(visible = prefs.quietEnabled) {
@@ -397,14 +397,15 @@ fun QuietHoursDetails(prefs: NotificationPrefs, onUpdate: ((NotificationPrefs) -
         Text("On", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val names = java.time.format.TextStyle.NARROW
+            val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
             (1..7).forEach { d ->
                 val day = java.time.DayOfWeek.of(d)
                 val on = d in prefs.quietDays
                 androidx.compose.material3.FilterChip(
                     selected = on,
                     onClick = { onUpdate { p -> p.copy(quietDays = if (on) p.quietDays - d else p.quietDays + d) } },
-                    label = { Text(day.getDisplayName(names, java.util.Locale.getDefault()), maxLines = 1) },
-                    modifier = Modifier.weight(1f).semantics { contentDescription = day.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault()) },
+                    label = { Text(day.getDisplayName(names, locale), maxLines = 1) },
+                    modifier = Modifier.weight(1f).semantics { contentDescription = day.getDisplayName(java.time.format.TextStyle.FULL, locale) },
                 )
             }
         }

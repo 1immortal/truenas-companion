@@ -16,7 +16,7 @@
         <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Home NAS" android:textColor="@color/widget_on" android:textSize="13sp" android:textStyle="bold" />
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Updated 13:40" android:textColor="@color/widget_muted" android:textSize="11sp" />
     </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="horizontal">
+    <LinearLayout android:baselineAligned="false" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="horizontal">
         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"  android:background="@drawable/widget_button" android:gravity="center" android:orientation="vertical" android:paddingVertical="6dp">
             <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_widget_refresh" android:importantForAccessibility="no" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Refresh" android:textColor="@color/widget_on" android:textSize="11sp" />
